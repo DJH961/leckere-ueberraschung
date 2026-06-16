@@ -365,8 +365,8 @@ async function listRepoFiles(dir, exts){
 function versionSort(files){
   const rank = name => {
     const k = langInfo(name).label.toLowerCase();
-    if(k.startsWith("english")) return 0;
-    if(k.startsWith("german"))  return 1;
+    if(k.startsWith("german"))  return 0;
+    if(k.startsWith("english")) return 1;
     return 2;
   };
   return files.slice().sort((a,b)=>{
