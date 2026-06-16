@@ -65,6 +65,7 @@
   .meta{flex:1 1 auto; min-width:0;}
   .label{font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:8px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .flag{font-size:1.3rem; line-height:1; flex:0 0 auto;}
   .num{background:var(--accent); color:#241640; font-size:.72rem; font-weight:700;
     border-radius:20px; padding:2px 9px;}
   .bar{height:8px; border-radius:8px; background:rgba(255,255,255,.12); cursor:pointer; position:relative;}
@@ -109,7 +110,7 @@
       <p>A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
     </header>
 
-    <h2 class="section">The Chapters</h2>
+    <h2 class="section">The Versions</h2>
     <div id="audioList">
       <div class="status">Summoning the legend from the archives…</div>
     </div>
@@ -264,9 +265,70 @@ function onSeek(el, ratio){
 }
 
 /* ---------------- GitHub listing ---------------- */
-function prettyName(fn){
-  return fn.replace(/\.[^.]+$/,"").replace(/^[\d]+[\s._-]*/,"").replace(/[._-]+/g," ").trim() || fn;
+/* Language → flag lookup. Add new languages here and the file
+   "<Language> Version.opus" picks up its flag automatically. */
+const LANG_FLAGS = {
+  english:"🇬🇧", british:"🇬🇧", american:"🇺🇸", german:"🇩🇪", deutsch:"🇩🇪",
+  french:"🇫🇷", francais:"🇫🇷", spanish:"🇪🇸", espanol:"🇪🇸", italian:"🇮🇹",
+  portuguese:"🇵🇹", brazilian:"🇧🇷", dutch:"🇳🇱", czech:"🇨🇿", slovak:"🇸🇰",
+  polish:"🇵🇱", russian:"🇷🇺", ukrainian:"🇺🇦", turkish:"🇹🇷", arabic:"🇸🇦",
+  hebrew:"🇮🇱", greek:"🇬🇷", swedish:"🇸🇪", norwegian:"🇳🇴", danish:"🇩🇰",
+  finnish:"🇫🇮", icelandic:"🇮🇸", hungarian:"🇭🇺", romanian:"🇷🇴", bulgarian:"🇧🇬",
+  croatian:"🇭🇷", serbian:"🇷🇸", slovenian:"🇸🇮", chinese:"🇨🇳", mandarin:"🇨🇳",
+  cantonese:"🇭🇰", japanese:"🇯🇵", korean:"🇰🇷", thai:"🇹🇭", vietnamese:"🇻🇳",
+  indonesian:"🇮🇩", malay:"🇲🇾", filipino:"🇵🇭", tagalog:"🇵🇭", hindi:"🇮🇳",
+  bengali:"🇧🇩", urdu:"🇵🇰", persian:"🇮🇷", farsi:"🇮🇷", swahili:"🇰🇪",
+  afrikaans:"🇿🇦", catalan:"🇦🇩", basque:"🏴", galician:"🇪🇸", welsh:"🏴󠁧󠁢󠁷󠁬󠁳󠁿",
+  irish:"🇮🇪", scottish:"🏴󠁧󠁢󠁳󠁣󠁴󠁿", estonian:"🇪🇪", latvian:"🇱🇻", lithuanian:"🇱🇹",
+  georgian:"🇬🇪", armenian:"🇦🇲", azerbaijani:"🇦🇿", kazakh:"🇰🇿", mongolian:"🇲🇳",
+  albanian:"🇦🇱", macedonian:"🇲🇰", bosnian:"🇧🇦", maltese:"🇲🇹", luxembourgish:"🇱🇺",
+  latin:"🏛️", esperanto:"🌍"
+};
+function langInfo(filename){
+  let base = filename.replace(/\.[^.]+$/,"").replace(/^[\d]+[\s._-]*/,"").replace(/[._-]+/g," ").trim();
+  let lang = base.replace(/\bversions?\b/ig,"").trim() || base;     // drop the word "version"
+  const key = lang.toLowerCase().split(/\s+/)[0];                   // first word = language
+  return { flag: LANG_FLAGS[key] || "🌐", label: lang || base || filename };
 }
+
+/* Read an Opus track's duration straight from its Ogg headers via tiny
+   range requests — no full decode, so it scales to many languages. */
+async function getOpusDuration(url){
+  try{
+    // pre-skip from OpusHead (first page)
+    const head = new Uint8Array(await (await fetch(url, { headers:{ Range:"bytes=0-1023" }})).arrayBuffer());
+    let preSkip = 0;
+    const sig = [79,112,117,115,72,101,97,100]; // "OpusHead"
+    for(let i=0;i<head.length-12;i++){
+      let m=true; for(let j=0;j<8;j++){ if(head[i+j]!==sig[j]){ m=false; break; } }
+      if(m){ preSkip = head[i+10] | (head[i+11]<<8); break; }
+    }
+    // last granule position from the final Ogg page (tail)
+    let resp = await fetch(url, { headers:{ Range:"bytes=-65536" }});
+    let tail = new Uint8Array(await resp.arrayBuffer());
+    let last = -1;
+    for(let i=tail.length-27;i>=0;i--){
+      if(tail[i]===79 && tail[i+1]===103 && tail[i+2]===103 && tail[i+3]===83){ last=i; break; } // "OggS"
+    }
+    if(last < 0) return null;
+    let g = 0;
+    for(let k=0;k<8;k++){ g += tail[last+6+k] * Math.pow(2, 8*k); } // 64-bit LE granule
+    const dur = (g - preSkip) / 48000;
+    return (isFinite(dur) && dur > 0) ? dur : null;
+  }catch(e){ return null; }
+}
+async function preloadDurations(items){
+  const queue = items.slice();
+  const worker = async ()=>{
+    while(queue.length){
+      const { el, url } = queue.shift();
+      const d = await getOpusDuration(url);
+      if(d){ const dd = el.querySelector(".dur"); if(dd && dd.textContent === "--:--") dd.textContent = fmt(d); }
+    }
+  };
+  await Promise.all(Array.from({length:4}, worker));
+}
+
 async function listRepoFiles(dir, exts){
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`,
     { headers:{ "Accept":"application/vnd.github+json" }});
@@ -286,14 +348,16 @@ async function loadAudio(){
     const files = await listRepoFiles(AUDIO_DIR, [".opus"]);
     if(!files.length){ box.innerHTML = `<div class="status">No <code>.opus</code> files in <code>${AUDIO_DIR}/</code> yet.</div>`; return; }
     box.innerHTML = "";
+    const durItems = [];
     files.forEach((f,i)=>{
       const el = document.createElement("div");
       el.className = "track";
       el.dataset.src = encodeURI(f.path);
+      const info = langInfo(f.name);
       el.innerHTML = `
         <button class="play" aria-label="Play">▶</button>
         <div class="meta">
-          <div class="label"><span class="num">${i+1}</span>${prettyName(f.name)}</div>
+          <div class="label"><span class="num">${i+1}</span><span class="flag">${info.flag}</span>${info.label}</div>
           <div class="bar"><div class="prog"></div></div>
           <div class="time"><span class="cur">0:00</span> / <span class="dur">--:--</span></div>
         </div>`;
@@ -303,7 +367,9 @@ async function loadAudio(){
         onSeek(el, (ev.clientX - r.left)/r.width);
       });
       box.appendChild(el);
+      durItems.push({ el, url: el.dataset.src });
     });
+    preloadDurations(durItems);
   }catch(err){
     box.innerHTML = `<div class="status">Couldn't reach the archives (${err.message}). If you just pushed, wait a moment and refresh.</div>`;
   }
