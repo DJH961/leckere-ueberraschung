@@ -157,6 +157,7 @@ const REPO        = "DJH961/leckere-ueberraschung";
 const BRANCH      = "main";
 const AUDIO_DIR   = "audio";      // folder of .opus files
 const STICKER_DIR = "stickers";   // folder of Nazan stickers
+const FAVICON_DIR = "favicon";     // drop ANY image here → auto-used as the favicon
 const INTRO_MS    = 8000;         // rickroll length (8 s)
 const RICK_ID     = "xvFZjo5PgG0";
 
@@ -467,6 +468,43 @@ async function loadStickers(){
 }
 
 loadAudio().then(loadStickers);
+
+/* ---------------- Auto favicon ----------------
+   Drop ANY image (any size, png/jpg/webp/gif/svg) into the /favicon folder.
+   The first one is center-cropped to a square, resized, and used as the
+   favicon. If the folder is empty, the default 🎁 emoji favicon stays. */
+function setFavicon(href){
+  let l = document.querySelector('link[rel="icon"]');
+  if(!l){ l = document.createElement("link"); l.rel = "icon"; document.head.appendChild(l); }
+  l.href = href;
+}
+async function loadFavicon(){
+  if(REPO.startsWith("YOUR_GITHUB")) return;
+  let files = [];
+  try{ files = await listRepoFiles(FAVICON_DIR, [".png",".jpg",".jpeg",".webp",".gif",".svg",".bmp"]); }
+  catch(e){ return; }                                   // no folder yet → keep emoji
+  if(!files.length) return;                             // empty folder → keep emoji
+  const f = files[0];
+  const src = encodeURI(f.path);
+  if(f.name.toLowerCase().endsWith(".svg")){ setFavicon(src); return; }  // SVG scales itself
+  try{
+    const img = await new Promise((res,rej)=>{
+      const im = new Image(); im.onload = ()=>res(im); im.onerror = rej; im.src = src;
+    });
+    const size = 128;                                   // crisp on hi-dpi tabs
+    const c = document.createElement("canvas"); c.width = c.height = size;
+    const ctx = c.getContext("2d");
+    // "Contain" fit: scale the whole image to fit inside the square, keeping
+    // its aspect ratio, and center it with transparent padding (no cropping).
+    const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+    const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+    const dx = (size - w) / 2, dy = (size - h) / 2;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, w, h);
+    setFavicon(c.toDataURL("image/png"));
+  }catch(e){ setFavicon(src); }                         // fallback: raw image as-is
+}
+loadFavicon();
 </script>
 </body>
 </html>
