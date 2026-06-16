@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The legendary story of Leckere Ueberraschung</title>
+<style>
+  :root{
+    --bg:#120c1f;
+    --bg2:#1d1233;
+    --card:#241640;
+    --accent:#ffb02e;
+    --accent2:#ff4d6d;
+    --text:#f3ecff;
+    --muted:#b6a8d6;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%, var(--bg2), var(--bg));
+    color:var(--text);
+    line-height:1.6;
+    overflow-x:hidden;
+  }
+
+  /* ===== Intro overlay (rickroll) ===== */
+  #intro{
+    position:fixed; inset:0; z-index:9999;
+    background:#000;
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .8s ease;
+  }
+  #intro iframe{
+    width:100%; height:100%; border:0;
+  }
+  #intro .controls{
+    position:absolute; bottom:20px; right:20px; z-index:2;
+    display:flex; gap:10px;
+  }
+  #intro button{
+    background:rgba(0,0,0,.55); color:#fff; border:1px solid rgba(255,255,255,.5);
+    padding:10px 16px; border-radius:30px; font-size:14px; cursor:pointer;
+    backdrop-filter:blur(4px);
+  }
+  #intro button:hover{background:rgba(255,255,255,.2);}
+  #intro .hint{
+    position:absolute; top:20px; left:0; right:0; text-align:center;
+    color:rgba(255,255,255,.85); font-size:14px; z-index:2; pointer-events:none;
+  }
+  body.intro-done{overflow-x:hidden;}
+  #intro.hidden{opacity:0; pointer-events:none;}
+
+  /* ===== Layout ===== */
+  .wrap{max-width:860px; margin:0 auto; padding:48px 18px 80px; position:relative; z-index:2;}
+  header.hero{text-align:center; margin-bottom:48px;}
+  .hero h1{
+    font-size:clamp(1.8rem,6vw,3.2rem);
+    line-height:1.15; margin:0;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 2px 30px rgba(255,77,109,.25);
+  }
+  .hero p{color:var(--muted); margin-top:14px; font-size:1.05rem;}
+
+  h2.section{
+    font-size:1.4rem; margin:40px 0 18px;
+    display:flex; align-items:center; gap:10px;
+  }
+  h2.section::before{content:"🎧"; }
+
+  /* ===== Audio list ===== */
+  #audioList{display:grid; gap:12px;}
+  .track{
+    background:linear-gradient(180deg,var(--card),rgba(36,22,64,.6));
+    border:1px solid rgba(255,255,255,.07);
+    border-radius:14px; padding:14px 16px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25);
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .track:hover{transform:translateY(-2px); border-color:var(--accent);}
+  .track .label{
+    font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:8px;
+  }
+  .track .num{
+    background:var(--accent); color:#241640; font-size:.75rem; font-weight:700;
+    border-radius:20px; padding:2px 9px;
+  }
+  audio{width:100%; height:40px;}
+  .status{color:var(--muted); font-size:.95rem; padding:10px 2px;}
+  .status code{background:rgba(255,255,255,.08); padding:2px 6px; border-radius:5px;}
+
+  /* ===== Stickers ===== */
+  .sticker{
+    position:absolute; z-index:1; pointer-events:none;
+    width:110px; opacity:.92;
+    filter:drop-shadow(0 6px 12px rgba(0,0,0,.45));
+    animation:bob 6s ease-in-out infinite;
+  }
+  @keyframes bob{
+    0%,100%{transform:translateY(0) rotate(var(--rot,0deg));}
+    50%{transform:translateY(-12px) rotate(var(--rot,0deg));}
+  }
+
+  /* ===== Footer ===== */
+  footer{
+    text-align:center; margin-top:80px; padding-top:30px;
+    border-top:1px solid rgba(255,255,255,.08);
+  }
+  footer .lakemun img{
+    width:140px; height:auto; transition:transform .2s ease, filter .2s ease;
+    filter:drop-shadow(0 6px 16px rgba(0,0,0,.4));
+  }
+  footer .lakemun img:hover{transform:scale(1.06);}
+  footer .credit{color:var(--muted); font-size:.85rem; margin-top:14px;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+
+  <!-- ===== INTRO RICKROLL ===== -->
+  <div id="intro">
+    <div class="hint">🔊 Turn your sound up…</div>
+    <iframe id="introVideo"
+      src="https://www.youtube.com/embed/xvFZjo5PgG0?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0&enablejsapi=1"
+      title="intro"
+      allow="autoplay; encrypted-media; fullscreen"
+      allowfullscreen></iframe>
+    <div class="controls">
+      <button id="soundBtn">🔊 Enable sound</button>
+      <button id="skipBtn">Skip ⏭</button>
+    </div>
+  </div>
+
+  <!-- ===== PAGE ===== -->
+  <div class="wrap">
+    <header class="hero">
+      <h1>The legendary story of<br>Leckere Ueberraschung</h1>
+      <p>A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
+    </header>
+
+    <h2 class="section">The Chapters</h2>
+    <div id="audioList">
+      <div class="status">Summoning the legend from the archives…</div>
+    </div>
+
+    <footer>
+      <a class="lakemun" href="https://www.lakemunconference.com/" target="_blank" rel="noopener">
+        <img src="images/lakemun-logo.webp" alt="LakeMUN Conference" />
+      </a>
+      <div class="credit">In proud association with the LakeMUN Conference</div>
+    </footer>
+  </div>
+
+<script>
+/* =================================================================
+   CONFIG — set these two to YOUR GitHub repo, then commit & push.
+   Example: if your repo is  https://github.com/nazan/legend
+            REPO = "nazan/legend"
+   ================================================================= */
+const REPO       = "YOUR_GITHUB_USERNAME/YOUR_REPO_NAME";
+const BRANCH     = "main";
+const AUDIO_DIR  = "audio";      // folder in the repo holding .opus files
+const STICKER_DIR= "stickers";   // folder in the repo holding Nazan stickers
+const INTRO_MS   = 8000;         // how long the rickroll plays (8 s)
+
+/* ---------- Intro overlay logic ---------- */
+const intro   = document.getElementById("intro");
+const introVid= document.getElementById("introVideo");
+function endIntro(){
+  if(intro.classList.contains("hidden")) return;
+  intro.classList.add("hidden");
+  document.body.classList.add("intro-done");
+  setTimeout(()=>intro.remove(), 900);
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+const introTimer = setTimeout(endIntro, INTRO_MS);
+document.getElementById("skipBtn").addEventListener("click", ()=>{ clearTimeout(introTimer); endIntro(); });
+// Browsers often block autoplay WITH sound. This button restarts the clip
+// unmuted after a user click (a real gesture), which is always allowed.
+document.getElementById("soundBtn").addEventListener("click", ()=>{
+  introVid.src = "https://www.youtube.com/embed/xvFZjo5PgG0?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0";
+  clearTimeout(introTimer);
+  setTimeout(endIntro, INTRO_MS);
+});
+
+/* ---------- Helpers ---------- */
+function prettyName(filename){
+  return filename
+    .replace(/\.[^.]+$/, "")          // drop extension
+    .replace(/^[\d]+[\s._-]*/, "")    // drop leading numbers
+    .replace(/[._-]+/g, " ")          // separators -> spaces
+    .trim() || filename;
+}
+async function listRepoFiles(dir, extensions){
+  const url = `https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`;
+  const res = await fetch(url, { headers:{ "Accept":"application/vnd.github+json" }});
+  if(!res.ok) throw new Error(`GitHub API ${res.status}`);
+  const data = await res.json();
+  return data
+    .filter(f => f.type === "file" && extensions.some(e => f.name.toLowerCase().endsWith(e)))
+    .sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
+}
+
+/* ---------- Load audio chapters ---------- */
+async function loadAudio(){
+  const box = document.getElementById("audioList");
+  if(REPO.startsWith("YOUR_GITHUB")){
+    box.innerHTML = `<div class="status">⚙️ Almost there — open <code>index.html</code> and set <code>REPO</code> to your GitHub repo (e.g. <code>nazan/legend</code>), then commit your <code>.opus</code> files into the <code>audio/</code> folder.</div>`;
+    return;
+  }
+  try{
+    const files = await listRepoFiles(AUDIO_DIR, [".opus"]);
+    if(!files.length){
+      box.innerHTML = `<div class="status">No <code>.opus</code> files found in <code>${AUDIO_DIR}/</code> yet. Commit some and refresh.</div>`;
+      return;
+    }
+    box.innerHTML = "";
+    files.forEach((f, i)=>{
+      const el = document.createElement("div");
+      el.className = "track";
+      el.innerHTML = `
+        <div class="label"><span class="num">${i+1}</span>${prettyName(f.name)}</div>
+        <audio controls preload="none" src="${encodeURI(f.path)}"></audio>`;
+      box.appendChild(el);
+    });
+  }catch(err){
+    box.innerHTML = `<div class="status">Couldn't reach the archives (${err.message}). If you just pushed, wait a moment and refresh.</div>`;
+  }
+}
+
+/* ---------- Scatter Nazan stickers ---------- */
+async function loadStickers(){
+  if(REPO.startsWith("YOUR_GITHUB")) return;
+  let files = [];
+  try{
+    files = await listRepoFiles(STICKER_DIR, [".png",".jpg",".jpeg",".webp",".gif"]);
+  }catch(e){ return; }
+  if(!files.length) return;
+
+  const docH = Math.max(document.body.scrollHeight, window.innerHeight);
+  const count = Math.min(files.length * 2, 16); // repeat a little for density
+  for(let i=0;i<count;i++){
+    const f = files[i % files.length];
+    const img = document.createElement("img");
+    img.className = "sticker";
+    img.src = encodeURI(f.path);
+    img.alt = "Nazan";
+    const side = i % 2 === 0;                      // alternate left / right margins
+    const x = side ? Math.random()*8 : 92 - Math.random()*8;
+    const y = 320 + Math.random() * Math.max(docH - 500, 400);
+    const rot = (Math.random()*40 - 20).toFixed(1);
+    img.style.left = x + "%";
+    img.style.top  = y + "px";
+    img.style.width = (80 + Math.random()*70) + "px";
+    img.style.setProperty("--rot", rot + "deg");
+    img.style.animationDelay = (Math.random()*4).toFixed(2) + "s";
+    document.body.appendChild(img);
+  }
+}
+
+/* ---------- Go ---------- */
+loadAudio().then(loadStickers);
+</script>
+</body>
+</html>
