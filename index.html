@@ -71,7 +71,10 @@
   .meta{flex:1 1 auto; min-width:0;}
   .label{font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:8px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .flag{font-size:1.3rem; line-height:1; flex:0 0 auto;}
+  .flag{line-height:1; flex:0 0 auto; display:inline-flex; align-items:center;}
+  .flag-img{width:1.7em; height:1.18em; object-fit:cover; border-radius:3px;
+    box-shadow:0 0 0 1px rgba(255,255,255,.18); display:block;}
+  .flag-emoji{font-size:1.3rem; line-height:1;}
   .num{background:var(--accent); color:#241640; font-size:.72rem; font-weight:700;
     border-radius:20px; padding:2px 9px;}
   .bar{height:8px; border-radius:8px; background:rgba(255,255,255,.12); cursor:pointer; position:relative;}
@@ -313,6 +316,18 @@ function langInfo(filename){
   const key = lang.toLowerCase().split(/\s+/)[0];                   // first word = language
   return { flag: LANG_FLAGS[key] || "🌐", label: lang || base || filename };
 }
+/* Windows omits country-flag emoji glyphs, so turn regional-indicator flags
+   into real SVG flag images (ISO code derived from the emoji). Non-country
+   symbols (🏛️ 🌍 🌐 🏴) keep their emoji, which Windows renders fine. */
+function flagHTML(emoji){
+  const cps = Array.from(emoji).map(c => c.codePointAt(0));
+  const RI = 0x1F1E6;                                   // regional indicator 'A'
+  if(cps.length === 2 && cps.every(c => c >= RI && c <= RI + 25)){
+    const code = String.fromCharCode(0x61 + (cps[0]-RI)) + String.fromCharCode(0x61 + (cps[1]-RI));
+    return `<img class="flag-img" src="https://flagcdn.com/${code}.svg" alt="${code.toUpperCase()}" loading="lazy">`;
+  }
+  return `<span class="flag-emoji">${emoji}</span>`;
+}
 
 /* Read an Opus track's duration straight from its Ogg headers via tiny
    range requests — no full decode, so it scales to many languages. */
@@ -395,7 +410,7 @@ async function loadAudio(){
       el.innerHTML = `
         <button class="play" aria-label="Play">▶</button>
         <div class="meta">
-          <div class="label"><span class="flag">${info.flag}</span>${info.label}</div>
+          <div class="label"><span class="flag">${flagHTML(info.flag)}</span>${info.label}</div>
           <div class="bar"><div class="prog"></div></div>
           <div class="time"><span class="cur">0:00</span> / <span class="dur">--:--</span></div>
         </div>`;
