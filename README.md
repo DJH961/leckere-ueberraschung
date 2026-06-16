@@ -1,4 +1,4 @@
-# The legendary story of Leckere Ueberraschung
+# The legendary story of Leckere Überraschung
 
 A single-page static site:
 - Fullscreen rickroll intro (8 s) that fades away
@@ -37,7 +37,9 @@ A single-page static site:
 3. Wait for DNS, then tick **Enforce HTTPS**.
 
 ## Notes
-- `.opus` plays in Chrome, Edge and Firefox. Safari/iOS support is limited —
-  if you need Safari, also provide `.m4a` (AAC) or `.mp3` versions.
-- Browsers block autoplay **with sound**. The intro tries anyway; if it's muted,
-  the "🔊 Enable sound" button restarts it with audio (a click counts as consent).
+- **Opus plays on every platform**, including Safari/iOS, because the page decodes
+  `.opus` in-browser with the `ogg-opus-decoder` WebAssembly module and plays it via
+  the Web Audio API. You only ever need to commit `.opus` files.
+- The intro uses a one-tap **"Enter"** gate. This is deliberate: browsers (especially
+  iOS/Safari) forbid autoplay **with sound** until the visitor interacts once, so the
+  gate is the only way to guarantee the rickroll actually plays with audio everywhere.

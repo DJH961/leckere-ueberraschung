@@ -3,115 +3,86 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>The legendary story of Leckere Ueberraschung</title>
+<title>The legendary story of Leckere Überraschung</title>
+<!-- WebAssembly Opus decoder → lets .opus play on Safari/iOS and everywhere else -->
+<script src="https://cdn.jsdelivr.net/npm/ogg-opus-decoder@1.7.3/dist/ogg-opus-decoder.min.js"></script>
 <style>
   :root{
-    --bg:#120c1f;
-    --bg2:#1d1233;
-    --card:#241640;
-    --accent:#ffb02e;
-    --accent2:#ff4d6d;
-    --text:#f3ecff;
-    --muted:#b6a8d6;
+    --bg:#120c1f; --bg2:#1d1233; --card:#241640;
+    --accent:#ffb02e; --accent2:#ff4d6d; --text:#f3ecff; --muted:#b6a8d6;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
   body{
-    margin:0;
-    font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    margin:0; font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
     background:radial-gradient(1200px 600px at 50% -10%, var(--bg2), var(--bg));
-    color:var(--text);
-    line-height:1.6;
-    overflow-x:hidden;
+    color:var(--text); line-height:1.6; overflow-x:hidden;
   }
 
   /* ===== Intro overlay (rickroll) ===== */
-  #intro{
-    position:fixed; inset:0; z-index:9999;
-    background:#000;
-    display:flex; align-items:center; justify-content:center;
-    transition:opacity .8s ease;
-  }
-  #intro iframe{
-    width:100%; height:100%; border:0;
-  }
-  #intro .controls{
-    position:absolute; bottom:20px; right:20px; z-index:2;
-    display:flex; gap:10px;
-  }
-  #intro button{
-    background:rgba(0,0,0,.55); color:#fff; border:1px solid rgba(255,255,255,.5);
-    padding:10px 16px; border-radius:30px; font-size:14px; cursor:pointer;
-    backdrop-filter:blur(4px);
-  }
-  #intro button:hover{background:rgba(255,255,255,.2);}
-  #intro .hint{
-    position:absolute; top:20px; left:0; right:0; text-align:center;
-    color:rgba(255,255,255,.85); font-size:14px; z-index:2; pointer-events:none;
-  }
-  body.intro-done{overflow-x:hidden;}
+  #intro{position:fixed; inset:0; z-index:9999; background:#000;
+    display:flex; align-items:center; justify-content:center; transition:opacity .8s ease;}
+  #intro iframe{width:100%; height:100%; border:0;}
   #intro.hidden{opacity:0; pointer-events:none;}
+  #gate{position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px; text-align:center;
+    background:radial-gradient(800px 400px at 50% 40%, #2a1747, #000); cursor:pointer;}
+  #gate h2{margin:0; font-size:clamp(1.3rem,5vw,2.2rem); color:var(--text);}
+  #gate p{margin:0; color:var(--muted);}
+  #enterBtn{
+    margin-top:6px; background:linear-gradient(90deg,var(--accent),var(--accent2));
+    color:#1a1030; border:0; padding:16px 34px; border-radius:40px;
+    font-size:1.15rem; font-weight:800; cursor:pointer;
+    box-shadow:0 10px 30px rgba(255,77,109,.45);}
+  #enterBtn:active{transform:scale(.97);}
+  #skipBtn{position:absolute; bottom:20px; right:20px; z-index:4; display:none;
+    background:rgba(0,0,0,.55); color:#fff; border:1px solid rgba(255,255,255,.5);
+    padding:10px 16px; border-radius:30px; font-size:14px; cursor:pointer; backdrop-filter:blur(4px);}
 
   /* ===== Layout ===== */
   .wrap{max-width:860px; margin:0 auto; padding:48px 18px 80px; position:relative; z-index:2;}
   header.hero{text-align:center; margin-bottom:48px;}
-  .hero h1{
-    font-size:clamp(1.8rem,6vw,3.2rem);
-    line-height:1.15; margin:0;
+  .hero h1{font-size:clamp(1.8rem,6vw,3.2rem); line-height:1.15; margin:0;
     background:linear-gradient(90deg,var(--accent),var(--accent2));
     -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 2px 30px rgba(255,77,109,.25);
-  }
+    text-shadow:0 2px 30px rgba(255,77,109,.25);}
   .hero p{color:var(--muted); margin-top:14px; font-size:1.05rem;}
+  h2.section{font-size:1.4rem; margin:40px 0 18px; display:flex; align-items:center; gap:10px;}
+  h2.section::before{content:"🎧";}
 
-  h2.section{
-    font-size:1.4rem; margin:40px 0 18px;
-    display:flex; align-items:center; gap:10px;
-  }
-  h2.section::before{content:"🎧"; }
-
-  /* ===== Audio list ===== */
+  /* ===== Custom audio tracks ===== */
   #audioList{display:grid; gap:12px;}
-  .track{
+  .track{display:flex; align-items:center; gap:14px;
     background:linear-gradient(180deg,var(--card),rgba(36,22,64,.6));
-    border:1px solid rgba(255,255,255,.07);
-    border-radius:14px; padding:14px 16px;
-    box-shadow:0 6px 18px rgba(0,0,0,.25);
-    transition:transform .15s ease, border-color .15s ease;
-  }
+    border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:14px 16px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25); transition:transform .15s ease, border-color .15s ease;}
   .track:hover{transform:translateY(-2px); border-color:var(--accent);}
-  .track .label{
-    font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:8px;
-  }
-  .track .num{
-    background:var(--accent); color:#241640; font-size:.75rem; font-weight:700;
-    border-radius:20px; padding:2px 9px;
-  }
-  audio{width:100%; height:40px;}
+  .play{flex:0 0 auto; width:46px; height:46px; border-radius:50%; border:0; cursor:pointer;
+    background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#1a1030;
+    font-size:18px; display:flex; align-items:center; justify-content:center;}
+  .play:active{transform:scale(.94);}
+  .play[disabled]{opacity:.6; cursor:default;}
+  .meta{flex:1 1 auto; min-width:0;}
+  .label{font-weight:600; margin-bottom:8px; display:flex; align-items:center; gap:8px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .num{background:var(--accent); color:#241640; font-size:.72rem; font-weight:700;
+    border-radius:20px; padding:2px 9px;}
+  .bar{height:8px; border-radius:8px; background:rgba(255,255,255,.12); cursor:pointer; position:relative;}
+  .prog{height:100%; width:0; border-radius:8px; background:linear-gradient(90deg,var(--accent),var(--accent2));}
+  .time{font-size:.78rem; color:var(--muted); margin-top:6px;}
   .status{color:var(--muted); font-size:.95rem; padding:10px 2px;}
   .status code{background:rgba(255,255,255,.08); padding:2px 6px; border-radius:5px;}
 
   /* ===== Stickers ===== */
-  .sticker{
-    position:absolute; z-index:1; pointer-events:none;
-    width:110px; opacity:.92;
-    filter:drop-shadow(0 6px 12px rgba(0,0,0,.45));
-    animation:bob 6s ease-in-out infinite;
-  }
-  @keyframes bob{
-    0%,100%{transform:translateY(0) rotate(var(--rot,0deg));}
-    50%{transform:translateY(-12px) rotate(var(--rot,0deg));}
-  }
+  .sticker{position:absolute; z-index:1; pointer-events:none; width:110px; opacity:.92;
+    filter:drop-shadow(0 6px 12px rgba(0,0,0,.45)); animation:bob 6s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(var(--rot,0deg));}
+    50%{transform:translateY(-12px) rotate(var(--rot,0deg));}}
 
   /* ===== Footer ===== */
-  footer{
-    text-align:center; margin-top:80px; padding-top:30px;
-    border-top:1px solid rgba(255,255,255,.08);
-  }
-  footer .lakemun img{
-    width:140px; height:auto; transition:transform .2s ease, filter .2s ease;
-    filter:drop-shadow(0 6px 16px rgba(0,0,0,.4));
-  }
+  footer{text-align:center; margin-top:80px; padding-top:30px; border-top:1px solid rgba(255,255,255,.08);}
+  footer .lakemun img{width:140px; height:auto; transition:transform .2s ease;
+    filter:drop-shadow(0 6px 16px rgba(0,0,0,.4));}
   footer .lakemun img:hover{transform:scale(1.06);}
   footer .credit{color:var(--muted); font-size:.85rem; margin-top:14px;}
   a{color:var(--accent);}
@@ -119,24 +90,22 @@
 </head>
 <body>
 
-  <!-- ===== INTRO RICKROLL ===== -->
+  <!-- ===== INTRO RICKROLL (click-to-enter guarantees sound on every device) ===== -->
   <div id="intro">
-    <div class="hint">🔊 Turn your sound up…</div>
-    <iframe id="introVideo"
-      src="https://www.youtube.com/embed/xvFZjo5PgG0?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0&enablejsapi=1"
-      title="intro"
-      allow="autoplay; encrypted-media; fullscreen"
-      allowfullscreen></iframe>
-    <div class="controls">
-      <button id="soundBtn">🔊 Enable sound</button>
-      <button id="skipBtn">Skip ⏭</button>
+    <iframe id="introVideo" title="intro"
+      allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>
+    <button id="skipBtn">Skip ⏭</button>
+    <div id="gate">
+      <h2>The legendary story of<br>Leckere Überraschung</h2>
+      <p>Sound on. 🔊 Tap to begin.</p>
+      <button id="enterBtn">▶ Enter the legend</button>
     </div>
   </div>
 
   <!-- ===== PAGE ===== -->
   <div class="wrap">
     <header class="hero">
-      <h1>The legendary story of<br>Leckere Ueberraschung</h1>
+      <h1>The legendary story of<br>Leckere Überraschung</h1>
       <p>A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
     </header>
 
@@ -155,74 +124,184 @@
 
 <script>
 /* =================================================================
-   CONFIG — set these two to YOUR GitHub repo, then commit & push.
-   Example: if your repo is  https://github.com/nazan/legend
-            REPO = "nazan/legend"
+   CONFIG — set REPO to your GitHub repo (filled in for you on deploy).
    ================================================================= */
-const REPO       = "YOUR_GITHUB_USERNAME/YOUR_REPO_NAME";
-const BRANCH     = "main";
-const AUDIO_DIR  = "audio";      // folder in the repo holding .opus files
-const STICKER_DIR= "stickers";   // folder in the repo holding Nazan stickers
-const INTRO_MS   = 8000;         // how long the rickroll plays (8 s)
+const REPO        = "DJH961/leckere-ueberraschung";
+const BRANCH      = "main";
+const AUDIO_DIR   = "audio";      // folder of .opus files
+const STICKER_DIR = "stickers";   // folder of Nazan stickers
+const INTRO_MS    = 8000;         // rickroll length (8 s)
+const RICK_ID     = "xvFZjo5PgG0";
 
-/* ---------- Intro overlay logic ---------- */
-const intro   = document.getElementById("intro");
-const introVid= document.getElementById("introVideo");
+/* ---------------- Intro gate (reliable, cross-platform sound) ---------------- */
+const intro = document.getElementById("intro");
+const introVid = document.getElementById("introVideo");
+const gate = document.getElementById("gate");
+const skipBtn = document.getElementById("skipBtn");
+let introTimer = null;
+
 function endIntro(){
   if(intro.classList.contains("hidden")) return;
+  clearTimeout(introTimer);
+  introVid.src = "";                       // stop the audio immediately
   intro.classList.add("hidden");
-  document.body.classList.add("intro-done");
   setTimeout(()=>intro.remove(), 900);
   window.scrollTo({top:0, behavior:"smooth"});
 }
-const introTimer = setTimeout(endIntro, INTRO_MS);
-document.getElementById("skipBtn").addEventListener("click", ()=>{ clearTimeout(introTimer); endIntro(); });
-// Browsers often block autoplay WITH sound. This button restarts the clip
-// unmuted after a user click (a real gesture), which is always allowed.
-document.getElementById("soundBtn").addEventListener("click", ()=>{
-  introVid.src = "https://www.youtube.com/embed/xvFZjo5PgG0?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0";
-  clearTimeout(introTimer);
-  setTimeout(endIntro, INTRO_MS);
-});
-
-/* ---------- Helpers ---------- */
-function prettyName(filename){
-  return filename
-    .replace(/\.[^.]+$/, "")          // drop extension
-    .replace(/^[\d]+[\s._-]*/, "")    // drop leading numbers
-    .replace(/[._-]+/g, " ")          // separators -> spaces
-    .trim() || filename;
+function beginIntro(){
+  try{ getCtx().resume(); }catch(e){}      // unlock Web Audio for the chapters too
+  gate.style.display = "none";
+  skipBtn.style.display = "block";
+  introVid.src = `https://www.youtube.com/embed/${RICK_ID}?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0`;
+  introTimer = setTimeout(endIntro, INTRO_MS);
 }
-async function listRepoFiles(dir, extensions){
-  const url = `https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`;
-  const res = await fetch(url, { headers:{ "Accept":"application/vnd.github+json" }});
-  if(!res.ok) throw new Error(`GitHub API ${res.status}`);
-  const data = await res.json();
-  return data
-    .filter(f => f.type === "file" && extensions.some(e => f.name.toLowerCase().endsWith(e)))
+document.getElementById("enterBtn").addEventListener("click", beginIntro);
+skipBtn.addEventListener("click", endIntro);
+
+/* ---------------- Web Audio + Opus decoding ---------------- */
+let _ctx = null;
+function getCtx(){ _ctx = _ctx || new (window.AudioContext || window.webkitAudioContext)(); return _ctx; }
+function getDecoder(){
+  const ns = window["ogg-opus-decoder"];
+  if(ns && ns.OggOpusDecoder) return ns.OggOpusDecoder;
+  if(window.OggOpusDecoder) return window.OggOpusDecoder;
+  return null;
+}
+const buffers = new Map();           // url -> AudioBuffer
+let cur = null;                      // {el, src, startedAt, offset, dur, playing}
+
+async function decodeToBuffer(url){
+  if(buffers.has(url)) return buffers.get(url);
+  const Dec = getDecoder();
+  if(!Dec) throw new Error("decoder-unavailable");
+  const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const dec = new Dec();
+  await dec.ready;
+  const { channelData, samplesDecoded, sampleRate } = await dec.decode(bytes);
+  dec.free();
+  const ctx = getCtx();
+  const buf = ctx.createBuffer(Math.max(channelData.length,1), samplesDecoded, sampleRate || 48000);
+  for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c], c);
+  buffers.set(url, buf);
+  return buf;
+}
+
+function fmt(t){ if(!isFinite(t)) return "--:--"; t=Math.max(0,t|0); return (t/60|0)+":"+String(t%60).padStart(2,"0"); }
+function setIcon(el, playing){ el.querySelector(".play").textContent = playing ? "⏸" : "▶"; }
+function elapsed(){ return cur ? cur.offset + (getCtx().currentTime - cur.startedAt) : 0; }
+
+function stopSource(){
+  if(cur && cur.src){ try{ cur.src.onended=null; cur.src.stop(); }catch(e){} cur.src=null; }
+  if(cur && cur.raf){ cancelAnimationFrame(cur.raf); cur.raf=null; }
+}
+function paint(){
+  if(!cur || !cur.playing) return;
+  const e = Math.min(elapsed(), cur.dur);
+  const t = cur.el;
+  t.querySelector(".prog").style.width = (e/cur.dur*100)+"%";
+  t.querySelector(".cur").textContent = fmt(e);
+  cur.raf = requestAnimationFrame(paint);
+}
+function resetUI(el){
+  if(!el) return;
+  setIcon(el,false);
+  el.querySelector(".prog").style.width = "0%";
+  el.querySelector(".cur").textContent = "0:00";
+}
+function startAt(el, buf, offset){
+  const ctx = getCtx();
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0, offset);
+  cur = { el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
+  el.querySelector(".dur").textContent = fmt(buf.duration);
+  setIcon(el, true);
+  src.onended = ()=>{ if(cur && cur.src===src && elapsed() >= cur.dur - 0.08){ stopSource(); resetUI(el); cur=null; } };
+  paint();
+}
+function pausePlayback(){
+  if(!cur || !cur.playing) return;
+  const e = elapsed();
+  stopSource();
+  cur.offset = Math.min(e, cur.dur);
+  cur.playing = false;
+  setIcon(cur.el, false);
+}
+
+async function onPlay(el){
+  const url = el.dataset.src;
+  try{ await getCtx().resume(); }catch(e){}
+  if(cur && cur.el === el){
+    if(cur.playing){ pausePlayback(); }
+    else{ const buf = await decodeToBuffer(url); startAt(el, buf, cur.offset || 0); }
+    return;
+  }
+  if(cur){ stopSource(); resetUI(cur.el); cur=null; }   // switch tracks
+  const btn = el.querySelector(".play");
+  btn.disabled = true; btn.textContent = "…";
+  try{
+    const buf = await decodeToBuffer(url);
+    btn.disabled = false;
+    startAt(el, buf, 0);
+  }catch(err){
+    btn.disabled = false; setIcon(el,false);
+    el.querySelector(".time").textContent = "Could not decode this file.";
+  }
+}
+function onSeek(el, ratio){
+  const url = el.dataset.src;
+  const buf = buffers.get(url);
+  if(!buf) return;
+  const offset = Math.max(0, Math.min(1, ratio)) * buf.duration;
+  if(cur && cur.el===el && cur.playing){ stopSource(); startAt(el, buf, offset); }
+  else{
+    if(!cur || cur.el!==el) cur = { el, src:null, startedAt:0, offset, dur:buf.duration, playing:false, raf:null };
+    else cur.offset = offset;
+    el.querySelector(".prog").style.width = (offset/buf.duration*100)+"%";
+    el.querySelector(".cur").textContent = fmt(offset);
+  }
+}
+
+/* ---------------- GitHub listing ---------------- */
+function prettyName(fn){
+  return fn.replace(/\.[^.]+$/,"").replace(/^[\d]+[\s._-]*/,"").replace(/[._-]+/g," ").trim() || fn;
+}
+async function listRepoFiles(dir, exts){
+  const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`,
+    { headers:{ "Accept":"application/vnd.github+json" }});
+  if(!res.ok) throw new Error("GitHub API "+res.status);
+  return (await res.json())
+    .filter(f => f.type==="file" && exts.some(e=>f.name.toLowerCase().endsWith(e)))
     .sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
 }
 
-/* ---------- Load audio chapters ---------- */
 async function loadAudio(){
   const box = document.getElementById("audioList");
   if(REPO.startsWith("YOUR_GITHUB")){
-    box.innerHTML = `<div class="status">⚙️ Almost there — open <code>index.html</code> and set <code>REPO</code> to your GitHub repo (e.g. <code>nazan/legend</code>), then commit your <code>.opus</code> files into the <code>audio/</code> folder.</div>`;
+    box.innerHTML = `<div class="status">⚙️ Set <code>REPO</code> in <code>index.html</code> to your GitHub repo, then commit <code>.opus</code> files into <code>audio/</code>.</div>`;
     return;
   }
   try{
     const files = await listRepoFiles(AUDIO_DIR, [".opus"]);
-    if(!files.length){
-      box.innerHTML = `<div class="status">No <code>.opus</code> files found in <code>${AUDIO_DIR}/</code> yet. Commit some and refresh.</div>`;
-      return;
-    }
+    if(!files.length){ box.innerHTML = `<div class="status">No <code>.opus</code> files in <code>${AUDIO_DIR}/</code> yet.</div>`; return; }
     box.innerHTML = "";
-    files.forEach((f, i)=>{
+    files.forEach((f,i)=>{
       const el = document.createElement("div");
       el.className = "track";
+      el.dataset.src = encodeURI(f.path);
       el.innerHTML = `
-        <div class="label"><span class="num">${i+1}</span>${prettyName(f.name)}</div>
-        <audio controls preload="none" src="${encodeURI(f.path)}"></audio>`;
+        <button class="play" aria-label="Play">▶</button>
+        <div class="meta">
+          <div class="label"><span class="num">${i+1}</span>${prettyName(f.name)}</div>
+          <div class="bar"><div class="prog"></div></div>
+          <div class="time"><span class="cur">0:00</span> / <span class="dur">--:--</span></div>
+        </div>`;
+      el.querySelector(".play").addEventListener("click", ()=>onPlay(el));
+      el.querySelector(".bar").addEventListener("click", (ev)=>{
+        const r = ev.currentTarget.getBoundingClientRect();
+        onSeek(el, (ev.clientX - r.left)/r.width);
+      });
       box.appendChild(el);
     });
   }catch(err){
@@ -230,37 +309,27 @@ async function loadAudio(){
   }
 }
 
-/* ---------- Scatter Nazan stickers ---------- */
 async function loadStickers(){
   if(REPO.startsWith("YOUR_GITHUB")) return;
   let files = [];
-  try{
-    files = await listRepoFiles(STICKER_DIR, [".png",".jpg",".jpeg",".webp",".gif"]);
-  }catch(e){ return; }
+  try{ files = await listRepoFiles(STICKER_DIR, [".png",".jpg",".jpeg",".webp",".gif"]); }catch(e){ return; }
   if(!files.length) return;
-
   const docH = Math.max(document.body.scrollHeight, window.innerHeight);
-  const count = Math.min(files.length * 2, 16); // repeat a little for density
+  const count = Math.min(files.length*2, 16);
   for(let i=0;i<count;i++){
     const f = files[i % files.length];
     const img = document.createElement("img");
-    img.className = "sticker";
-    img.src = encodeURI(f.path);
-    img.alt = "Nazan";
-    const side = i % 2 === 0;                      // alternate left / right margins
-    const x = side ? Math.random()*8 : 92 - Math.random()*8;
-    const y = 320 + Math.random() * Math.max(docH - 500, 400);
-    const rot = (Math.random()*40 - 20).toFixed(1);
-    img.style.left = x + "%";
-    img.style.top  = y + "px";
+    img.className = "sticker"; img.src = encodeURI(f.path); img.alt = "Nazan";
+    const left = (i%2===0) ? Math.random()*8 : 92 - Math.random()*8;
+    img.style.left = left + "%";
+    img.style.top  = (320 + Math.random()*Math.max(docH-500,400)) + "px";
     img.style.width = (80 + Math.random()*70) + "px";
-    img.style.setProperty("--rot", rot + "deg");
-    img.style.animationDelay = (Math.random()*4).toFixed(2) + "s";
+    img.style.setProperty("--rot", (Math.random()*40-20).toFixed(1)+"deg");
+    img.style.animationDelay = (Math.random()*4).toFixed(2)+"s";
     document.body.appendChild(img);
   }
 }
 
-/* ---------- Go ---------- */
 loadAudio().then(loadStickers);
 </script>
 </body>
