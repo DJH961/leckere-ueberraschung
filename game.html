@@ -379,6 +379,7 @@
     const promptEl  = $("#gamePrompt");
     const startPane = $("#gameStart");
     const overPane  = $("#gameOver");
+    let promptClass = "", promptText = "";
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
@@ -543,21 +544,26 @@
 
     function updatePrompt(){
       if(!promptEl) return;
+      let nextClass = "", nextText = "";
       if(activeEffect){
-        // While an effect runs, just show what's active and how long is left.
+        // While an effect runs, only change the live region when whole seconds change.
         const def = POWERUPS[activeEffect.type];
-        promptEl.className = "show active";
-        promptEl.textContent = def.icon + " " + def.name + " · " + activeEffect.time.toFixed(1) + "s";
+        const seconds = Math.max(0, Math.ceil(activeEffect.time));
+        nextClass = "show active";
+        nextText = def.icon + " " + def.name + " · " + seconds + "s";
       } else if(held){
         // Loaded and ready — make the controls obvious and draw the eye with a pulse.
         const def = POWERUPS[held];
-        promptEl.className = "show ready";
-        promptEl.textContent = "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
+        nextClass = "show ready";
+        nextText = "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
       } else {
         // Nothing to fire: hide the hint entirely so it can't mislead.
-        promptEl.className = "";
-        promptEl.textContent = "";
+        nextClass = "";
+        nextText = "";
       }
+      if(nextClass === promptClass && nextText === promptText) return;
+      promptEl.className = promptClass = nextClass;
+      promptEl.textContent = promptText = nextText;
     }
 
     function updatePlayer(dt){

@@ -196,10 +196,11 @@
     50%{box-shadow:0 12px 30px rgba(61,80,118,.6); transform:scale(1.06);}}
   /* Until the secret is opened (5 clicks), the star also blinks so it's easier to
      spot. The blink is dropped the moment the game opens. */
-  #eggBtn.blink{animation:eggBlink 1s steps(1, end) infinite;}
-  @keyframes eggBlink{0%,49%{opacity:1; transform:scale(1.06);} 50%,100%{opacity:.2; transform:scale(1);}}
+  #eggBtn.blink{animation:eggPulse 1.6s ease-in-out infinite, eggBlink 1s steps(1, end) infinite;}
+  @keyframes eggBlink{0%,49%{opacity:1;} 50%,100%{opacity:.2;}}
   /* Stronger nudge after it has gone unnoticed for a while — still no spoilers. */
   #eggBtn.nudge{animation:eggNudge 1s ease-in-out infinite;}
+  #eggBtn.blink.nudge{animation:eggNudge 1s ease-in-out infinite, eggBlink 1s steps(1, end) infinite;}
   @keyframes eggNudge{
     0%,100%{box-shadow:0 8px 22px rgba(61,80,118,.5); transform:scale(1) rotate(0);}
     25%{transform:scale(1.12) rotate(-7deg);}
