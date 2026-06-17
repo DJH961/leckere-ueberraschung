@@ -314,6 +314,8 @@ function startMedia(el, offset){
           dur:(isFinite(a.duration) && a.duration > 0 ? a.duration : 0), playing:true, raf:null };
   setIcon(el, true);
   a.onended = ()=>{ if(cur && cur.media===a){ stopSource(); resetUI(el); cur=null; } };
+  // Only re-seek when meaningfully off target (avoid tiny jitter on resume);
+  // a 0.25s tolerance is below human-perceptible audio latency.
   if(offset && Math.abs((a.currentTime || 0) - offset) > 0.25){ try{ a.currentTime = offset; }catch(e){} }
   // play() is called synchronously within the user gesture, so autoplay rules
   // allow it; the returned promise can reject if interrupted, which we ignore.
