@@ -1171,6 +1171,36 @@ loadFavicon();
   let   stickersFrozen = false;        // hard stop: once the secret is found, no more bouncing
   let   lastBoostAt   = 0;             // timestamp of the most recent boosted hit
   const BOOST_COOLDOWN = 700;          // ms the boost must rest before it can fire again
+  // The boost keeps the Nazans lively while you are actually playing with them, but it
+  // must fade once you leave them alone or the heap can never settle. We only boost
+  // for a short window after the last interaction, so an untouched pile calms down.
+  let   lastInteractAt = 0;            // timestamp of the last drag/fling
+  const BOOST_ACTIVE_MS = 2500;        // boost only fires within this long of an interaction
+  const IDLE_FRICTION  = 0.82;         // once untouched, every sticker bleeds energy each frame
+  const IDLE_MAX_SPEED = 8;            // ...and its speed is capped so a packed heap can't explode
+  const POS_RELAX      = 0.5;          // fraction of an overlap eased apart per frame (stable stacks)
+  // The boost must only fire on a genuinely lively contact. A pile that is merely
+  // settling under gravity nudges its neighbours at roughly one gravity-step per
+  // frame; if those gentle taps could trigger the boost, the heap would re-energise
+  // itself forever and never come to rest (the endless micro-jitter on mobile).
+  const BOOST_MIN_APPROACH = 1.6;      // min approach speed before a hit earns the boost
+  // Settling / sleep thresholds: once a sticker is supported (on the floor or sitting
+  // on a calm neighbour) and barely moving for this many frames, it parks for good so
+  // a packed heap can finally fall completely still instead of twitching endlessly.
+  const REST_SPEED   = 1.5;            // a neighbour this slow counts as solid support
+  const REST_VX      = 0.5;            // |vx| below this is "barely moving" sideways
+  const REST_VY      = 1.2;            // |vy| below this is "barely moving" vertically
+  const SLEEP_FRAMES = 36;             // ~0.6s of calm before a sticker sleeps
+  // A near-resting heap must actively shed its leftover energy or gravity keeps
+  // pumping it back in. Unboosted contacts are made slightly inelastic, and a
+  // supported, slow-moving sticker has its velocity damped each frame (with a small
+  // dead-zone that snaps tiny speeds to zero) so the jitter decays to a full stop.
+  const COLLIDE_DAMP = 0.7;            // energy kept by an ordinary (unboosted) contact
+  const SETTLE_BAND  = 3;              // only damp stickers already moving this slowly
+  const SETTLE_DAMP  = 0.8;            // vertical velocity retained per frame while settling
+  const FLOOR_FRICTION = 0.5;          // strong sideways friction so a settled sticker stops sliding
+  const VEL_DEADZONE = 0.3;            // speeds below this are snapped to a dead stop
+  let   activeDrags  = 0;              // how many stickers are being held right now
 
   // Drain all momentum from the loose stickers, switch the boost off AND halt every
   // running animation frame so they freeze in place. Gravity would otherwise keep
@@ -1211,15 +1241,22 @@ loadFavicon();
     // A sticker held under the pointer acts as an immovable wall.
     if(a.dragging && !b.dragging){ b.px += nx*overlap; b.py += ny*overlap; }
     else if(b.dragging && !a.dragging){ a.px -= nx*overlap; a.py -= ny*overlap; }
-    else { a.px -= nx*overlap/2; a.py -= ny*overlap/2; b.px += nx*overlap/2; b.py += ny*overlap/2; }
+    else {
+      // Resolve only a fraction of the overlap per frame. In a packed heap a sticker
+      // overlaps several neighbours at once and each pair is also resolved from the
+      // other sticker's own tick; correcting the full overlap every time overshoots
+      // and the pile "explodes". Easing it apart gradually keeps dense stacks stable.
+      const corr = overlap * POS_RELAX / 2;
+      a.px -= nx*corr; a.py -= ny*corr; b.px += nx*corr; b.py += ny*corr;
+    }
     // Velocity exchange along the contact normal (equal mass, near-elastic).
     const rvn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
     if(rvn < 0){
       // The boost only kicks in when it isn't on cooldown and hasn't been switched
       // off — otherwise the bounce stays purely elastic so friction can take over.
       const now = performance.now();
-      let factor = 1;
-      if(boostEnabled && now - lastBoostAt > BOOST_COOLDOWN){ factor = COLLIDE_BOOST; lastBoostAt = now; }
+      let factor = COLLIDE_DAMP;   // ordinary contacts lose a little energy so heaps can settle
+      if(boostEnabled && now - lastInteractAt < BOOST_ACTIVE_MS && -rvn > BOOST_MIN_APPROACH && now - lastBoostAt > BOOST_COOLDOWN){ factor = COLLIDE_BOOST; lastBoostAt = now; }
       let j = -rvn * factor;     // >1 → the tempo boost that keeps them lively
       if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
       else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
@@ -1241,7 +1278,7 @@ loadFavicon();
   }
 
   function makeDraggable(img){
-    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, raf:null };
+    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, raf:null, still:0 };
     img._phys = st;
     let lastT = 0;
     function lift(clientX, clientY){
@@ -1258,7 +1295,13 @@ loadFavicon();
       const p = e.touches ? e.touches[0] : e;
       if(!st.fixed) lift(p.clientX, p.clientY);
       if(st.raf){ cancelAnimationFrame(st.raf); st.raf=null; }
-      st.dragging = true; st.vx = st.vy = 0; lastT = performance.now();
+      st.dragging = true; st.vx = st.vy = 0; st.still = 0; lastT = performance.now();
+      lastInteractAt = lastT;            // keep the tempo boost alive while you play
+      // Holding a sticker wakes the whole heap (and keeps it awake — see the sleep
+      // check in tick) so any sticker that loses its support when this one is pulled
+      // out can fall properly instead of hanging in mid-air.
+      activeDrags++;
+      for(const o of flungStickers){ if(o !== st){ o.still = 0; startTick(o); } }
       img.dragOX = p.clientX - st.px; img.dragOY = p.clientY - st.py;
       img.style.cursor = "grabbing";
       window.addEventListener("pointermove", onMove, {passive:false});
@@ -1268,6 +1311,7 @@ loadFavicon();
       if(!st.dragging) return;
       e.preventDefault();
       const now = performance.now(), dt = Math.max(1, now - lastT);
+      lastInteractAt = now;             // still interacting → keep the boost lively
       const nx = e.clientX - img.dragOX, ny = e.clientY - img.dragOY;
       st.vx = (nx - st.px)/dt*16; st.vy = (ny - st.py)/dt*16;
       st.px = nx; st.py = ny; lastT = now;
@@ -1275,6 +1319,7 @@ loadFavicon();
     }
     function onUp(){
       st.dragging = false;
+      activeDrags = Math.max(0, activeDrags - 1);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       img.style.cursor = "grab";
@@ -1303,22 +1348,66 @@ loadFavicon();
       if(st.py < 0){ st.py = 0; st.vy = -st.vy*bounce; impact = Math.max(impact, Math.abs(st.vy)); bounced = true; }
       // Bounce off the other already-flung stickers (never stack on them), and
       // ride the tempo boost from each contact.
-      let touching = false;
+      let touching = false, supportedBelow = false;
       for(const other of flungStickers){
         if(other === st) continue;
         const hit = collide(st, other);
+        const inContact = hit > 0 || overlaps(st, other);
         if(hit > 0){
-          touching = true;
           if(hit > 1.6){ sfx.boing(hit + 2, img.src); sfx.boing(hit + 2, other.img.src); }
           other.img.style.left = other.px+"px"; other.img.style.top = other.py+"px";
           if(!other.dragging) startTick(other);   // wake a resting sticker that got struck
-        } else if(overlaps(st, other)){
+        }
+        if(inContact){
           touching = true;
+          // Is this neighbour holding us up? It counts as support when its body sits
+          // below ours and it is itself barely moving (part of a settled heap).
+          const oh = other.img.offsetHeight;
+          const below = (other.py + oh/2) > (st.py + h/2);
+          if(below && Math.hypot(other.vx, other.vy) < REST_SPEED) supportedBelow = true;
         }
       }
       if(bounced && impact > 2.5) sfx.boing(impact, img.src);
+      // Re-clamp inside the viewport AFTER collisions: a sticker at the bottom of a
+      // heap can be shoved through the floor (or a wall) by the pile pressure above
+      // it, since the overlap resolution above runs after the initial wall bounce.
+      // Pin it back to the edge and kill the velocity that points into the wall so it
+      // can't keep grinding through it.
+      if(st.px < 0){ st.px = 0; if(st.vx < 0) st.vx = 0; }
+      if(st.px + w > W()){ st.px = W()-w; if(st.vx > 0) st.vx = 0; }
+      if(st.py < 0){ st.py = 0; if(st.vy < 0) st.vy = 0; }
+      if(st.py + h > H()){ st.py = H()-h; if(st.vy > 0) st.vy = 0; }
       img.style.left = st.px+"px"; img.style.top = st.py+"px";
-      const isResting = (st.py + h >= H()-1) && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
+      // Settling: a sticker that is supported (on the floor or resting on a calm
+      // neighbour) and barely moving for a sustained stretch falls asleep — even while
+      // touching others. Without this, a packed heap keeps re-nudging itself forever
+      // (the endless micro-jitter most visible on small/mobile screens). The heap is
+      // never allowed to sleep while a sticker is being held, so pulling one out lets
+      // the others above it drop instead of hanging in the air.
+      const onFloor = (st.py + h >= H()-1);
+      const supported = onFloor || supportedBelow;
+      // Bleed the leftover energy out of the heap so it can actually come to rest.
+      // While you are playing the Nazans stay lively; once you leave them alone (no
+      // interaction for a moment) a gentle friction drains every sticker, and a
+      // supported, slow one snaps tiny speeds to a dead stop — so the pile always
+      // settles instead of trembling under gravity forever.
+      if(performance.now() - lastInteractAt > BOOST_ACTIVE_MS){
+        st.vx *= IDLE_FRICTION; st.vy *= IDLE_FRICTION;
+        const sp = Math.hypot(st.vx, st.vy);            // safety cap: never let an idle heap run away
+        if(sp > IDLE_MAX_SPEED){ const k = IDLE_MAX_SPEED / sp; st.vx *= k; st.vy *= k; }
+      }
+      if(supported && Math.hypot(st.vx, st.vy) < SETTLE_BAND){
+        st.vx *= FLOOR_FRICTION; st.vy *= SETTLE_DAMP;   // ground friction stops sideways sliding
+        if(Math.abs(st.vx) < VEL_DEADZONE) st.vx = 0;
+        if(Math.abs(st.vy) < VEL_DEADZONE) st.vy = 0;
+      }
+      const slow = Math.abs(st.vy) < REST_VY && Math.abs(st.vx) < REST_VX;
+      st.still = (supported && slow) ? st.still + 1 : 0;
+      if(!activeDrags && st.still >= SLEEP_FRAMES){
+        st.vx = 0; st.vy = 0;             // park it for good until something disturbs it
+        return;                           // no new frame → the heap finally rests
+      }
+      const isResting = onFloor && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
       // Keep animating while airborne or still nudging apart from another sticker.
       if(!isResting || touching){ st.raf = requestAnimationFrame(tick); }
     })();
