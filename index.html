@@ -179,13 +179,13 @@
      A single click opens the secret. If it goes unnoticed for a while it gets a
      stronger "look at me" nudge, still without revealing what it does. */
   #eggBtn{position:fixed; left:16px; bottom:16px; z-index:9998; display:none;
-    width:54px; height:54px; padding:0; cursor:pointer;
+    width:24px; height:24px; padding:0; cursor:pointer;
     align-items:center; justify-content:center;
     border:1px solid rgba(255,255,255,.6); border-radius:50%; color:#fff;
-    font-size:24px; line-height:1;
+    font-size:12px; line-height:1;
+    transition:transform .12s ease, filter .2s ease, width .2s ease, height .2s ease, font-size .2s ease;
     background:radial-gradient(circle at 35% 30%, #6f93c0, #3d5076);
     box-shadow:0 8px 22px rgba(61,80,118,.45);
-    transition:transform .12s ease, filter .2s ease;
     animation:eggPulse 1.6s ease-in-out infinite;}
   #eggBtn.show{display:inline-flex;}
   #eggBtn:hover{filter:brightness(1.1);}
@@ -1210,6 +1210,21 @@ loadFavicon();
   const flungStickers = [];
   const COLLIDE_BOOST = 1.18;          // each sticker-on-sticker hit adds a little
   const MAX_SPEED     = 46;            // ...energy, capped so it stays funny not insane
+  // The boost is what keeps the loose Nazans lively, but with many of them crammed
+  // into a small screen the collisions never stop re-energising each other and the
+  // page can't settle. Two valves tame this: a global cooldown so the boost can only
+  // fire occasionally (letting friction win between bursts and the page calm down),
+  // and a master switch that turns the boost off entirely once the secret is found.
+  let   boostEnabled  = true;          // flipped off when the minigame is discovered
+  let   lastBoostAt   = 0;             // timestamp of the most recent boosted hit
+  const BOOST_COOLDOWN = 700;          // ms the boost must rest before it can fire again
+
+  // Drain all momentum from the loose stickers and switch the boost off so they
+  // glide to a rest. Called the moment the secret minigame is discovered.
+  function calmStickers(){
+    boostEnabled = false;
+    for(const st of flungStickers){ st.vx = 0; st.vy = 0; }
+  }
 
   function clampSpeed(st){
     const sp = Math.hypot(st.vx, st.vy);
@@ -1240,7 +1255,12 @@ loadFavicon();
     // Velocity exchange along the contact normal (equal mass, near-elastic).
     const rvn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
     if(rvn < 0){
-      let j = -rvn * COLLIDE_BOOST;     // >1 → the tempo boost that keeps them lively
+      // The boost only kicks in when it isn't on cooldown and hasn't been switched
+      // off — otherwise the bounce stays purely elastic so friction can take over.
+      const now = performance.now();
+      let factor = 1;
+      if(boostEnabled && now - lastBoostAt > BOOST_COOLDOWN){ factor = COLLIDE_BOOST; lastBoostAt = now; }
+      let j = -rvn * factor;     // >1 → the tempo boost that keeps them lively
       if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
       else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
       else { a.vx -= j*nx; a.vy -= j*ny; b.vx += j*nx; b.vy += j*ny; }
@@ -1344,10 +1364,22 @@ loadFavicon();
 
   /* ---------- Easter-egg button + Nazan Dodge minigame ---------- */
   // A mysterious ★ button appears once EVERY sticker on the page has been unstuck
-  // (flung). It never says what it is — clicking it once opens the secret game.
+  // (flung). It never says what it is — it starts tiny and grows with each click,
+  // taking five clicks before it opens the secret game.
   // If it goes unnoticed for a while it gets a stronger wiggle so it can be found,
   // still without spoiling the surprise.
   let eggShown = false, eggNudgeTimer = null;
+  // The star starts small and grows with every click; only the 5th click opens the
+  // secret. This keeps the egg from being a giant obvious target the instant the
+  // last Nazan is freed — it has to be coaxed open.
+  let eggClicks = 0;
+  const EGG_CLICKS_NEEDED = 5;
+  function setEggSize(scale){      // scale 0..1 → small ★ grows to its full size
+    const btn = $("#eggBtn"); if(!btn) return;
+    const size = Math.round(24 + (54 - 24) * scale);
+    const fs   = (12 + (24 - 12) * scale).toFixed(1);
+    btn.style.width = size + "px"; btn.style.height = size + "px"; btn.style.fontSize = fs + "px";
+  }
   function maybeRevealEgg(){
     if(eggShown) return;
     // Only the sticker set that is actually on-screen at this viewport can be
@@ -1364,6 +1396,7 @@ loadFavicon();
     eggShown = true;
     const btn = $("#eggBtn"); if(!btn) return;
     btn.classList.add("show");
+    setEggSize(0);
     achieve("unleashed", "🌀", "Total Chaos", "Every Nazan is loose… and something curious appeared in the corner.");
     // If it stays unnoticed for 60s, nudge harder — but keep it a mystery.
     clearTimeout(eggNudgeTimer);
@@ -1372,8 +1405,13 @@ loadFavicon();
   function wireEgg(){
     const btn = $("#eggBtn"); if(!btn) return;
     btn.addEventListener("click", ()=>{
+      eggClicks++;
+      setEggSize(Math.min(1, eggClicks / EGG_CLICKS_NEEDED));
+      // Each click only grows the star; it takes all 5 to actually open the secret.
+      if(eggClicks < EGG_CLICKS_NEEDED) return;
       clearTimeout(eggNudgeTimer);
       btn.classList.remove("nudge");
+      calmStickers();                 // the moment it's discovered, let the page settle
       achieve("foundgame", "🎮", "The Secret Game", "You found Nazan Dodge.");
       Game.open();
     });
