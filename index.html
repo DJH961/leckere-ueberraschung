@@ -1229,9 +1229,9 @@ loadFavicon();
       }
       if(bounced && impact > 2.5) sfx.boing(impact, img.src);
       img.style.left = st.px+"px"; img.style.top = st.py+"px";
-      const onFloor = (st.py + h >= H()-1) && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
+      const isResting = (st.py + h >= H()-1) && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
       // Keep animating while airborne or still nudging apart from another sticker.
-      if(!onFloor || touching){ st.raf = requestAnimationFrame(tick); }
+      if(!isResting || touching){ st.raf = requestAnimationFrame(tick); }
     })();
   }
 
