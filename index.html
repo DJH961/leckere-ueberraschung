@@ -179,13 +179,13 @@
      A single click opens the secret. If it goes unnoticed for a while it gets a
      stronger "look at me" nudge, still without revealing what it does. */
   #eggBtn{position:fixed; left:16px; bottom:16px; z-index:9998; display:none;
-    width:54px; height:54px; padding:0; cursor:pointer;
+    width:24px; height:24px; padding:0; cursor:pointer;
     align-items:center; justify-content:center;
     border:1px solid rgba(255,255,255,.6); border-radius:50%; color:#fff;
-    font-size:24px; line-height:1;
+    font-size:12px; line-height:1;
+    transition:transform .12s ease, filter .2s ease, width .2s ease, height .2s ease, font-size .2s ease;
     background:radial-gradient(circle at 35% 30%, #6f93c0, #3d5076);
     box-shadow:0 8px 22px rgba(61,80,118,.45);
-    transition:transform .12s ease, filter .2s ease;
     animation:eggPulse 1.6s ease-in-out infinite;}
   #eggBtn.show{display:inline-flex;}
   #eggBtn:hover{filter:brightness(1.1);}
@@ -219,6 +219,16 @@
     border-radius:30px; padding:8px 16px; font-size:.92rem; box-shadow:0 4px 12px rgba(61,80,118,.18);}
   #gameExit:hover{border-color:var(--navy);}
   #gameExit:active{transform:scale(.96);}
+  /* Shove ability button — sits at the bottom, only usable while a round is live */
+  #gameShove{position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
+    z-index:2; display:none; pointer-events:auto; cursor:pointer; font:inherit; font-weight:800;
+    color:#fff; background:var(--navy); border:0; border-radius:40px; padding:12px 26px;
+    font-size:1.02rem; letter-spacing:.3px; box-shadow:0 10px 26px rgba(61,80,118,.35);
+    transition:transform .1s ease, filter .15s ease, opacity .15s ease;}
+  #gameShove.show{display:inline-flex;}
+  #gameShove:hover{filter:brightness(1.06);}
+  #gameShove:active{transform:translateX(-50%) scale(.95);}
+  #gameShove.cooling{opacity:.5; cursor:default;}
   /* Centered panels (start hint / game over) */
   .gamePanel{position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px;}
@@ -271,12 +281,15 @@
       <div class="score">Score <span id="gameScore">0</span></div>
       <button id="gameExit" type="button">✕ Back</button>
     </div>
+    <!-- Shove ability — push nearby Nazans away (Space / tap this button) -->
+    <button id="gameShove" type="button" aria-label="Shove nearby Nazans away">💨 Shove</button>
     <!-- Start screen -->
     <div class="gamePanel" id="gameStart">
       <div class="gameCard">
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
-        <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can. More Nazans keep joining.</p>
+        <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
+        <p>Cornered? Press <strong>Space</strong> or tap <strong>💨 Shove</strong> to blast nearby Nazans away. It needs a moment to recharge.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
         <div class="gameBtns">
           <button class="gameBtn" id="gamePlay" type="button">▶ Play</button>
@@ -1210,6 +1223,21 @@ loadFavicon();
   const flungStickers = [];
   const COLLIDE_BOOST = 1.18;          // each sticker-on-sticker hit adds a little
   const MAX_SPEED     = 46;            // ...energy, capped so it stays funny not insane
+  // The boost is what keeps the loose Nazans lively, but with many of them crammed
+  // into a small screen the collisions never stop re-energising each other and the
+  // page can't settle. Two valves tame this: a global cooldown so the boost can only
+  // fire occasionally (letting friction win between bursts and the page calm down),
+  // and a master switch that turns the boost off entirely once the secret is found.
+  let   boostEnabled  = true;          // flipped off when the minigame is discovered
+  let   lastBoostAt   = 0;             // timestamp of the most recent boosted hit
+  const BOOST_COOLDOWN = 700;          // ms the boost must rest before it can fire again
+
+  // Drain all momentum from the loose stickers and switch the boost off so they
+  // glide to a rest. Called the moment the secret minigame is discovered.
+  function calmStickers(){
+    boostEnabled = false;
+    for(const st of flungStickers){ st.vx = 0; st.vy = 0; }
+  }
 
   function clampSpeed(st){
     const sp = Math.hypot(st.vx, st.vy);
@@ -1240,7 +1268,12 @@ loadFavicon();
     // Velocity exchange along the contact normal (equal mass, near-elastic).
     const rvn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
     if(rvn < 0){
-      let j = -rvn * COLLIDE_BOOST;     // >1 → the tempo boost that keeps them lively
+      // The boost only kicks in when it isn't on cooldown and hasn't been switched
+      // off — otherwise the bounce stays purely elastic so friction can take over.
+      const now = performance.now();
+      let factor = 1;
+      if(boostEnabled && now - lastBoostAt > BOOST_COOLDOWN){ factor = COLLIDE_BOOST; lastBoostAt = now; }
+      let j = -rvn * factor;     // >1 → the tempo boost that keeps them lively
       if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
       else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
       else { a.vx -= j*nx; a.vy -= j*ny; b.vx += j*nx; b.vy += j*ny; }
@@ -1344,10 +1377,22 @@ loadFavicon();
 
   /* ---------- Easter-egg button + Nazan Dodge minigame ---------- */
   // A mysterious ★ button appears once EVERY sticker on the page has been unstuck
-  // (flung). It never says what it is — clicking it once opens the secret game.
+  // (flung). It never says what it is — it starts tiny and grows with each click,
+  // taking five clicks before it opens the secret game.
   // If it goes unnoticed for a while it gets a stronger wiggle so it can be found,
   // still without spoiling the surprise.
   let eggShown = false, eggNudgeTimer = null;
+  // The star starts small and grows with every click; only the 5th click opens the
+  // secret. This keeps the egg from being a giant obvious target the instant the
+  // last Nazan is freed — it has to be coaxed open.
+  let eggClicks = 0;
+  const EGG_CLICKS_NEEDED = 5;
+  function setEggSize(scale){      // scale 0..1 → small ★ grows to its full size
+    const btn = $("#eggBtn"); if(!btn) return;
+    const size = Math.round(24 + (54 - 24) * scale);
+    const fs   = (12 + (24 - 12) * scale).toFixed(1);
+    btn.style.width = size + "px"; btn.style.height = size + "px"; btn.style.fontSize = fs + "px";
+  }
   function maybeRevealEgg(){
     if(eggShown) return;
     // Only the sticker set that is actually on-screen at this viewport can be
@@ -1364,7 +1409,8 @@ loadFavicon();
     eggShown = true;
     const btn = $("#eggBtn"); if(!btn) return;
     btn.classList.add("show");
-    achieve("unleashed", "🌀", "Total Chaos", "Every Nazan is loose… and something curious appeared in the corner.");
+    setEggSize(0);
+    achieve("unleashed", "🌀", "Total Chaos", "Every Nazan is loose. Absolute, glorious pandemonium.");
     // If it stays unnoticed for 60s, nudge harder — but keep it a mystery.
     clearTimeout(eggNudgeTimer);
     eggNudgeTimer = setTimeout(()=>{ btn.classList.add("nudge"); }, 60000);
@@ -1372,8 +1418,13 @@ loadFavicon();
   function wireEgg(){
     const btn = $("#eggBtn"); if(!btn) return;
     btn.addEventListener("click", ()=>{
+      eggClicks++;
+      setEggSize(Math.min(1, eggClicks / EGG_CLICKS_NEEDED));
+      // Each click only grows the star; it takes all 5 to actually open the secret.
+      if(eggClicks < EGG_CLICKS_NEEDED) return;
       clearTimeout(eggNudgeTimer);
       btn.classList.remove("nudge");
+      calmStickers();                 // the moment it's discovered, let the page settle
       achieve("foundgame", "🎮", "The Secret Game", "You found Nazan Dodge.");
       Game.open();
     });
@@ -1386,6 +1437,7 @@ loadFavicon();
     const canvas = $("#gameCanvas");
     const ctx    = canvas ? canvas.getContext("2d") : null;
     const scoreEl   = $("#gameScore");
+    const shoveBtn  = $("#gameShove");
     const startPane = $("#gameStart");
     const overPane  = $("#gameOver");
 
@@ -1393,6 +1445,10 @@ loadFavicon();
     let images = [];               // preloaded Nazan sticker images
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
+    // Shove ability: a short-cooldown blast that pushes nearby Nazans away, giving
+    // the player a fighting chance when the screen gets crowded at higher scores.
+    let blastCd = 0, blastFx = 0;
+    const BLAST_COOLDOWN = 3.2;    // seconds before Shove can be used again
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
 
@@ -1423,21 +1479,60 @@ loadFavicon();
       let x, y;
       if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
       else { x = Math.random() * W; y = Math.random() < 0.5 ? r : H - r; }
-      const speed = base() * (0.006 + Math.random() * 0.004) + elapsed * base() * 0.00018;
+      // Speed ramps with time and carries most of the difficulty now. It's capped
+      // so very long runs stay survivable (with the Shove ability) instead of
+      // becoming impossible.
+      const ramp = Math.min(elapsed, 60) * base() * 0.00030;
+      const speed = base() * (0.008 + Math.random() * 0.004) + ramp;
       const ang = Math.random() * Math.PI * 2;
-      const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
+      // Never reuse the player's own sticker as an enemy — that's confusing. Pick
+      // from the remaining images when more than one is available.
+      let pool = images;
+      const mine = player ? player.img : null;
+      if(mine && images.length > 1) pool = images.filter(im => im !== mine);
+      const img = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
                      rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06 });
     }
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0;
+      blastCd = 0; blastFx = 0;
       player = { x: W / 2, y: H * 0.72, r: Math.max(20, base() * 0.05), rot: 0,
                  img: images.length ? images[0] : null };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
-      for(let i = 0; i < 3; i++) spawnEnemy();
+      for(let i = 0; i < 2; i++) spawnEnemy();
       if(scoreEl) scoreEl.textContent = "0";
+      updateShoveBtn();
+    }
+
+    // Push every Nazan within reach away from the player. Limited radius (only
+    // "some of them") and gated by a cooldown so it stays a clutch escape, not an
+    // auto-win. Returns true when it actually fired.
+    function blast(){
+      if(!running || blastCd > 0) return false;
+      const R = base() * 0.34;
+      for(const e of enemies){
+        const dx = e.x - player.x, dy = e.y - player.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if(d < R){
+          const nx = dx / d, ny = dy / d;
+          const push = base() * 0.022 * (0.45 + 0.55 * (1 - d / R));
+          e.vx += nx * push; e.vy += ny * push;
+        }
+      }
+      blastCd = BLAST_COOLDOWN; blastFx = 0.35;
+      updateShoveBtn();
+      try{ sfx.boing(3, "nazan-dodge-shove"); }catch(e){}
+      return true;
+    }
+
+    function updateShoveBtn(){
+      if(!shoveBtn) return;
+      const cooling = blastCd > 0;
+      shoveBtn.classList.toggle("cooling", cooling);
+      shoveBtn.textContent = cooling ? "💨 " + blastCd.toFixed(1) + "s" : "💨 Shove";
     }
 
     function updatePlayer(dt){
@@ -1465,21 +1560,52 @@ loadFavicon();
       last = now; elapsed += dt;
       score += dt * 10;
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      if(blastCd > 0){ blastCd = Math.max(0, blastCd - dt); updateShoveBtn(); }
+      if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
 
-      // Spawn more Nazans over time (ramping difficulty), capped so it stays fair.
+      // Difficulty ramps mainly through SPEED now, not numbers: Nazans join slowly
+      // and the on-screen count stays low, so the faster bouncing pack stays
+      // readable instead of becoming a wall of stickers.
       spawnAcc += dt;
-      const interval = Math.max(1.6, 4 - elapsed * 0.05);
-      if(spawnAcc >= interval && enemies.length < 22){ spawnAcc = 0; spawnEnemy(); }
+      const interval = Math.max(2.8, 5 - elapsed * 0.035);
+      if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
 
+      // Move every Nazan and bounce it off the walls.
       for(const e of enemies){
         e.x += e.vx; e.y += e.vy; e.rot += e.vr;
         if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); }
         if(e.x > W - e.r){ e.x = W - e.r; e.vx = -Math.abs(e.vx); }
         if(e.y < e.r){ e.y = e.r; e.vy = Math.abs(e.vy); }
         if(e.y > H - e.r){ e.y = H - e.r; e.vy = -Math.abs(e.vy); }
-        // Collision with the player → game over (forgiving 0.7 radius factor).
+      }
+
+      // Bounce the Nazans off each other (equal-mass elastic — they swap momentum
+      // along the contact normal, so they stay lively without gaining extra speed).
+      for(let i = 0; i < enemies.length; i++){
+        const a = enemies[i];
+        for(let j = i + 1; j < enemies.length; j++){
+          const b = enemies[j];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          let dist = Math.hypot(dx, dy);
+          const minDist = a.r + b.r;
+          if(dist >= minDist) continue;
+          if(dist === 0){ dx = Math.random() - 0.5 || 0.01; dy = Math.random() - 0.5 || 0.01; dist = Math.hypot(dx, dy); }
+          const nx = dx / dist, ny = dy / dist;
+          const overlap = (minDist - dist) / 2;   // push the pair apart so they never stack
+          a.x -= nx * overlap; a.y -= ny * overlap;
+          b.x += nx * overlap; b.y += ny * overlap;
+          const rvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if(rvn < 0){                              // only when they're approaching
+            a.vx += rvn * nx; a.vy += rvn * ny;
+            b.vx -= rvn * nx; b.vy -= rvn * ny;
+          }
+        }
+      }
+
+      // Collision with the player → game over (forgiving 0.7 radius factor).
+      for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){ gameOver(); return; }
@@ -1510,6 +1636,16 @@ loadFavicon();
     }
     function draw(){
       ctx.clearRect(0, 0, W, H);
+      // Expanding shockwave ring when a Shove just fired.
+      if(blastFx > 0 && player){
+        const k = 1 - blastFx / 0.35;            // 0 → 1 over the effect's life
+        const R = base() * 0.34 * (0.3 + 0.7 * k);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+        ctx.lineWidth = 4; ctx.strokeStyle = "rgba(61,80,118," + (0.6 * (1 - k)).toFixed(3) + ")";
+        ctx.stroke();
+        ctx.restore();
+      }
       for(const e of enemies) drawSticker(e, false);
       if(player) drawSticker(player, true);
     }
@@ -1518,12 +1654,14 @@ loadFavicon();
       loadImages(); resize(); reset();
       startPane.classList.add("hidden");
       overPane.classList.add("hidden");
+      if(shoveBtn) shoveBtn.classList.add("show");
       running = true; last = performance.now();
       raf = requestAnimationFrame(step);
     }
     function gameOver(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
+      if(shoveBtn) shoveBtn.classList.remove("show");
       const final = Math.floor(score);
       const prev = highScore();
       const isHigh = final > prev;
@@ -1547,6 +1685,7 @@ loadFavicon();
     function close(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
+      if(shoveBtn) shoveBtn.classList.remove("show");
       root.classList.remove("show");
       root.setAttribute("aria-hidden", "true");
     }
@@ -1562,6 +1701,11 @@ loadFavicon();
       window.addEventListener("keydown", (e)=>{
         if(!root.classList.contains("show")) return;
         if(e.key === "Escape"){ close(); return; }
+        // On the game-over screen, Enter or Space restarts the round.
+        if(!running && overPane && !overPane.classList.contains("hidden")){
+          if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){ e.preventDefault(); start(); return; }
+        }
+        if(e.key === " " || e.key === "Spacebar"){ blast(); e.preventDefault(); return; }
         const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
         if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){ keys[k] = true; e.preventDefault(); }
       });
@@ -1569,6 +1713,9 @@ loadFavicon();
         const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
         delete keys[k];
       });
+      if(shoveBtn){
+        shoveBtn.addEventListener("pointerdown", (e)=>{ e.preventDefault(); e.stopPropagation(); blast(); });
+      }
       $("#gamePlay").addEventListener("click", start);
       $("#gameRetry").addEventListener("click", start);
       $("#gameExit").addEventListener("click", close);
