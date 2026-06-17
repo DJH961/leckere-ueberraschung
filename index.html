@@ -151,13 +151,6 @@
     font-size:.92rem; min-height:1.4em;}
   #leaderboard b{color:var(--navy);}
 
-  /* ===== Cursor trail ===== */
-  .trail{position:fixed; z-index:9998; pointer-events:none; font-size:20px; line-height:1;
-    transform:translate(-50%,-50%); will-change:transform,opacity;
-    animation:trailFade .9s ease-out forwards;}
-  @keyframes trailFade{from{opacity:.95; transform:translate(-50%,-50%) scale(1);}
-    to{opacity:0; transform:translate(-50%,-140%) scale(.4) rotate(40deg);}}
-
   /* ===== Konami / confetti / sticker rain ===== */
   #fx{position:fixed; inset:0; z-index:9997; pointer-events:none; overflow:hidden;}
   .confetti, .rainSticker{position:fixed; top:-60px; will-change:transform; pointer-events:none;}
@@ -169,21 +162,6 @@
   .sticker.flung{position:fixed; z-index:9996; margin:0; animation:none !important; cursor:grabbing;
     filter:drop-shadow(0 10px 18px rgba(61,80,118,.40));}
 
-  /* ===== Fake loading overlay ===== */
-  #loader{position:fixed; inset:0; z-index:10006; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center;
-    background:radial-gradient(900px 500px at 50% 40%, #ffffff, #d6e8f7);
-    transition:opacity .5s ease;}
-  #loader.gone{opacity:0; pointer-events:none;}
-  #loader .lTitle{font-size:clamp(1.2rem,4.5vw,1.9rem); font-weight:800; color:var(--navy);
-    text-transform:uppercase; letter-spacing:.5px;}
-  #loader .lMsg{color:var(--muted); min-height:1.4em; font-size:1rem;}
-  #loader .lTrack{width:min(420px,80vw); height:14px; border-radius:14px; background:var(--wave);
-    overflow:hidden; box-shadow:inset 0 1px 3px rgba(61,80,118,.25);}
-  #loader .lFill{height:100%; width:0%; border-radius:14px;
-    background:linear-gradient(90deg,var(--navy),var(--wave-deep)); transition:width .3s ease;}
-  #loader .lPct{font-weight:700; color:var(--navy); font-variant-numeric:tabular-nums;}
-
   /* ===== Dark "Legend Mode" theme ===== */
   body.dark{
     --bg:#0e1320; --bg2:#0a0f1a; --card:#161d2e; --card-border:#27314a;
@@ -191,8 +169,7 @@
     --accent:#9fc0ec; --accent2:#5b7db0; --text:#dfe7f2; --muted:#93a2bb;
     background:linear-gradient(180deg,#0a0f1a 0%,#0e1320 55%,#10182a 100%);
   }
-  body.dark .track, body.dark .fun-btn, body.dark #loader{background:var(--card);}
-  body.dark #loader{background:radial-gradient(900px 500px at 50% 40%, #161d2e, #0a0f1a);}
+  body.dark .track, body.dark .fun-btn{background:var(--card);}
   body.dark #gate{background:radial-gradient(900px 500px at 50% 38%, #161d2e, #0a0f1a);}
   body.dark #victimCount{background:rgba(159,192,236,.12);}
 </style>
@@ -212,14 +189,6 @@
     <button id="enterBtn">▶ Enter the legend</button>
   </div>
 
-  <!-- ===== FAKE LOADING OVERLAY (it lies) ===== -->
-  <div id="loader" aria-hidden="true">
-    <div class="lTitle">Summoning the legend…</div>
-    <div class="lTrack"><div class="lFill"></div></div>
-    <div class="lPct">0%</div>
-    <div class="lMsg">Warming up the rickroll cannon…</div>
-  </div>
-
   <!-- ===== EFFECTS LAYER (confetti + sticker rain) ===== -->
   <div id="fx" aria-hidden="true"></div>
 
@@ -234,11 +203,11 @@
     </header>
 
     <div id="funBar">
-      <span id="moodRing" title="The Leckere-meter" aria-label="mood">😐</span>
+      <span id="moodRing" title="The Leckere-meter" aria-label="mood"></span>
       <button class="fun-btn" id="chaosBtn" title="Play every version at once">🌀 Chaos mode</button>
       <button class="fun-btn" id="shareBtn" title="Pass the curse along">🔗 Share the curse</button>
       <button class="fun-btn" id="themeBtn" title="Toggle dark Legend Mode">🌙 Legend Mode</button>
-      <span id="victimCount" title="Brought to you by localStorage">🎯 Rickrolled <b>0</b>×</span>
+      <span id="victimCount" title="Brought to you by localStorage" style="display:none">🎯 Rickrolled <b>0</b>×</span>
     </div>
     <div id="leaderboard"></div>
 
@@ -283,8 +252,12 @@ function startIntro(){
   introVid.src = "https://www.youtube.com/embed/" + RICK_ID +
     "?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0";
   if(gate){ gate.classList.add("gone"); setTimeout(()=>gate && gate.remove(), 550); }
-  introTimer = setTimeout(endIntro, INTRO_MS);   // auto-dismiss after 8 s
+  introTimer = setTimeout(completeIntro, INTRO_MS);   // auto-dismiss after 8 s
+}
+function completeIntro(){
+  // The rickroll played all the way through → now it counts.
   if(window.FUN) FUN.gotRickrolled();
+  endIntro();
 }
 function endIntro(){
   if(!rickBanner || rickBanner.classList.contains("gone")) return;
@@ -798,8 +771,8 @@ async function loadFavicon(){
 loadFavicon();
 
 /* =================================================================
-   FUN — hilarity bundle (loader, victims, konami, achievements,
-   subtitle, mood ring, cursor trail, sticker physics, chaos mode,
+   FUN — hilarity bundle (victims, konami, achievements,
+   subtitle, mood ring, sticker physics, chaos mode,
    leaderboard, theme switcher, share-the-curse).
    All client-side, persisted via localStorage. No backend.
    ================================================================= */
@@ -834,11 +807,11 @@ loadFavicon();
   }
 
   /* ---------- Mood ring ("Leckere-meter") ---------- */
-  const MOODS = { idle:"😐", play:"🤩", pause:"😴", skip:"😤", chaos:"🤯", party:"🥳", curse:"😈" };
+  const MOODS = { idle:"", play:"🤩", pause:"😴", skip:"😤", chaos:"🤯", party:"🥳", curse:"😈" };
   let moodTimer = null;
   function mood(state){
     const m = $("#moodRing"); if(!m) return;
-    m.textContent = MOODS[state] || "😐";
+    m.textContent = (state in MOODS) ? MOODS[state] : "";
     m.classList.remove("bump"); void m.offsetWidth; m.classList.add("bump");
     clearTimeout(moodTimer);
     if(state !== "idle" && state !== "chaos"){
@@ -852,7 +825,6 @@ loadFavicon();
     'Now in many languages, none of them necessary.',
     'A masterpiece. A crime against silence. Both.',
     'Legally distinct from a good idea, starring <strong>Nazan</strong>.',
-    'You came for the surprise. The surprise was the rickroll all along.',
     'Buffering greatness since you clicked.',
     '100% organic, free-range, artisanal nonsense.',
     'The only website endorsed by <strong>Nazan</strong> (citation needed).'
@@ -861,7 +833,9 @@ loadFavicon();
 
   /* ---------- Victim counter ---------- */
   function renderVictims(){
-    const el = $("#victimCount b"); if(el) el.textContent = LS.get("victimCount", 0);
+    const n = LS.get("victimCount", 0);
+    const el = $("#victimCount b"); if(el) el.textContent = n;
+    const wrap = $("#victimCount"); if(wrap) wrap.style.display = n > 0 ? "" : "none";
   }
   function gotRickrolled(){
     const n = LS.get("victimCount", 0) + 1; LS.set("victimCount", n);
@@ -899,24 +873,6 @@ loadFavicon();
     const [lang, rec] = entries[0];
     const quip = rec.count >= 7 ? " Seek help." : rec.count >= 3 ? " A connoisseur." : "";
     lb.innerHTML = `Your most-played legend: <b>${rec.flag} ${lang}</b> (${rec.count} play${rec.count===1?"":"s"}).${quip}`;
-  }
-
-  /* ---------- Cursor trail ---------- */
-  const TRAIL = ["🎁","🌟","✨","🎵","💫","🎉"];
-  let lastTrail = 0;
-  function trail(e){
-    const now = performance.now();
-    if(now - lastTrail < 45) return;
-    lastTrail = now;
-    const x = e.touches ? e.touches[0].clientX : e.clientX;
-    const y = e.touches ? e.touches[0].clientY : e.clientY;
-    if(x==null || y==null) return;
-    const s = document.createElement("span");
-    s.className = "trail"; s.textContent = pick(TRAIL);
-    s.style.left = x+"px"; s.style.top = y+"px";
-    s.style.fontSize = rnd(14,24).toFixed(0)+"px";
-    document.body.appendChild(s);
-    setTimeout(()=> s.remove(), 950);
   }
 
   /* ---------- Confetti + sticker rain (Konami) ---------- */
@@ -1063,9 +1019,20 @@ loadFavicon();
   }
 
   /* ---------- Share the curse ---------- */
+  // Genuine, low-key messages — nothing suspicious, no clickbait, no spoilers.
+  const SHARE_LINES = [
+    "Made you a little something — hope it brings a smile. 🙂",
+    "Found this and thought of you. Give it a listen. 🎧",
+    "A small surprise to brighten your day. ✨",
+    "Sharing something that made me smile today. 😊",
+    "Thought you'd enjoy this little tribute. 🎁",
+    "Here's a bit of fun for your day. 🙌",
+    "This one's for you — enjoy! 💛",
+    "A nice little corner of the internet. Have a look. 🌊"
+  ];
   async function shareCurse(){
     const url = location.href.split("#")[0];
-    const text = "I have passed the rickroll onto you. You're welcome. 🎁";
+    const text = pick(SHARE_LINES);
     achieve("curse", "🔗", "Curse Spreader", "You shared the legend. The chain continues.");
     mood('curse');
     if(navigator.share){
@@ -1073,7 +1040,7 @@ loadFavicon();
     }
     try{
       await navigator.clipboard.writeText(text + " " + url);
-      toast("📋", "Curse copied!", "Link copied to clipboard. Go infect a friend.");
+      toast("📋", "Copied!", "Message + link copied. Go infect a friend.");
     }catch(e){
       toast("🔗", "Share it manually", url);
     }
@@ -1102,49 +1069,6 @@ loadFavicon();
     document.querySelectorAll(".sticker").forEach(s=>{ if(!s.title) s.title = hat + " seasonal Nazan " + hat; });
   }
 
-  /* ---------- Fake lying loader ---------- */
-  const LOAD_MSGS = [
-    "Warming up the rickroll cannon…",
-    "Aligning the stickers with the moon…",
-    "Negotiating with the Opus codec…",
-    "Polishing Nazan's aura…",
-    "Translating the legend into 12 dialects…",
-    "Reticulating splines…",
-    "Asking the server very politely…",
-    "Almost there… (this is a lie)…",
-    "Buffering greatness…"
-  ];
-  function fakeLoad(){
-    const loader = $("#loader");
-    if(!loader) return;
-    const fill = loader.querySelector(".lFill");
-    const pct = loader.querySelector(".lPct");
-    const msg = loader.querySelector(".lMsg");
-    let p = 0, mi = 0;
-    msg.textContent = LOAD_MSGS[0];
-    const msgT = setInterval(()=>{ mi = (mi+1)%LOAD_MSGS.length; msg.textContent = LOAD_MSGS[mi]; }, 800);
-    const tick = setInterval(()=>{
-      // race to 99, then crawl, then freeze dramatically
-      if(p < 70) p += rnd(8,16);
-      else if(p < 92) p += rnd(2,5);
-      else if(p < 99) p += rnd(0.2,0.8);
-      else p = 99;
-      p = Math.min(p, 99);
-      fill.style.width = p+"%"; pct.textContent = Math.floor(p)+"%";
-    }, 220);
-    // freeze at 99 for comedic effect, then snap to 100 and reveal
-    setTimeout(()=>{
-      clearInterval(tick);
-      msg.textContent = "Stuck at 99%. Classic.";
-      setTimeout(()=>{
-        clearInterval(msgT);
-        p = 100; fill.style.width = "100%"; pct.textContent = "100%";
-        msg.textContent = "There it is. Enjoy the legend.";
-        setTimeout(()=>{ loader.classList.add("gone"); setTimeout(()=> loader.remove(), 600); }, 650);
-      }, 1100);
-    }, rnd(2600,3600));
-  }
-
   /* ---------- Wire it all up ---------- */
   window.FUN = { mood, achieve, toast, trackStarted, gotRickrolled, coward,
                  refreshLeaderboard, makeDraggable };
@@ -1154,9 +1078,7 @@ loadFavicon();
     renderVictims();
     refreshLeaderboard();
     applyTheme(LS.get("darkMode", false));
-    fakeLoad();
     seasonalFlair();
-    window.addEventListener("pointermove", trail, {passive:true});
     const cb = $("#chaosBtn"); if(cb) cb.addEventListener("click", toggleChaos);
     const sb = $("#shareBtn"); if(sb) sb.addEventListener("click", shareCurse);
     const tb = $("#themeBtn"); if(tb) tb.addEventListener("click", toggleTheme);
