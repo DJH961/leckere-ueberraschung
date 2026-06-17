@@ -205,10 +205,15 @@ function getDecoder(){
   if(window.OggOpusDecoder) return window.OggOpusDecoder;
   return null;
 }
-const buffers = new Map();           // url -> AudioBuffer
-let cur = null;                      // {el, src, startedAt, offset, dur, playing}
+const buffers = new Map();           // url -> AudioBuffer (opus, fully decoded)
+const mediaEls = new Map();          // url -> HTMLAudioElement (native, streamed)
+let cur = null;                      // {kind:"buffer"|"media", el, ...}
 
 function isOpus(url){ return /\.opus(\?|#|$)/i.test(url); }
+/* Everything that isn't .opus (e.g. .m4a/AAC, .mp3) plays natively and can be
+   STREAMED through a media element, so playback starts almost instantly instead
+   of waiting for the whole file to download and decode. */
+function isNative(url){ return !isOpus(url); }
 
 /* .m4a (AAC) decodes natively through Web Audio on every platform,
    including iOS & Windows. The callback form of decodeAudioData keeps
@@ -243,17 +248,34 @@ async function decodeToBuffer(url){
 
 function fmt(t){ if(!isFinite(t)) return "--:--"; t=Math.max(0,t|0); return (t/60|0)+":"+String(t%60).padStart(2,"0"); }
 function setIcon(el, playing){ el.querySelector(".play").textContent = playing ? "⏸" : "▶"; }
-function elapsed(){ return cur ? cur.offset + (getCtx().currentTime - cur.startedAt) : 0; }
+function elapsed(){
+  if(!cur) return 0;
+  if(cur.kind === "media") return cur.media ? cur.media.currentTime : cur.offset;
+  return cur.offset + (getCtx().currentTime - cur.startedAt);
+}
 
 function stopSource(){
-  if(cur && cur.src){ try{ cur.src.onended=null; cur.src.stop(); }catch(e){} cur.src=null; }
-  if(cur && cur.raf){ cancelAnimationFrame(cur.raf); cur.raf=null; }
+  if(cur){
+    if(cur.kind === "media"){
+      if(cur.media){ try{ cur.media.onended=null; cur.media.pause(); }catch(e){} }
+    }else if(cur.src){
+      try{ cur.src.onended=null; cur.src.stop(); }catch(e){} cur.src=null;
+    }
+    if(cur.raf){ cancelAnimationFrame(cur.raf); cur.raf=null; }
+  }
 }
 function paint(){
   if(!cur || !cur.playing) return;
-  const e = Math.min(elapsed(), cur.dur);
+  // A streamed media element may only learn its duration once metadata loads.
+  if(cur.kind === "media" && (!cur.dur || !isFinite(cur.dur)) &&
+     cur.media && isFinite(cur.media.duration) && cur.media.duration > 0){
+    cur.dur = cur.media.duration;
+    cur.el.querySelector(".dur").textContent = fmt(cur.dur);
+  }
+  const dur = cur.dur || 0;
+  const e = dur ? Math.min(elapsed(), dur) : elapsed();
   const t = cur.el;
-  t.querySelector(".prog").style.width = (e/cur.dur*100)+"%";
+  t.querySelector(".prog").style.width = (dur ? (e/dur*100) : 0)+"%";
   t.querySelector(".cur").textContent = fmt(e);
   cur.raf = requestAnimationFrame(paint);
 }
@@ -269,17 +291,41 @@ function startAt(el, buf, offset){
   src.buffer = buf;
   src.connect(ctx.destination);
   src.start(0, offset);
-  cur = { el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
+  cur = { kind:"buffer", el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
   el.querySelector(".dur").textContent = fmt(buf.duration);
   setIcon(el, true);
   src.onended = ()=>{ if(cur && cur.src===src && elapsed() >= cur.dur - 0.08){ stopSource(); resetUI(el); cur=null; } };
+  paint();
+}
+/* Stream a natively-supported file through a media element. Playback begins as
+   soon as the browser has buffered enough — no waiting for the full download or
+   a full decode. The element is reused so resuming/seeking keeps its buffer. */
+function startMedia(el, offset){
+  const url = el.dataset.src;
+  let a = mediaEls.get(url);
+  if(!a){
+    a = new Audio();
+    a.preload = "auto";
+    a.src = url;
+    mediaEls.set(url, a);
+  }
+  offset = offset || 0;
+  cur = { kind:"media", el, media:a, url, offset,
+          dur:(isFinite(a.duration) && a.duration > 0 ? a.duration : 0), playing:true, raf:null };
+  setIcon(el, true);
+  a.onended = ()=>{ if(cur && cur.media===a){ stopSource(); resetUI(el); cur=null; } };
+  if(offset && Math.abs((a.currentTime || 0) - offset) > 0.25){ try{ a.currentTime = offset; }catch(e){} }
+  // play() is called synchronously within the user gesture, so autoplay rules
+  // allow it; the returned promise can reject if interrupted, which we ignore.
+  const p = a.play();
+  if(p && typeof p.catch === "function") p.catch(()=>{});
   paint();
 }
 function pausePlayback(){
   if(!cur || !cur.playing) return;
   const e = elapsed();
   stopSource();
-  cur.offset = Math.min(e, cur.dur);
+  cur.offset = cur.dur ? Math.min(e, cur.dur) : e;
   cur.playing = false;
   setIcon(cur.el, false);
 }
@@ -287,13 +333,19 @@ function pausePlayback(){
 async function onPlay(el){
   const url = el.dataset.src;
   endIntro();                              // starting a version dismisses the rickroll early
-  try{ await getCtx().resume(); }catch(e){}
+  // Same track → toggle pause/resume.
   if(cur && cur.el === el){
-    if(cur.playing){ pausePlayback(); }
-    else{ const buf = await decodeToBuffer(url); startAt(el, buf, cur.offset || 0); }
+    if(cur.playing){ pausePlayback(); return; }
+    if(cur.kind === "media"){ startMedia(el, cur.offset || 0); return; }
+    try{ await getCtx().resume(); }catch(e){}
+    startAt(el, await decodeToBuffer(url), cur.offset || 0);
     return;
   }
   if(cur){ stopSource(); resetUI(cur.el); cur=null; }   // switch tracks
+  // Native formats (.m4a/AAC, .mp3 …) stream instantly via a media element.
+  if(isNative(url)){ startMedia(el, 0); return; }
+  // .opus needs the WebAssembly decode before Web Audio can play it.
+  try{ await getCtx().resume(); }catch(e){}
   const btn = el.querySelector(".play");
   btn.disabled = true; btn.textContent = "…";
   try{
@@ -307,12 +359,28 @@ async function onPlay(el){
 }
 function onSeek(el, ratio){
   const url = el.dataset.src;
+  const r = Math.max(0, Math.min(1, ratio));
+  if(isNative(url)){
+    const a = mediaEls.get(url);
+    const dur = (cur && cur.el===el && cur.dur) ? cur.dur
+              : (a && isFinite(a.duration) && a.duration > 0 ? a.duration : 0);
+    if(!dur) return;
+    const offset = r * dur;
+    if(cur && cur.el===el && cur.playing){ startMedia(el, offset); }
+    else{
+      if(!cur || cur.el!==el) cur = { kind:"media", el, media:a||null, url, offset, dur, playing:false, raf:null };
+      else cur.offset = offset;
+      el.querySelector(".prog").style.width = (offset/dur*100)+"%";
+      el.querySelector(".cur").textContent = fmt(offset);
+    }
+    return;
+  }
   const buf = buffers.get(url);
   if(!buf) return;
-  const offset = Math.max(0, Math.min(1, ratio)) * buf.duration;
+  const offset = r * buf.duration;
   if(cur && cur.el===el && cur.playing){ stopSource(); startAt(el, buf, offset); }
   else{
-    if(!cur || cur.el!==el) cur = { el, src:null, startedAt:0, offset, dur:buf.duration, playing:false, raf:null };
+    if(!cur || cur.el!==el) cur = { kind:"buffer", el, src:null, startedAt:0, offset, dur:buf.duration, playing:false, raf:null };
     else cur.offset = offset;
     el.querySelector(".prog").style.width = (offset/buf.duration*100)+"%";
     el.querySelector(".cur").textContent = fmt(offset);
