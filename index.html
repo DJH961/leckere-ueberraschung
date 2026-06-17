@@ -400,10 +400,11 @@ async function preloadDurations(items){
    from a metadata-only media element — no full decode, works everywhere. */
 function getMediaDuration(url){
   return new Promise(resolve=>{
-    const a = new Audio();
+    let a = new Audio();
     a.preload = "metadata";
-    a.onloadedmetadata = ()=> resolve(isFinite(a.duration) && a.duration > 0 ? a.duration : null);
-    a.onerror = ()=> resolve(null);
+    const done = (d)=>{ try{ a.removeAttribute("src"); a.load(); }catch(e){} a = null; resolve(d); };
+    a.onloadedmetadata = ()=> done(isFinite(a.duration) && a.duration > 0 ? a.duration : null);
+    a.onerror = ()=> done(null);
     a.src = url;
   });
 }
