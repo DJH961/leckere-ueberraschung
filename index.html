@@ -1700,6 +1700,10 @@ loadFavicon();
       window.addEventListener("keydown", (e)=>{
         if(!root.classList.contains("show")) return;
         if(e.key === "Escape"){ close(); return; }
+        // On the game-over screen, Enter or Space restarts the round.
+        if(!running && overPane && !overPane.classList.contains("hidden")){
+          if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){ e.preventDefault(); start(); return; }
+        }
         if(e.key === " " || e.key === "Spacebar"){ blast(); e.preventDefault(); return; }
         const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
         if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){ keys[k] = true; e.preventDefault(); }
