@@ -785,6 +785,53 @@ loadFavicon();
   const rnd = (a,b)=> a + Math.random()*(b-a);
   const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
 
+  /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
+  const sfx = (function(){
+    let lastBoing = 0;
+    function tone(opts){
+      // opts: type, f0, f1, dur, vol, wobble
+      try{
+        const ctx = getCtx();
+        if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = opts.type || "sine";
+        const f0 = opts.f0, f1 = opts.f1 == null ? opts.f0 : opts.f1, dur = opts.dur || 0.18;
+        osc.frequency.setValueAtTime(f0, t);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+        // optional vibrato wobble for extra goofiness
+        let lfo, lfoG;
+        if(opts.wobble){
+          lfo = ctx.createOscillator(); lfoG = ctx.createGain();
+          lfo.type = "sine"; lfo.frequency.value = 17; lfoG.gain.value = opts.wobble;
+          lfo.connect(lfoG).connect(osc.frequency);
+          lfo.start(t); lfo.stop(t + dur + 0.05);
+        }
+        const vol = opts.vol || 0.14;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(t); osc.stop(t + dur + 0.05);
+      }catch(e){}
+    }
+    return {
+      // comedic "boing" when a sticker bounces; volume scales with impact
+      boing(intensity){
+        const now = performance.now();
+        if(now - lastBoing < 70) return;   // throttle rapid bounces
+        lastBoing = now;
+        const vol = Math.min(0.4, 0.07 + (intensity||0)*0.012);
+        tone({ type:"sine", f0:rnd(360,500), f1:rnd(90,150), dur:0.22, vol, wobble:45 });
+      },
+      // funny "blip" for non play/pause button clicks
+      blip(){
+        tone({ type:"square", f0:rnd(560,760), f1:rnd(1100,1500), dur:0.11, vol:0.1 });
+      }
+    };
+  })();
+
   /* ---------- Achievement toasts ---------- */
   function toast(icon, title, body){
     const box = $("#toasts"); if(!box) return;
@@ -969,10 +1016,12 @@ loadFavicon();
       (function tick(){
         vy += gravity; vx *= friction;
         px += vx; py += vy;
-        if(px < 0){ px = 0; vx = -vx*bounce; }
-        if(px + w > W()){ px = W()-w; vx = -vx*bounce; }
-        if(py + h > H()){ py = H()-h; vy = -vy*bounce; vx *= 0.8; }
-        if(py < 0){ py = 0; vy = -vy*bounce; }
+        let bounced = false, impact = 0;
+        if(px < 0){ px = 0; vx = -vx*bounce; impact = Math.max(impact, Math.abs(vx)); bounced = true; }
+        if(px + w > W()){ px = W()-w; vx = -vx*bounce; impact = Math.max(impact, Math.abs(vx)); bounced = true; }
+        if(py + h > H()){ py = H()-h; vy = -vy*bounce; vx *= 0.8; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
+        if(py < 0){ py = 0; vy = -vy*bounce; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
+        if(bounced && impact > 2.5) sfx.boing(impact);
         img.style.left = px+"px"; img.style.top = py+"px";
         const resting = (py + h >= H()-1) && Math.abs(vy) < 1.2 && Math.abs(vx) < 0.4;
         if(!resting) raf = requestAnimationFrame(tick); else raf = null;
@@ -1082,6 +1131,11 @@ loadFavicon();
     const cb = $("#chaosBtn"); if(cb) cb.addEventListener("click", toggleChaos);
     const sb = $("#shareBtn"); if(sb) sb.addEventListener("click", shareCurse);
     const tb = $("#themeBtn"); if(tb) tb.addEventListener("click", toggleTheme);
+    // Funny blip on any button click except the per-track play/pause buttons
+    document.addEventListener("click", (e)=>{
+      const btn = e.target.closest && e.target.closest("button");
+      if(btn && !btn.classList.contains("play")) sfx.blip();
+    });
   });
   // run seasonal flair again once stickers load asynchronously
   const flairPoll = setInterval(()=>{ if(document.querySelector(".sticker")){ seasonalFlair(); clearInterval(flairPoll); } }, 1000);
