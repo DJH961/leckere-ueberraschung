@@ -119,6 +119,82 @@
   footer .lakemun img:hover{transform:scale(1.06);}
   footer .credit{color:var(--muted); font-size:.85rem; margin-top:14px;}
   a{color:var(--navy);}
+
+  /* ===== Fun bar (mood ring, chaos, share, theme, victim counter) ===== */
+  #funBar{display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+    gap:10px; margin:6px auto 34px; max-width:860px;}
+  .fun-btn{display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    background:#ffffff; color:var(--navy); border:1px solid var(--card-border);
+    border-radius:30px; padding:9px 16px; font:inherit; font-weight:600; font-size:.92rem;
+    box-shadow:0 4px 12px rgba(61,80,118,.10); transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;}
+  .fun-btn:hover{transform:translateY(-2px); border-color:var(--navy); box-shadow:0 8px 18px rgba(61,80,118,.16);}
+  .fun-btn:active{transform:scale(.96);}
+  #moodRing{font-size:1.5rem; line-height:1; user-select:none; transition:transform .2s ease;}
+  #moodRing.bump{transform:scale(1.35) rotate(8deg);}
+  #victimCount{display:inline-flex; align-items:center; gap:8px; font-size:.86rem; color:var(--muted);
+    background:rgba(61,80,118,.07); border-radius:30px; padding:8px 14px;}
+  #victimCount b{color:var(--navy);}
+
+  /* ===== Achievement / toast notifications ===== */
+  #toasts{position:fixed; right:16px; bottom:16px; z-index:10000; display:flex; flex-direction:column;
+    gap:10px; max-width:min(340px,86vw); pointer-events:none;}
+  .toast{background:var(--navy); color:#fff; border-radius:14px; padding:13px 16px;
+    box-shadow:0 12px 30px rgba(61,80,118,.40); display:flex; gap:12px; align-items:flex-start;
+    transform:translateX(120%); opacity:0; transition:transform .45s cubic-bezier(.2,.9,.3,1.3), opacity .45s ease;}
+  .toast.show{transform:translateX(0); opacity:1;}
+  .toast .ico{font-size:1.5rem; line-height:1; flex:0 0 auto;}
+  .toast .txt{font-size:.9rem; line-height:1.35;}
+  .toast .txt b{display:block; font-weight:800; margin-bottom:2px; letter-spacing:.3px;}
+
+  /* ===== Leaderboard ===== */
+  #leaderboard{max-width:860px; margin:10px auto 0; text-align:center; color:var(--muted);
+    font-size:.92rem; min-height:1.4em;}
+  #leaderboard b{color:var(--navy);}
+
+  /* ===== Cursor trail ===== */
+  .trail{position:fixed; z-index:9998; pointer-events:none; font-size:20px; line-height:1;
+    transform:translate(-50%,-50%); will-change:transform,opacity;
+    animation:trailFade .9s ease-out forwards;}
+  @keyframes trailFade{from{opacity:.95; transform:translate(-50%,-50%) scale(1);}
+    to{opacity:0; transform:translate(-50%,-140%) scale(.4) rotate(40deg);}}
+
+  /* ===== Konami / confetti / sticker rain ===== */
+  #fx{position:fixed; inset:0; z-index:9997; pointer-events:none; overflow:hidden;}
+  .confetti, .rainSticker{position:fixed; top:-60px; will-change:transform; pointer-events:none;}
+  .confetti{width:10px; height:14px; border-radius:2px;}
+  .rainSticker{width:64px; height:auto; filter:drop-shadow(0 6px 12px rgba(61,80,118,.30));}
+
+  /* ===== Draggable / thrown stickers ===== */
+  .sticker{cursor:grab; touch-action:none; pointer-events:auto;}
+  .sticker.flung{position:fixed; z-index:9996; margin:0; animation:none !important; cursor:grabbing;
+    filter:drop-shadow(0 10px 18px rgba(61,80,118,.40));}
+
+  /* ===== Fake loading overlay ===== */
+  #loader{position:fixed; inset:0; z-index:10006; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center;
+    background:radial-gradient(900px 500px at 50% 40%, #ffffff, #d6e8f7);
+    transition:opacity .5s ease;}
+  #loader.gone{opacity:0; pointer-events:none;}
+  #loader .lTitle{font-size:clamp(1.2rem,4.5vw,1.9rem); font-weight:800; color:var(--navy);
+    text-transform:uppercase; letter-spacing:.5px;}
+  #loader .lMsg{color:var(--muted); min-height:1.4em; font-size:1rem;}
+  #loader .lTrack{width:min(420px,80vw); height:14px; border-radius:14px; background:var(--wave);
+    overflow:hidden; box-shadow:inset 0 1px 3px rgba(61,80,118,.25);}
+  #loader .lFill{height:100%; width:0%; border-radius:14px;
+    background:linear-gradient(90deg,var(--navy),var(--wave-deep)); transition:width .3s ease;}
+  #loader .lPct{font-weight:700; color:var(--navy); font-variant-numeric:tabular-nums;}
+
+  /* ===== Dark "Legend Mode" theme ===== */
+  body.dark{
+    --bg:#0e1320; --bg2:#0a0f1a; --card:#161d2e; --card-border:#27314a;
+    --navy:#9fc0ec; --navy-dark:#c8defa; --wave:#27314a; --wave-deep:#5b7db0;
+    --accent:#9fc0ec; --accent2:#5b7db0; --text:#dfe7f2; --muted:#93a2bb;
+    background:linear-gradient(180deg,#0a0f1a 0%,#0e1320 55%,#10182a 100%);
+  }
+  body.dark .track, body.dark .fun-btn, body.dark #loader{background:var(--card);}
+  body.dark #loader{background:radial-gradient(900px 500px at 50% 40%, #161d2e, #0a0f1a);}
+  body.dark #gate{background:radial-gradient(900px 500px at 50% 38%, #161d2e, #0a0f1a);}
+  body.dark #victimCount{background:rgba(159,192,236,.12);}
 </style>
 </head>
 <body>
@@ -136,12 +212,35 @@
     <button id="enterBtn">▶ Enter the legend</button>
   </div>
 
+  <!-- ===== FAKE LOADING OVERLAY (it lies) ===== -->
+  <div id="loader" aria-hidden="true">
+    <div class="lTitle">Summoning the legend…</div>
+    <div class="lTrack"><div class="lFill"></div></div>
+    <div class="lPct">0%</div>
+    <div class="lMsg">Warming up the rickroll cannon…</div>
+  </div>
+
+  <!-- ===== EFFECTS LAYER (confetti + sticker rain) ===== -->
+  <div id="fx" aria-hidden="true"></div>
+
+  <!-- ===== ACHIEVEMENT TOASTS ===== -->
+  <div id="toasts" aria-live="polite"></div>
+
   <!-- ===== PAGE ===== -->
   <div class="wrap">
     <header class="hero">
       <h1>The legendary story of<br>Leckere Überraschung</h1>
-      <p>A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
+      <p id="heroSub">A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
     </header>
+
+    <div id="funBar">
+      <span id="moodRing" title="The Leckere-meter" aria-label="mood">😐</span>
+      <button class="fun-btn" id="chaosBtn" title="Play every version at once">🌀 Chaos mode</button>
+      <button class="fun-btn" id="shareBtn" title="Pass the curse along">🔗 Share the curse</button>
+      <button class="fun-btn" id="themeBtn" title="Toggle dark Legend Mode">🌙 Legend Mode</button>
+      <span id="victimCount" title="Brought to you by localStorage">🎯 Rickrolled <b>0</b>×</span>
+    </div>
+    <div id="leaderboard"></div>
 
     <h2 class="section">The Versions</h2>
     <div class="sticker-row" id="stickersTop"></div>
@@ -185,6 +284,7 @@ function startIntro(){
     "?autoplay=1&controls=0&rel=0&modestbranding=1&playsinline=1&start=0";
   if(gate){ gate.classList.add("gone"); setTimeout(()=>gate && gate.remove(), 550); }
   introTimer = setTimeout(endIntro, INTRO_MS);   // auto-dismiss after 8 s
+  if(window.FUN) FUN.gotRickrolled();
 }
 function endIntro(){
   if(!rickBanner || rickBanner.classList.contains("gone")) return;
@@ -194,7 +294,7 @@ function endIntro(){
   setTimeout(()=>{ if(rickBanner) rickBanner.remove(); }, 700);
 }
 if(gate) gate.addEventListener("click", startIntro);
-document.getElementById("rickClose").addEventListener("click", endIntro);
+document.getElementById("rickClose").addEventListener("click", ()=>{ if(window.FUN) FUN.coward(); endIntro(); });
 
 /* ---------------- Web Audio + Opus decoding ---------------- */
 let _ctx = null;
@@ -272,8 +372,9 @@ function startAt(el, buf, offset){
   cur = { el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
   el.querySelector(".dur").textContent = fmt(buf.duration);
   setIcon(el, true);
-  src.onended = ()=>{ if(cur && cur.src===src && elapsed() >= cur.dur - 0.08){ stopSource(); resetUI(el); cur=null; } };
+  src.onended = ()=>{ if(cur && cur.src===src && elapsed() >= cur.dur - 0.08){ stopSource(); resetUI(el); cur=null; if(window.FUN) FUN.mood('idle'); } };
   paint();
+  if(window.FUN) FUN.mood('play');
 }
 function pausePlayback(){
   if(!cur || !cur.playing) return;
@@ -282,6 +383,7 @@ function pausePlayback(){
   cur.offset = Math.min(e, cur.dur);
   cur.playing = false;
   setIcon(cur.el, false);
+  if(window.FUN) FUN.mood('pause');
 }
 
 async function onPlay(el){
@@ -300,6 +402,7 @@ async function onPlay(el){
     const buf = await decodeToBuffer(url);
     btn.disabled = false;
     startAt(el, buf, 0);
+    if(window.FUN) FUN.trackStarted(el);
   }catch(err){
     btn.disabled = false; setIcon(el,false);
     el.querySelector(".time").textContent = "Could not decode this file.";
@@ -449,6 +552,8 @@ async function loadAudio(){
       el.className = "track";
       el.dataset.src = encodeURI(f.path);
       const info = langInfo(f.name);
+      el.dataset.lang = info.label;
+      el.dataset.flag = info.flag;
       el.innerHTML = `
         <button class="play" aria-label="Play">▶</button>
         <div class="meta">
@@ -465,6 +570,8 @@ async function loadAudio(){
       durItems.push({ el, url: el.dataset.src });
     });
     preloadDurations(durItems);
+    window.__trackCount = files.length;
+    if(window.FUN) FUN.refreshLeaderboard();
   }catch(err){
     box.innerHTML = `<div class="status">Couldn't reach the archives (${err.message}). If you just pushed, wait a moment and refresh.</div>`;
   }
@@ -475,6 +582,7 @@ async function loadStickers(){
   let files = [];
   try{ files = await listRepoFiles(STICKER_DIR, [".png",".jpg",".jpeg",".webp",".gif"]); }catch(e){ return; }
   if(!files.length) return;
+  window.__stickerUrls = files.map(f => encodeURI(f.path));
 
   // Build side rails for desktop (siblings of .wrap so they sit in the gutters)
   const leftRail = document.createElement("div");  leftRail.className = "rail left";
@@ -492,6 +600,7 @@ async function loadStickers(){
     img.alt = "Nazan";
     img.style.setProperty("--rot", (Math.random()*30-15).toFixed(1)+"deg");
     img.style.animationDelay = (Math.random()*4).toFixed(2)+"s";
+    if(window.FUN) FUN.makeDraggable(img);
     return img;
   };
 
@@ -544,6 +653,375 @@ async function loadFavicon(){
   }catch(e){ setFavicon(src); }                         // fallback: raw image as-is
 }
 loadFavicon();
+
+/* =================================================================
+   FUN — hilarity bundle (loader, victims, konami, achievements,
+   subtitle, mood ring, cursor trail, sticker physics, chaos mode,
+   leaderboard, theme switcher, share-the-curse).
+   All client-side, persisted via localStorage. No backend.
+   ================================================================= */
+(function(){
+  const LS = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+  const $ = (s)=>document.querySelector(s);
+  const rnd = (a,b)=> a + Math.random()*(b-a);
+  const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
+
+  /* ---------- Achievement toasts ---------- */
+  function toast(icon, title, body){
+    const box = $("#toasts"); if(!box) return;
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<span class="ico"></span><span class="txt"><b></b><span class="b"></span></span>`;
+    t.querySelector(".ico").textContent = icon;
+    t.querySelector("b").textContent = title;
+    t.querySelector(".b").textContent = body;
+    box.appendChild(t);
+    requestAnimationFrame(()=> t.classList.add("show"));
+    setTimeout(()=>{ t.classList.remove("show"); setTimeout(()=> t.remove(), 500); }, 4200);
+  }
+  function achieve(id, icon, title, body){
+    const done = LS.get("achievements", {});
+    if(done[id]) return false;
+    done[id] = Date.now(); LS.set("achievements", done);
+    toast(icon, "🏆 "+title, body);
+    return true;
+  }
+
+  /* ---------- Mood ring ("Leckere-meter") ---------- */
+  const MOODS = { idle:"😐", play:"🤩", pause:"😴", skip:"😤", chaos:"🤯", party:"🥳", curse:"😈" };
+  let moodTimer = null;
+  function mood(state){
+    const m = $("#moodRing"); if(!m) return;
+    m.textContent = MOODS[state] || "😐";
+    m.classList.remove("bump"); void m.offsetWidth; m.classList.add("bump");
+    clearTimeout(moodTimer);
+    if(state !== "idle" && state !== "chaos"){
+      moodTimer = setTimeout(()=>{ if(!chaosOn) m.textContent = MOODS.idle; }, 6000);
+    }
+  }
+
+  /* ---------- Random hero subtitle ---------- */
+  const SUBS = [
+    'A saga in audio, starring the one and only <strong>Nazan</strong>.',
+    'Now in many languages, none of them necessary.',
+    'A masterpiece. A crime against silence. Both.',
+    'Legally distinct from a good idea, starring <strong>Nazan</strong>.',
+    'You came for the surprise. The surprise was the rickroll all along.',
+    'Buffering greatness since you clicked.',
+    '100% organic, free-range, artisanal nonsense.',
+    'The only website endorsed by <strong>Nazan</strong> (citation needed).'
+  ];
+  function randomSubtitle(){ const s = $("#heroSub"); if(s) s.innerHTML = pick(SUBS); }
+
+  /* ---------- Victim counter ---------- */
+  function renderVictims(){
+    const el = $("#victimCount b"); if(el) el.textContent = LS.get("victimCount", 0);
+  }
+  function gotRickrolled(){
+    const n = LS.get("victimCount", 0) + 1; LS.set("victimCount", n);
+    renderVictims();
+    if(n === 1) achieve("first_roll", "🎯", "Never Gonna Give You Up", "You have been rickrolled. There is no going back.");
+    if(n === 5) achieve("roll_5", "🔁", "Glutton for Punishment", "Rickrolled 5 times. Seek help.");
+    if(n === 10) achieve("roll_10", "💀", "Certified Victim", "10 rickrolls. We are legally concerned.");
+  }
+  function coward(){ mood('skip'); achieve("coward", "🏃", "Coward", "You tried to skip the legend. Shameful."); }
+
+  /* ---------- Leaderboard + per-language plays ---------- */
+  function trackStarted(el){
+    mood('play');
+    const lang = (el && el.dataset.lang) || "Unknown";
+    const flag = (el && el.dataset.flag) || "🌐";
+    const plays = LS.get("plays", {});
+    const rec = plays[lang] || { count:0, flag };
+    rec.count += 1; rec.flag = flag; plays[lang] = rec;
+    LS.set("plays", plays);
+    refreshLeaderboard();
+
+    const total = Object.values(plays).reduce((s,r)=> s + r.count, 0);
+    const distinct = Object.keys(plays).length;
+    if(total === 1) achieve("first_play", "🎧", "First Contact", "You played your first version of the legend.");
+    if(distinct === 5) achieve("polyglot_5", "🗣️", "Polyglot in Training", "Heard the legend in 5 languages.");
+    if(/^latin/i.test(lang)) achieve("scholar", "🏛️", "True Scholar", "You played the Latin version. Respect.");
+    const totalLangs = window.__trackCount || 0;
+    if(totalLangs && distinct >= totalLangs) achieve("all_langs", "🌍", "Master of the Legend", "Played every single version. Touch grass.");
+  }
+  function refreshLeaderboard(){
+    const lb = $("#leaderboard"); if(!lb) return;
+    const plays = LS.get("plays", {});
+    const entries = Object.entries(plays).sort((a,b)=> b[1].count - a[1].count);
+    if(!entries.length){ lb.innerHTML = "🎵 No legends played yet. Your reputation is spotless… for now."; return; }
+    const [lang, rec] = entries[0];
+    const quip = rec.count >= 7 ? " Seek help." : rec.count >= 3 ? " A connoisseur." : "";
+    lb.innerHTML = `Your most-played legend: <b>${rec.flag} ${lang}</b> (${rec.count} play${rec.count===1?"":"s"}).${quip}`;
+  }
+
+  /* ---------- Cursor trail ---------- */
+  const TRAIL = ["🎁","🌟","✨","🎵","💫","🎉"];
+  let lastTrail = 0;
+  function trail(e){
+    const now = performance.now();
+    if(now - lastTrail < 45) return;
+    lastTrail = now;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    if(x==null || y==null) return;
+    const s = document.createElement("span");
+    s.className = "trail"; s.textContent = pick(TRAIL);
+    s.style.left = x+"px"; s.style.top = y+"px";
+    s.style.fontSize = rnd(14,24).toFixed(0)+"px";
+    document.body.appendChild(s);
+    setTimeout(()=> s.remove(), 950);
+  }
+
+  /* ---------- Confetti + sticker rain (Konami) ---------- */
+  const fx = $("#fx");
+  function confettiBurst(n){
+    const colors = ["#3d5076","#6f93c0","#c9dff0","#f4c542","#e0607e","#5bbf8a"];
+    for(let i=0;i<n;i++){
+      const c = document.createElement("div");
+      c.className = "confetti";
+      c.style.left = rnd(0,100)+"vw";
+      c.style.background = pick(colors);
+      c.style.transform = `rotate(${rnd(0,360)}deg)`;
+      fx.appendChild(c);
+      animateFall(c, rnd(2200,4200), rnd(0,40));
+    }
+  }
+  function stickerRain(n){
+    const urls = window.__stickerUrls || [];
+    if(!urls.length) return;
+    for(let i=0;i<n;i++){
+      const img = document.createElement("img");
+      img.className = "rainSticker"; img.src = pick(urls); img.alt = "Nazan";
+      img.style.left = rnd(0,92)+"vw";
+      img.style.width = rnd(40,82).toFixed(0)+"px";
+      fx.appendChild(img);
+      animateFall(img, rnd(2600,5000), rnd(0,60));
+    }
+  }
+  function animateFall(node, dur, drift){
+    const startY = -80, endY = window.innerHeight + 100;
+    const spin = rnd(-540,540), t0 = performance.now();
+    (function step(t){
+      const k = Math.min(1, (t - t0)/dur);
+      node.style.transform = `translate(${drift*k}px, ${startY + (endY-startY)*k}px) rotate(${spin*k}deg)`;
+      if(k < 1) requestAnimationFrame(step); else node.remove();
+    })(t0);
+  }
+  function partyTime(){
+    mood('party');
+    confettiBurst(140); stickerRain(24);
+    toast("🎊", "PARTY MODE", "The legend approves of your secret knowledge.");
+    achieve("konami", "🕹️", "The Old Ways", "You entered the Konami code. Nostalgia unlocked.");
+  }
+  // Konami listener
+  const KSEQ = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+  let kpos = 0;
+  document.addEventListener("keydown", (e)=>{
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    kpos = (key === KSEQ[kpos]) ? kpos + 1 : (key === KSEQ[0] ? 1 : 0);
+    if(kpos === KSEQ.length){ kpos = 0; partyTime(); }
+  });
+
+  /* ---------- Draggable / throwable stickers ---------- */
+  function makeDraggable(img){
+    let dragging=false, fixed=false, px=0, py=0, vx=0, vy=0, lastT=0, raf=null;
+    function lift(clientX, clientY){
+      const r = img.getBoundingClientRect();
+      img.classList.add("flung");
+      img.style.left = r.left+"px"; img.style.top = r.top+"px";
+      img.style.width = r.width+"px";
+      fixed = true; px = r.left; py = r.top;
+    }
+    function onDown(e){
+      e.preventDefault();
+      const p = e.touches ? e.touches[0] : e;
+      if(!fixed) lift(p.clientX, p.clientY);
+      if(raf){ cancelAnimationFrame(raf); raf=null; }
+      dragging = true; vx = vy = 0; lastT = performance.now();
+      img.dragOX = p.clientX - px; img.dragOY = p.clientY - py;
+      img.style.cursor = "grabbing";
+      window.addEventListener("pointermove", onMove, {passive:false});
+      window.addEventListener("pointerup", onUp);
+    }
+    function onMove(e){
+      if(!dragging) return;
+      e.preventDefault();
+      const now = performance.now(), dt = Math.max(1, now - lastT);
+      const nx = e.clientX - img.dragOX, ny = e.clientY - img.dragOY;
+      vx = (nx - px)/dt*16; vy = (ny - py)/dt*16;
+      px = nx; py = ny; lastT = now;
+      img.style.left = px+"px"; img.style.top = py+"px";
+    }
+    function onUp(){
+      dragging = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      img.style.cursor = "grab";
+      fling();
+    }
+    function fling(){
+      const W = ()=> window.innerWidth, H = ()=> window.innerHeight;
+      const w = img.offsetWidth, h = img.offsetHeight;
+      const gravity = 0.6, friction = 0.99, bounce = 0.7;
+      (function tick(){
+        vy += gravity; vx *= friction;
+        px += vx; py += vy;
+        if(px < 0){ px = 0; vx = -vx*bounce; }
+        if(px + w > W()){ px = W()-w; vx = -vx*bounce; }
+        if(py + h > H()){ py = H()-h; vy = -vy*bounce; vx *= 0.8; }
+        if(py < 0){ py = 0; vy = -vy*bounce; }
+        img.style.left = px+"px"; img.style.top = py+"px";
+        const resting = (py + h >= H()-1) && Math.abs(vy) < 1.2 && Math.abs(vx) < 0.4;
+        if(!resting) raf = requestAnimationFrame(tick); else raf = null;
+      })();
+    }
+    img.addEventListener("pointerdown", onDown);
+    img.addEventListener("dragstart", (e)=> e.preventDefault());
+  }
+
+  /* ---------- Chaos mode: play every version at once ---------- */
+  let chaosOn = false; let chaosSources = [];
+  async function toggleChaos(){
+    const btn = $("#chaosBtn");
+    if(chaosOn){ stopChaos(); return; }
+    const tracks = Array.from(document.querySelectorAll(".track"));
+    if(!tracks.length){ toast("🤷","Nothing to remix yet","The archives are still loading."); return; }
+    chaosOn = true; mood('chaos');
+    btn.textContent = "⏹ Stop the madness";
+    try{ await getCtx().resume(); }catch(e){}
+    endIntro();
+    achieve("chaos", "🌀", "Agent of Chaos", "You played every version at once. Glorious cacophony.");
+    chaosSources = [];
+    for(const el of tracks){
+      const url = el.dataset.src;
+      try{
+        const buf = await decodeToBuffer(url);
+        if(!chaosOn) return;
+        const ctx = getCtx();
+        const src = ctx.createBufferSource();
+        const gain = ctx.createGain(); gain.gain.value = 0.6;
+        src.buffer = buf; src.loop = true;
+        src.connect(gain).connect(ctx.destination);
+        src.start(0, 0);
+        chaosSources.push(src);
+      }catch(e){ /* skip undecodable */ }
+    }
+  }
+  function stopChaos(){
+    chaosOn = false;
+    chaosSources.forEach(s=>{ try{ s.stop(); }catch(e){} });
+    chaosSources = [];
+    const btn = $("#chaosBtn"); if(btn) btn.textContent = "🌀 Chaos mode";
+    mood('idle');
+  }
+
+  /* ---------- Share the curse ---------- */
+  async function shareCurse(){
+    const url = location.href.split("#")[0];
+    const text = "I have passed the rickroll onto you. You're welcome. 🎁";
+    achieve("curse", "🔗", "Curse Spreader", "You shared the legend. The chain continues.");
+    mood('curse');
+    if(navigator.share){
+      try{ await navigator.share({ title:"Leckere Überraschung", text, url }); return; }catch(e){}
+    }
+    try{
+      await navigator.clipboard.writeText(text + " " + url);
+      toast("📋", "Curse copied!", "Link copied to clipboard. Go infect a friend.");
+    }catch(e){
+      toast("🔗", "Share it manually", url);
+    }
+  }
+
+  /* ---------- Dark "Legend Mode" theme ---------- */
+  function applyTheme(dark){
+    document.body.classList.toggle("dark", dark);
+    const btn = $("#themeBtn");
+    if(btn) btn.textContent = dark ? "☀️ Daylight" : "🌙 Legend Mode";
+    LS.set("darkMode", dark);
+  }
+  function toggleTheme(){
+    const dark = !document.body.classList.contains("dark");
+    applyTheme(dark);
+    if(dark) achieve("dark", "🌑", "Embraced the Darkness", "Legend Mode engaged. Edgy.");
+  }
+  // Seasonal joke hats on stickers based on the date
+  function seasonalFlair(){
+    const m = new Date().getMonth(); // 0=Jan
+    let hat = "";
+    if(m === 11) hat = "🎅";        // December
+    else if(m === 9) hat = "🎃";    // October
+    else if(m >= 5 && m <= 7) hat = "😎"; // summer
+    if(!hat) return;
+    document.querySelectorAll(".sticker").forEach(s=>{ if(!s.title) s.title = hat + " seasonal Nazan " + hat; });
+  }
+
+  /* ---------- Fake lying loader ---------- */
+  const LOAD_MSGS = [
+    "Warming up the rickroll cannon…",
+    "Aligning the stickers with the moon…",
+    "Negotiating with the Opus codec…",
+    "Polishing Nazan's aura…",
+    "Translating the legend into 12 dialects…",
+    "Reticulating splines…",
+    "Asking the server very politely…",
+    "Almost there… (this is a lie)…",
+    "Buffering greatness…"
+  ];
+  function fakeLoad(){
+    const loader = $("#loader");
+    if(!loader) return;
+    const fill = loader.querySelector(".lFill");
+    const pct = loader.querySelector(".lPct");
+    const msg = loader.querySelector(".lMsg");
+    let p = 0, mi = 0;
+    msg.textContent = LOAD_MSGS[0];
+    const msgT = setInterval(()=>{ mi = (mi+1)%LOAD_MSGS.length; msg.textContent = LOAD_MSGS[mi]; }, 800);
+    const tick = setInterval(()=>{
+      // race to 99, then crawl, then freeze dramatically
+      if(p < 70) p += rnd(8,16);
+      else if(p < 92) p += rnd(2,5);
+      else if(p < 99) p += rnd(0.2,0.8);
+      else p = 99;
+      p = Math.min(p, 99);
+      fill.style.width = p+"%"; pct.textContent = Math.floor(p)+"%";
+    }, 220);
+    // freeze at 99 for comedic effect, then snap to 100 and reveal
+    setTimeout(()=>{
+      clearInterval(tick);
+      msg.textContent = "Stuck at 99%. Classic.";
+      setTimeout(()=>{
+        clearInterval(msgT);
+        p = 100; fill.style.width = "100%"; pct.textContent = "100%";
+        msg.textContent = "There it is. Enjoy the legend.";
+        setTimeout(()=>{ loader.classList.add("gone"); setTimeout(()=> loader.remove(), 600); }, 650);
+      }, 1100);
+    }, rnd(2600,3600));
+  }
+
+  /* ---------- Wire it all up ---------- */
+  window.FUN = { mood, achieve, toast, trackStarted, gotRickrolled, coward,
+                 refreshLeaderboard, makeDraggable };
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    randomSubtitle();
+    renderVictims();
+    refreshLeaderboard();
+    applyTheme(LS.get("darkMode", false));
+    fakeLoad();
+    seasonalFlair();
+    window.addEventListener("pointermove", trail, {passive:true});
+    const cb = $("#chaosBtn"); if(cb) cb.addEventListener("click", toggleChaos);
+    const sb = $("#shareBtn"); if(sb) sb.addEventListener("click", shareCurse);
+    const tb = $("#themeBtn"); if(tb) tb.addEventListener("click", toggleTheme);
+  });
+  // run seasonal flair again once stickers load asynchronously
+  const flairPoll = setInterval(()=>{ if(document.querySelector(".sticker")){ seasonalFlair(); clearInterval(flairPoll); } }, 1000);
+  setTimeout(()=> clearInterval(flairPoll), 15000);
+})();
 </script>
 </body>
 </html>
