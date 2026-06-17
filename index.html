@@ -1075,6 +1075,18 @@ loadFavicon();
           // wobbly "wibble-wobble"
           tone({ type:"sine", f0:rnd(600,820), f1:rnd(560,760), dur:0.16, vol:0.1, wobble:90, wobbleRate:rnd(22,34) });
         }
+      },
+      // perky "ba-ding!" reward chime — used for minigame score milestones so the
+      // celebratory beats sound the same goofy synth family as everything else.
+      point(){
+        tone({ type:"triangle", f0:660, f1:660, dur:0.09, vol:0.12 });
+        tone({ type:"triangle", f0:990, f1:990, dur:0.14, vol:0.12, t0:0.09, wobble:18 });
+      },
+      // cheery ascending "ta-da-daa!" fanfare to kick off a minigame round.
+      gameStart(){
+        tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
+        tone({ type:"square", f0:523, dur:0.1, vol:0.1, t0:0.1 });
+        tone({ type:"square", f0:784, f1:880, dur:0.22, vol:0.11, t0:0.2, wobble:22 });
       }
     };
   })();
@@ -1448,6 +1460,9 @@ loadFavicon();
     let images = [];               // preloaded Nazan sticker images
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
+    // Tracks the last 100-point milestone we celebrated, so the reward chime fires
+    // once per milestone instead of every frame.
+    let milestone = 0;
     // Shove ability: a short-cooldown blast that pushes nearby Nazans away, giving
     // the player a fighting chance when the screen gets crowded at higher scores.
     let blastCd = 0, blastFx = 0;
@@ -1500,10 +1515,13 @@ loadFavicon();
       const img = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
                      rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06 });
+      // A new Nazan joining the fray gives a little goofy blip — keyed by its image
+      // so each one has its own consistent voice, matching the page's button blips.
+      if(running){ try{ sfx.blip(img ? img.src : "nazan-dodge-spawn"); }catch(err){} }
     }
 
     function reset(){
-      enemies = []; score = 0; elapsed = 0; spawnAcc = 0;
+      enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
       blastCd = 0; blastFx = 0; blastCdMax = BLAST_COOLDOWN_START;
       player = { x: W / 2, y: H * 0.72, r: Math.max(20, base() * 0.05), rot: 0,
                  img: images.length ? images[0] : null };
@@ -1573,6 +1591,9 @@ loadFavicon();
       last = now; elapsed += dt;
       score += dt * 10;
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      // Reward chime every 100 points to make survival feel celebratory.
+      const m = Math.floor(score / 100);
+      if(m > milestone){ milestone = m; try{ sfx.point(); }catch(err){} }
       if(blastCd > 0){ blastCd = Math.max(0, blastCd - dt); updateShoveBtn(); }
       if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
 
@@ -1585,13 +1606,21 @@ loadFavicon();
 
       updatePlayer(dt);
 
-      // Move every Nazan and bounce it off the walls.
+      // Move every Nazan and bounce it off the walls. A wall bounce makes the
+      // Nazan boing — the same comedic sticker bounce the rest of the page uses —
+      // keyed per image so a crowd is a chorus of distinct silly noises (and the
+      // sfx module's own throttle keeps it from turning to mush).
       for(const e of enemies){
         e.x += e.vx; e.y += e.vy; e.rot += e.vr;
-        if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); }
-        if(e.x > W - e.r){ e.x = W - e.r; e.vx = -Math.abs(e.vx); }
-        if(e.y < e.r){ e.y = e.r; e.vy = Math.abs(e.vy); }
-        if(e.y > H - e.r){ e.y = H - e.r; e.vy = -Math.abs(e.vy); }
+        let bounced = false;
+        if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); bounced = true; }
+        if(e.x > W - e.r){ e.x = W - e.r; e.vx = -Math.abs(e.vx); bounced = true; }
+        if(e.y < e.r){ e.y = e.r; e.vy = Math.abs(e.vy); bounced = true; }
+        if(e.y > H - e.r){ e.y = H - e.r; e.vy = -Math.abs(e.vy); bounced = true; }
+        if(bounced){
+          const spd = Math.hypot(e.vx, e.vy);
+          try{ sfx.boing(spd / (base() * 0.004), e.img ? e.img.src : "nazan-dodge-wall"); }catch(err){}
+        }
       }
 
       // Bounce the Nazans off each other (equal-mass elastic — they swap momentum
@@ -1613,6 +1642,13 @@ loadFavicon();
           if(rvn < 0){                              // only when they're approaching
             a.vx += rvn * nx; a.vy += rvn * ny;
             b.vx -= rvn * nx; b.vy -= rvn * ny;
+            // A solid Nazan-on-Nazan smack boings, just like the stickers colliding
+            // on the page. Soft grazes stay quiet so only real impacts speak up.
+            const impact = -rvn / (base() * 0.004);
+            if(impact > 1.6){
+              try{ sfx.boing(impact, a.img ? a.img.src : "nazan-dodge-a"); }catch(err){}
+              try{ sfx.boing(impact, b.img ? b.img.src : "nazan-dodge-b"); }catch(err){}
+            }
           }
         }
       }
@@ -1669,6 +1705,7 @@ loadFavicon();
       overPane.classList.add("hidden");
       if(shoveBtn) shoveBtn.classList.add("show");
       running = true; last = performance.now();
+      try{ sfx.gameStart(); }catch(e){}
       raf = requestAnimationFrame(step);
     }
     function gameOver(){
