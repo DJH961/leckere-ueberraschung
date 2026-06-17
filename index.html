@@ -164,7 +164,7 @@
    ================================================================= */
 const REPO        = "DJH961/leckere-ueberraschung";
 const BRANCH      = "main";
-const AUDIO_DIR   = "audio";      // folder of .opus files
+const AUDIO_DIR   = "audio";      // folder of .opus / .m4a files
 const STICKER_DIR = "stickers";   // folder of Nazan stickers
 const FAVICON_DIR = "favicon";     // drop ANY image here → auto-used as the favicon
 const INTRO_MS    = 8000;         // rickroll length (8 s)
@@ -208,8 +208,19 @@ function getDecoder(){
 const buffers = new Map();           // url -> AudioBuffer
 let cur = null;                      // {el, src, startedAt, offset, dur, playing}
 
-async function decodeToBuffer(url){
-  if(buffers.has(url)) return buffers.get(url);
+function isOpus(url){ return /\.opus(\?|#|$)/i.test(url); }
+
+/* .m4a (AAC) decodes natively through Web Audio on every platform,
+   including iOS & Windows. The callback form of decodeAudioData keeps
+   older Safari happy. */
+async function decodeNative(url){
+  const ctx = getCtx();
+  const data = await (await fetch(url)).arrayBuffer();
+  return await new Promise((resolve, reject)=> ctx.decodeAudioData(data, resolve, reject));
+}
+
+/* .opus needs the WebAssembly decoder so it plays on Safari/iOS too. */
+async function decodeOpus(url){
   const Dec = getDecoder();
   if(!Dec) throw new Error("decoder-unavailable");
   const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
@@ -220,6 +231,12 @@ async function decodeToBuffer(url){
   const ctx = getCtx();
   const buf = ctx.createBuffer(Math.max(channelData.length,1), samplesDecoded, sampleRate || 48000);
   for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c], c);
+  return buf;
+}
+
+async function decodeToBuffer(url){
+  if(buffers.has(url)) return buffers.get(url);
+  const buf = isOpus(url) ? await decodeOpus(url) : await decodeNative(url);
   buffers.set(url, buf);
   return buf;
 }
@@ -304,7 +321,7 @@ function onSeek(el, ratio){
 
 /* ---------------- GitHub listing ---------------- */
 /* Language → flag lookup. Add new languages here and the file
-   "<Language> Version.opus" picks up its flag automatically. */
+   "<Language> Version.opus" (or .m4a) picks up its flag automatically. */
 const LANG_FLAGS = {
   english:"🇬🇧", british:"🇬🇧", american:"🇺🇸", german:"🇩🇪", deutsch:"🇩🇪",
   french:"🇫🇷", francais:"🇫🇷", spanish:"🇪🇸", espanol:"🇪🇸", italian:"🇮🇹",
@@ -372,11 +389,24 @@ async function preloadDurations(items){
   const worker = async ()=>{
     while(queue.length){
       const { el, url } = queue.shift();
-      const d = await getOpusDuration(url);
+      const d = isOpus(url) ? await getOpusDuration(url) : await getMediaDuration(url);
       if(d){ const dd = el.querySelector(".dur"); if(dd && dd.textContent === "--:--") dd.textContent = fmt(d); }
     }
   };
   await Promise.all(Array.from({length:4}, worker));
+}
+
+/* For .m4a (and other natively-supported formats) read the duration cheaply
+   from a metadata-only media element — no full decode, works everywhere. */
+function getMediaDuration(url){
+  return new Promise(resolve=>{
+    let a = new Audio();
+    a.preload = "metadata";
+    const done = (d)=>{ try{ a.removeAttribute("src"); a.load(); }catch(e){} a = null; resolve(d); };
+    a.onloadedmetadata = ()=> done(isFinite(a.duration) && a.duration > 0 ? a.duration : null);
+    a.onerror = ()=> done(null);
+    a.src = url;
+  });
 }
 
 async function listRepoFiles(dir, exts){
@@ -406,12 +436,12 @@ function versionSort(files){
 async function loadAudio(){
   const box = document.getElementById("audioList");
   if(REPO.startsWith("YOUR_GITHUB")){
-    box.innerHTML = `<div class="status">⚙️ Set <code>REPO</code> in <code>index.html</code> to your GitHub repo, then commit <code>.opus</code> files into <code>audio/</code>.</div>`;
+    box.innerHTML = `<div class="status">⚙️ Set <code>REPO</code> in <code>index.html</code> to your GitHub repo, then commit <code>.opus</code> or <code>.m4a</code> files into <code>audio/</code>.</div>`;
     return;
   }
   try{
-    const files = await listRepoFiles(AUDIO_DIR, [".opus"]);
-    if(!files.length){ box.innerHTML = `<div class="status">No <code>.opus</code> files in <code>${AUDIO_DIR}/</code> yet.</div>`; return; }
+    const files = await listRepoFiles(AUDIO_DIR, [".opus",".m4a"]);
+    if(!files.length){ box.innerHTML = `<div class="status">No <code>.opus</code> or <code>.m4a</code> files in <code>${AUDIO_DIR}/</code> yet.</div>`; return; }
     box.innerHTML = "";
     const durItems = [];
     versionSort(files).forEach((f,i)=>{
