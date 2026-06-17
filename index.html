@@ -787,7 +787,8 @@ loadFavicon();
 
   /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
   const sfx = (function(){
-    let lastBoing = 0;
+    let lastBoing = 0;                 // global throttle so we never overload the mixer
+    const lastBoingKey = new Map();    // per-sticker throttle so different stickers can sing at once
     // Deterministic per-identity sound selection: the same key (e.g. a sticker
     // image or a button) always yields the same flavour & pitches, while
     // different keys sound different. Falls back to Math.random when no key.
@@ -866,33 +867,70 @@ loadFavicon();
     }
     return {
       // comedic "boing" when a sticker bounces; volume scales with impact.
-      // Each sticker (keyed by `key`) keeps a consistent flavour & pitch;
-      // different stickers sound different.
+      // Each sticker (keyed by `key`) keeps a consistent flavour, voice & pitch;
+      // different stickers sound wildly different so a crowd of them is a chorus
+      // of distinct silly noises rather than the same boing over and over.
       boing(intensity, key){
         const now = performance.now();
-        if(now - lastBoing < 70) return;   // throttle rapid bounces
+        // Per-sticker throttle lets many different stickers chirp simultaneously,
+        // while a looser global throttle stops the whole thing turning to mush.
+        if(now - lastBoing < 28) return;
+        if(key != null){
+          const prev = lastBoingKey.get(key) || 0;
+          if(now - prev < 90) return;
+          lastBoingKey.set(key, now);
+        } else if(now - lastBoing < 70){ return; }
         lastBoing = now;
         const R = rngFor(key);
         const rnd = (a,b)=> a + R()*(b-a);
         const vol = Math.min(0.4, 0.07 + (intensity||0)*0.012);
-        const flavour = Math.floor(R()*4);
+        // Per-sticker "voice": a fixed pitch transpose + timbre so even two
+        // stickers that land on the same flavour are clearly different beasts.
+        const tp = Math.pow(2, rnd(-1, 1.15));          // ~0.5x .. ~2.2x pitch
+        const P = (f)=> Math.max(40, f*tp);
+        const voices = ["sine","triangle","square","sawtooth"];
+        const voice = voices[Math.floor(R()*voices.length)];
+        const flavour = Math.floor(R()*10);
         if(flavour === 0){
           // classic springy boing with a wild wobble
-          tone({ type:"sine", f0:rnd(380,520), dur:0.26, vol, wobble:70, wobbleRate:rnd(14,22),
-                 glide:[rnd(140,200), rnd(260,340), rnd(90,130)] });
+          tone({ type:"sine", f0:P(rnd(380,520)), dur:0.26, vol, wobble:70, wobbleRate:rnd(14,22),
+                 glide:[P(rnd(140,200)), P(rnd(260,340)), P(rnd(90,130))] });
         } else if(flavour === 1){
           // "doy-oy-oing" rubbery triangle bounce
-          tone({ type:"triangle", f0:rnd(300,420), dur:0.3, vol, wobble:55,
-                 glide:[rnd(520,640), rnd(150,210), rnd(380,460), rnd(80,120)] });
+          tone({ type:"triangle", f0:P(rnd(300,420)), dur:0.3, vol, wobble:55,
+                 glide:[P(rnd(520,640)), P(rnd(150,210)), P(rnd(380,460)), P(rnd(80,120))] });
         } else if(flavour === 2){
           // cartoon slide-whistle "weeeooop"
-          tone({ type:"sine", f0:rnd(220,300), f1:rnd(900,1200), dur:0.18, vol });
-          tone({ type:"sine", f0:rnd(900,1200), f1:rnd(160,220), dur:0.2, vol, t0:0.16 });
-        } else {
+          tone({ type:"sine", f0:P(rnd(220,300)), f1:P(rnd(900,1200)), dur:0.18, vol });
+          tone({ type:"sine", f0:P(rnd(900,1200)), f1:P(rnd(160,220)), dur:0.2, vol, t0:0.16 });
+        } else if(flavour === 3){
           // squishy splat: boing + a little raspberry of noise
-          tone({ type:"square", f0:rnd(360,460), dur:0.2, vol:vol*0.8, wobble:40,
-                 glide:[rnd(120,170), rnd(70,100)] });
+          tone({ type:"square", f0:P(rnd(360,460)), dur:0.2, vol:vol*0.8, wobble:40,
+                 glide:[P(rnd(120,170)), P(rnd(70,100))] });
           noise({ f0:rnd(260,360), f1:rnd(120,180), dur:0.16, vol:Math.min(0.18, vol), q:5, t0:0.02 });
+        } else if(flavour === 4){
+          // honky cartoon car-horn "ah-ooo-gah"
+          tone({ type:"sawtooth", f0:P(rnd(300,380)), f1:P(rnd(300,380)), dur:0.1, vol, wobble:18 });
+          tone({ type:"sawtooth", f0:P(rnd(440,560)), f1:P(rnd(220,280)), dur:0.18, vol, t0:0.1, wobble:24 });
+        } else if(flavour === 5){
+          // boingy bouncing-ball "bo-bo-bo-boing" staircase
+          tone({ type:voice, f0:P(rnd(520,640)), dur:0.34, vol,
+                 glide:[P(rnd(420,500)), P(rnd(320,400)), P(rnd(240,300)), P(rnd(560,680))] });
+        } else if(flavour === 6){
+          // rubber-duck squeak: tiny high tone + a squeaky noise burst
+          tone({ type:"triangle", f0:P(rnd(900,1150)), f1:P(rnd(1500,1900)), dur:0.12, vol, wobble:60, wobbleRate:rnd(30,46) });
+          noise({ f0:rnd(1600,2200), f1:rnd(900,1300), dur:0.09, vol:Math.min(0.14, vol), q:10, t0:0.01 });
+        } else if(flavour === 7){
+          // sad trombone "wah-waaah" descending wobble
+          tone({ type:"sawtooth", f0:P(rnd(360,440)), dur:0.38, vol, wobble:28, wobbleRate:rnd(7,11),
+                 glide:[P(rnd(300,360)), P(rnd(230,280)), P(rnd(150,190))] });
+        } else if(flavour === 8){
+          // fat tuba "bwomp" — deep and dopey
+          tone({ type:"square", f0:P(rnd(150,210)), dur:0.24, vol:Math.min(0.42, vol*1.1), wobble:22,
+                 glide:[P(rnd(110,150)), P(rnd(80,110))] });
+        } else {
+          // excited spring "sproing!" rocketing upward
+          tone({ type:voice, f0:P(rnd(180,260)), f1:P(rnd(1100,1500)), dur:0.22, vol, wobble:35, wobbleRate:rnd(18,28) });
         }
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
@@ -1060,62 +1098,141 @@ loadFavicon();
   });
 
   /* ---------- Draggable / throwable stickers ---------- */
+  // Registry of stickers that have been "let loose" (flung at least once). Only
+  // these take part in sticker-vs-sticker collisions and the tempo boost; the
+  // stickers still parked in the page layout are left completely alone.
+  const flungStickers = [];
+  const COLLIDE_BOOST = 1.18;          // each sticker-on-sticker hit adds a little
+  const MAX_SPEED     = 46;            // ...energy, capped so it stays funny not insane
+
+  function clampSpeed(st){
+    const sp = Math.hypot(st.vx, st.vy);
+    if(sp > MAX_SPEED){ const k = MAX_SPEED / sp; st.vx *= k; st.vy *= k; }
+  }
+
+  // Resolve a collision between two flung stickers (circle approximation).
+  // Returns the impact magnitude when they actually bounced, else 0.
+  function collide(a, b){
+    if(a === b) return 0;
+    const aw = a.img.offsetWidth, ah = a.img.offsetHeight;
+    const bw = b.img.offsetWidth, bh = b.img.offsetHeight;
+    const ar = aw/2, br = bw/2;
+    const acx = a.px + aw/2, acy = a.py + ah/2;
+    const bcx = b.px + bw/2, bcy = b.py + bh/2;
+    let dx = bcx - acx, dy = bcy - acy;
+    let dist = Math.hypot(dx, dy);
+    const minDist = ar + br;
+    if(dist >= minDist) return 0;
+    if(dist === 0){ dx = (Math.random()-0.5) || 0.01; dy = (Math.random()-0.5) || 0.01; dist = Math.hypot(dx, dy); }
+    const nx = dx/dist, ny = dy/dist;
+    const overlap = minDist - dist;
+    // Push the pair apart so they can never end up stacked on each other.
+    // A sticker held under the pointer acts as an immovable wall.
+    if(a.dragging && !b.dragging){ b.px += nx*overlap; b.py += ny*overlap; }
+    else if(b.dragging && !a.dragging){ a.px -= nx*overlap; a.py -= ny*overlap; }
+    else { a.px -= nx*overlap/2; a.py -= ny*overlap/2; b.px += nx*overlap/2; b.py += ny*overlap/2; }
+    // Velocity exchange along the contact normal (equal mass, near-elastic).
+    const rvn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
+    if(rvn < 0){
+      let j = -rvn * COLLIDE_BOOST;     // >1 → the tempo boost that keeps them lively
+      if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
+      else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
+      else { a.vx -= j*nx; a.vy -= j*ny; b.vx += j*nx; b.vy += j*ny; }
+      clampSpeed(a); clampSpeed(b);
+      return Math.abs(rvn);
+    }
+    return 0;
+  }
+
+  // Cheap overlap test (no mutation) used to keep a sticker awake while it is
+  // still resting against another one.
+  function overlaps(a, b){
+    if(a === b) return false;
+    const acx = a.px + a.img.offsetWidth/2, acy = a.py + a.img.offsetHeight/2;
+    const bcx = b.px + b.img.offsetWidth/2, bcy = b.py + b.img.offsetHeight/2;
+    const minDist = a.img.offsetWidth/2 + b.img.offsetWidth/2;
+    return Math.hypot(bcx-acx, bcy-acy) < minDist;
+  }
+
   function makeDraggable(img){
-    let dragging=false, fixed=false, px=0, py=0, vx=0, vy=0, lastT=0, raf=null;
+    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, raf:null };
+    img._phys = st;
+    let lastT = 0;
     function lift(clientX, clientY){
       const r = img.getBoundingClientRect();
       img.classList.add("flung");
       img.style.left = r.left+"px"; img.style.top = r.top+"px";
       img.style.width = r.width+"px";
-      fixed = true; px = r.left; py = r.top;
+      st.fixed = true; st.px = r.left; st.py = r.top;
+      if(flungStickers.indexOf(st) === -1) flungStickers.push(st);
     }
     function onDown(e){
       e.preventDefault();
       const p = e.touches ? e.touches[0] : e;
-      if(!fixed) lift(p.clientX, p.clientY);
-      if(raf){ cancelAnimationFrame(raf); raf=null; }
-      dragging = true; vx = vy = 0; lastT = performance.now();
-      img.dragOX = p.clientX - px; img.dragOY = p.clientY - py;
+      if(!st.fixed) lift(p.clientX, p.clientY);
+      if(st.raf){ cancelAnimationFrame(st.raf); st.raf=null; }
+      st.dragging = true; st.vx = st.vy = 0; lastT = performance.now();
+      img.dragOX = p.clientX - st.px; img.dragOY = p.clientY - st.py;
       img.style.cursor = "grabbing";
       window.addEventListener("pointermove", onMove, {passive:false});
       window.addEventListener("pointerup", onUp);
     }
     function onMove(e){
-      if(!dragging) return;
+      if(!st.dragging) return;
       e.preventDefault();
       const now = performance.now(), dt = Math.max(1, now - lastT);
       const nx = e.clientX - img.dragOX, ny = e.clientY - img.dragOY;
-      vx = (nx - px)/dt*16; vy = (ny - py)/dt*16;
-      px = nx; py = ny; lastT = now;
-      img.style.left = px+"px"; img.style.top = py+"px";
+      st.vx = (nx - st.px)/dt*16; st.vy = (ny - st.py)/dt*16;
+      st.px = nx; st.py = ny; lastT = now;
+      img.style.left = st.px+"px"; img.style.top = st.py+"px";
     }
     function onUp(){
-      dragging = false;
+      st.dragging = false;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       img.style.cursor = "grab";
-      fling();
-    }
-    function fling(){
-      const W = ()=> window.innerWidth, H = ()=> window.innerHeight;
-      const w = img.offsetWidth, h = img.offsetHeight;
-      const gravity = 0.6, friction = 0.99, bounce = 0.7;
-      (function tick(){
-        vy += gravity; vx *= friction;
-        px += vx; py += vy;
-        let bounced = false, impact = 0;
-        if(px < 0){ px = 0; vx = -vx*bounce; impact = Math.max(impact, Math.abs(vx)); bounced = true; }
-        if(px + w > W()){ px = W()-w; vx = -vx*bounce; impact = Math.max(impact, Math.abs(vx)); bounced = true; }
-        if(py + h > H()){ py = H()-h; vy = -vy*bounce; vx *= 0.8; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
-        if(py < 0){ py = 0; vy = -vy*bounce; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
-        if(bounced && impact > 2.5) sfx.boing(impact, img.src);
-        img.style.left = px+"px"; img.style.top = py+"px";
-        const resting = (py + h >= H()-1) && Math.abs(vy) < 1.2 && Math.abs(vx) < 0.4;
-        if(!resting) raf = requestAnimationFrame(tick); else raf = null;
-      })();
+      startTick(st);
     }
     img.addEventListener("pointerdown", onDown);
     img.addEventListener("dragstart", (e)=> e.preventDefault());
+  }
+
+  // Wake a resting (already flung) sticker so it can react to being hit.
+  function startTick(st){
+    if(st.raf || st.dragging || !st.fixed) return;
+    const W = ()=> window.innerWidth, H = ()=> window.innerHeight;
+    const gravity = 0.6, friction = 0.99, bounce = 0.7;
+    (function tick(){
+      st.raf = null;
+      const img = st.img, w = img.offsetWidth, h = img.offsetHeight;
+      st.vy += gravity; st.vx *= friction;
+      st.px += st.vx; st.py += st.vy;
+      let bounced = false, impact = 0;
+      if(st.px < 0){ st.px = 0; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); bounced = true; }
+      if(st.px + w > W()){ st.px = W()-w; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); bounced = true; }
+      if(st.py + h > H()){ st.py = H()-h; st.vy = -st.vy*bounce; st.vx *= 0.8; impact = Math.max(impact, Math.abs(st.vy)); bounced = true; }
+      if(st.py < 0){ st.py = 0; st.vy = -st.vy*bounce; impact = Math.max(impact, Math.abs(st.vy)); bounced = true; }
+      // Bounce off the other already-flung stickers (never stack on them), and
+      // ride the tempo boost from each contact.
+      let touching = false;
+      for(const other of flungStickers){
+        if(other === st) continue;
+        const hit = collide(st, other);
+        if(hit > 0){
+          touching = true;
+          if(hit > 1.6){ sfx.boing(hit + 2, img.src); sfx.boing(hit + 2, other.img.src); }
+          other.img.style.left = other.px+"px"; other.img.style.top = other.py+"px";
+          if(!other.dragging) startTick(other);   // wake a resting sticker that got struck
+        } else if(overlaps(st, other)){
+          touching = true;
+        }
+      }
+      if(bounced && impact > 2.5) sfx.boing(impact, img.src);
+      img.style.left = st.px+"px"; img.style.top = st.py+"px";
+      const onFloor = (st.py + h >= H()-1) && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
+      // Keep animating while airborne or still nudging apart from another sticker.
+      if(!onFloor || touching){ st.raf = requestAnimationFrame(tick); }
+    })();
   }
 
   /* ---------- Chaos mode: play every version at once ---------- */
