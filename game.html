@@ -601,7 +601,7 @@
           activeEffect = null;
           updatePrompt();
         } else if(activeEffect.time <= activeEffect.displaySeconds - 1){
-          activeEffect.displaySeconds = Math.max(1, Math.ceil(activeEffect.time));
+          activeEffect.displaySeconds = Math.ceil(activeEffect.time);
           updatePrompt();
         }
       }
