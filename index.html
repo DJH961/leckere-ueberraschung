@@ -258,6 +258,12 @@ function getWarmDecoder(){
   }
   return _decPromise;
 }
+/* Discard the shared decoder so the next use rebuilds a clean instance. Used
+   when reset() fails and the decoder may be left in an unusable state. */
+function dropWarmDecoder(dec){
+  _decPromise = null;
+  if(dec){ try{ dec.free(); }catch(e){} }
+}
 let _decChain = Promise.resolve();
 function withDecoder(fn){
   const run = _decChain.then(()=> getWarmDecoder()).then(fn);
@@ -271,7 +277,9 @@ async function decodeOpus(url){
   const bytes = await fetchOpusBytes(url);
   const { channelData, samplesDecoded, sampleRate } = await withDecoder(async (dec)=>{
     const out = await dec.decode(bytes);
-    try{ await dec.reset(); }catch(e){}      // ready the shared decoder for the next file
+    // Ready the shared decoder for the next file; if that fails, throw it away
+    // so the next decode rebuilds a clean instance instead of reusing a bad one.
+    try{ await dec.reset(); }catch(e){ dropWarmDecoder(dec); }
     return out;
   });
   const ctx = getCtx();
