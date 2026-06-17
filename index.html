@@ -1350,9 +1350,16 @@ loadFavicon();
   let eggShown = false, eggNudgeTimer = null;
   function maybeRevealEgg(){
     if(eggShown) return;
-    // Every sticker must be loose: none still parked in the page layout.
-    const remaining = document.querySelectorAll(".sticker:not(.flung)").length;
-    const total = document.querySelectorAll(".sticker").length;
+    // Only the sticker set that is actually on-screen at this viewport can be
+    // unstuck: the other layout (desktop side-rails vs. mobile rows) is
+    // display:none, so its stickers can never be flung. Counting those hidden
+    // ones would keep `remaining > 0` forever and the egg would never appear.
+    // A flung sticker is position:fixed (still has client rects); a display:none
+    // one has none — so getClientRects() distinguishes interactable stickers.
+    const stickers = Array.from(document.querySelectorAll(".sticker"))
+      .filter(s => s.classList.contains("flung") || s.getClientRects().length > 0);
+    const total = stickers.length;
+    const remaining = stickers.filter(s => !s.classList.contains("flung")).length;
     if(total === 0 || remaining > 0) return;
     eggShown = true;
     const btn = $("#eggBtn"); if(!btn) return;
