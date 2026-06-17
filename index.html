@@ -1369,16 +1369,15 @@ loadFavicon();
     }, 60000);
   }
   function wireEgg(){
+    const openGame = ()=>{
+      clearTimeout(eggDirectTimer);      // don't pop the fallback once the game is open
+      achieve("foundgame", "🎮", "The Secret Game", "You found Nazan Dodge.");
+      Game.open();
+    };
     const btn = $("#eggBtn");
-    if(btn) btn.addEventListener("click", ()=>{
-      achieve("foundgame", "🎮", "The Secret Game", "You found Nazan Dodge.");
-      Game.open();
-    });
+    if(btn) btn.addEventListener("click", openGame);
     const dbtn = $("#eggDirect");
-    if(dbtn) dbtn.addEventListener("click", ()=>{
-      achieve("foundgame", "🎮", "The Secret Game", "You found Nazan Dodge.");
-      Game.open();
-    });
+    if(dbtn) dbtn.addEventListener("click", openGame);
   }
 
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
