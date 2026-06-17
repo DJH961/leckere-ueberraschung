@@ -305,10 +305,20 @@ function getDecoder(){
   if(window.OggOpusDecoder) return window.OggOpusDecoder;
   return null;
 }
-const buffers = new Map();           // url -> AudioBuffer
-let cur = null;                      // {el, src, startedAt, offset, dur, playing}
+const buffers = new Map();           // url -> AudioBuffer (opus, fully decoded)
+const mediaEls = new Map();          // url -> HTMLAudioElement (native, streamed)
+const opusBytes = new Map();         // url -> Promise<Uint8Array> (prefetched .opus data)
+let cur = null;                      // {kind:"buffer"|"media", el, ...}
 
 function isOpus(url){ return /\.opus(\?|#|$)/i.test(url); }
+/* Everything that isn't .opus (e.g. .m4a/AAC, .mp3) plays natively and can be
+   STREAMED through a media element, so playback starts almost instantly instead
+   of waiting for the whole file to download and decode. */
+function isNative(url){ return !isOpus(url); }
+
+/* Run low-priority work when the browser is idle, falling back to a timer on
+   browsers without requestIdleCallback (e.g. Safari). */
+const onIdle = (fn)=> (window.requestIdleCallback || ((cb)=>setTimeout(cb,200)))(fn);
 
 /* .m4a (AAC) decodes natively through Web Audio on every platform,
    including iOS & Windows. The callback form of decodeAudioData keeps
@@ -319,41 +329,106 @@ async function decodeNative(url){
   return await new Promise((resolve, reject)=> ctx.decodeAudioData(data, resolve, reject));
 }
 
+/* Fetch (and cache) the raw bytes of an .opus file. Prefetching these during
+   idle time means the network download is already done by the time of a click. */
+function fetchOpusBytes(url){
+  if(!opusBytes.has(url)){
+    opusBytes.set(url, fetch(url)
+      .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.arrayBuffer(); })
+      .then(b=> new Uint8Array(b))
+      .catch(err=>{ opusBytes.delete(url); throw err; }));   // allow retry on failure
+  }
+  return opusBytes.get(url);
+}
+
+/* A single WASM decoder is instantiated once and reused for every file, so the
+   expensive module init/compile no longer sits on the critical path of a click.
+   The decoder can only process one stream at a time, so all use is serialized
+   through a small promise-chain mutex and reset() between files. */
+let _decPromise = null;
+function getWarmDecoder(){
+  if(!_decPromise){
+    _decPromise = (async ()=>{
+      const Dec = getDecoder();
+      if(!Dec) throw new Error("decoder-unavailable");
+      const dec = new Dec();
+      await dec.ready;
+      return dec;
+    })().catch(err=>{ _decPromise = null; throw err; });
+  }
+  return _decPromise;
+}
+/* Discard the shared decoder so the next use rebuilds a clean instance. Used
+   when reset() fails and the decoder may be left in an unusable state. */
+function dropWarmDecoder(dec){
+  _decPromise = null;
+  if(dec){ try{ dec.free(); }catch(e){} }
+}
+let _decChain = Promise.resolve();
+function withDecoder(fn){
+  const run = _decChain.then(()=> getWarmDecoder()).then(fn);
+  // Keep the chain alive even if a job fails, so later jobs still run in order.
+  _decChain = run.then(()=>{}, ()=>{});
+  return run;
+}
+
 /* .opus needs the WebAssembly decoder so it plays on Safari/iOS too. */
 async function decodeOpus(url){
-  const Dec = getDecoder();
-  if(!Dec) throw new Error("decoder-unavailable");
-  const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
-  const dec = new Dec();
-  await dec.ready;
-  const { channelData, samplesDecoded, sampleRate } = await dec.decode(bytes);
-  dec.free();
+  const bytes = await fetchOpusBytes(url);
+  const { channelData, samplesDecoded, sampleRate } = await withDecoder(async (dec)=>{
+    const out = await dec.decode(bytes);
+    // Ready the shared decoder for the next file; if that fails, throw it away
+    // so the next decode rebuilds a clean instance instead of reusing a bad one.
+    try{ await dec.reset(); }catch(e){ dropWarmDecoder(dec); }
+    return out;
+  });
   const ctx = getCtx();
   const buf = ctx.createBuffer(Math.max(channelData.length,1), samplesDecoded, sampleRate || 48000);
   for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c], c);
   return buf;
 }
 
+const decoding = new Map();          // url -> Promise<AudioBuffer> (in-flight decode)
 async function decodeToBuffer(url){
   if(buffers.has(url)) return buffers.get(url);
-  const buf = isOpus(url) ? await decodeOpus(url) : await decodeNative(url);
-  buffers.set(url, buf);
-  return buf;
+  if(decoding.has(url)) return decoding.get(url);
+  const p = (isOpus(url) ? decodeOpus(url) : decodeNative(url))
+    .then(buf=>{ buffers.set(url, buf); return buf; })
+    .finally(()=> decoding.delete(url));
+  decoding.set(url, p);
+  return p;
 }
 
 function fmt(t){ if(!isFinite(t)) return "--:--"; t=Math.max(0,t|0); return (t/60|0)+":"+String(t%60).padStart(2,"0"); }
 function setIcon(el, playing){ el.querySelector(".play").textContent = playing ? "⏸" : "▶"; }
-function elapsed(){ return cur ? cur.offset + (getCtx().currentTime - cur.startedAt) : 0; }
+function elapsed(){
+  if(!cur) return 0;
+  if(cur.kind === "media") return cur.media ? cur.media.currentTime : cur.offset;
+  return cur.offset + (getCtx().currentTime - cur.startedAt);
+}
 
 function stopSource(){
-  if(cur && cur.src){ try{ cur.src.onended=null; cur.src.stop(); }catch(e){} cur.src=null; }
-  if(cur && cur.raf){ cancelAnimationFrame(cur.raf); cur.raf=null; }
+  if(cur){
+    if(cur.kind === "media"){
+      if(cur.media){ try{ cur.media.onended=null; cur.media.pause(); }catch(e){} }
+    }else if(cur.src){
+      try{ cur.src.onended=null; cur.src.stop(); }catch(e){} cur.src=null;
+    }
+    if(cur.raf){ cancelAnimationFrame(cur.raf); cur.raf=null; }
+  }
 }
 function paint(){
   if(!cur || !cur.playing) return;
-  const e = Math.min(elapsed(), cur.dur);
+  // A streamed media element may only learn its duration once metadata loads.
+  if(cur.kind === "media" && (!cur.dur || !isFinite(cur.dur)) &&
+     cur.media && isFinite(cur.media.duration) && cur.media.duration > 0){
+    cur.dur = cur.media.duration;
+    cur.el.querySelector(".dur").textContent = fmt(cur.dur);
+  }
+  const dur = cur.dur || 0;
+  const e = dur ? Math.min(elapsed(), dur) : elapsed();
   const t = cur.el;
-  t.querySelector(".prog").style.width = (e/cur.dur*100)+"%";
+  t.querySelector(".prog").style.width = (dur ? (e/dur*100) : 0)+"%";
   t.querySelector(".cur").textContent = fmt(e);
   cur.raf = requestAnimationFrame(paint);
 }
@@ -369,18 +444,44 @@ function startAt(el, buf, offset){
   src.buffer = buf;
   src.connect(ctx.destination);
   src.start(0, offset);
-  cur = { el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
+  cur = { kind:"buffer", el, src, startedAt: ctx.currentTime, offset, dur: buf.duration, playing:true, raf:null };
   el.querySelector(".dur").textContent = fmt(buf.duration);
   setIcon(el, true);
   src.onended = ()=>{ if(cur && cur.src===src && elapsed() >= cur.dur - 0.08){ stopSource(); resetUI(el); cur=null; if(window.FUN) FUN.mood('idle'); } };
   paint();
   if(window.FUN) FUN.mood('play');
 }
+/* Stream a natively-supported file through a media element. Playback begins as
+   soon as the browser has buffered enough — no waiting for the full download or
+   a full decode. The element is reused so resuming/seeking keeps its buffer. */
+function startMedia(el, offset){
+  const url = el.dataset.src;
+  let a = mediaEls.get(url);
+  if(!a){
+    a = new Audio();
+    a.preload = "auto";
+    a.src = url;
+    mediaEls.set(url, a);
+  }
+  offset = offset || 0;
+  cur = { kind:"media", el, media:a, url, offset,
+          dur:(isFinite(a.duration) && a.duration > 0 ? a.duration : 0), playing:true, raf:null };
+  setIcon(el, true);
+  a.onended = ()=>{ if(cur && cur.media===a){ stopSource(); resetUI(el); cur=null; } };
+  // Only re-seek when meaningfully off target (avoid tiny jitter on resume);
+  // a 0.25s tolerance is below human-perceptible audio latency.
+  if(offset && Math.abs((a.currentTime || 0) - offset) > 0.25){ try{ a.currentTime = offset; }catch(e){} }
+  // play() is called synchronously within the user gesture, so autoplay rules
+  // allow it; the returned promise can reject if interrupted, which we ignore.
+  const p = a.play();
+  if(p && typeof p.catch === "function") p.catch(()=>{});
+  paint();
+}
 function pausePlayback(){
   if(!cur || !cur.playing) return;
   const e = elapsed();
   stopSource();
-  cur.offset = Math.min(e, cur.dur);
+  cur.offset = cur.dur ? Math.min(e, cur.dur) : e;
   cur.playing = false;
   setIcon(cur.el, false);
   if(window.FUN) FUN.mood('pause');
@@ -389,13 +490,19 @@ function pausePlayback(){
 async function onPlay(el){
   const url = el.dataset.src;
   endIntro();                              // starting a version dismisses the rickroll early
-  try{ await getCtx().resume(); }catch(e){}
+  // Same track → toggle pause/resume.
   if(cur && cur.el === el){
-    if(cur.playing){ pausePlayback(); }
-    else{ const buf = await decodeToBuffer(url); startAt(el, buf, cur.offset || 0); }
+    if(cur.playing){ pausePlayback(); return; }
+    if(cur.kind === "media"){ startMedia(el, cur.offset || 0); return; }
+    try{ await getCtx().resume(); }catch(e){}
+    startAt(el, await decodeToBuffer(url), cur.offset || 0);
     return;
   }
   if(cur){ stopSource(); resetUI(cur.el); cur=null; }   // switch tracks
+  // Native formats (.m4a/AAC, .mp3 …) stream instantly via a media element.
+  if(isNative(url)){ startMedia(el, 0); return; }
+  // .opus needs the WebAssembly decode before Web Audio can play it.
+  try{ await getCtx().resume(); }catch(e){}
   const btn = el.querySelector(".play");
   btn.disabled = true; btn.textContent = "…";
   try{
@@ -410,12 +517,28 @@ async function onPlay(el){
 }
 function onSeek(el, ratio){
   const url = el.dataset.src;
+  const r = Math.max(0, Math.min(1, ratio));
+  if(isNative(url)){
+    const a = mediaEls.get(url);
+    const dur = (cur && cur.el===el && cur.dur) ? cur.dur
+              : (a && isFinite(a.duration) && a.duration > 0 ? a.duration : 0);
+    if(!dur) return;
+    const offset = r * dur;
+    if(cur && cur.el===el && cur.playing){ startMedia(el, offset); }
+    else{
+      if(!cur || cur.el!==el) cur = { kind:"media", el, media:a||null, url, offset, dur, playing:false, raf:null };
+      else cur.offset = offset;
+      el.querySelector(".prog").style.width = (offset/dur*100)+"%";
+      el.querySelector(".cur").textContent = fmt(offset);
+    }
+    return;
+  }
   const buf = buffers.get(url);
   if(!buf) return;
-  const offset = Math.max(0, Math.min(1, ratio)) * buf.duration;
+  const offset = r * buf.duration;
   if(cur && cur.el===el && cur.playing){ stopSource(); startAt(el, buf, offset); }
   else{
-    if(!cur || cur.el!==el) cur = { el, src:null, startedAt:0, offset, dur:buf.duration, playing:false, raf:null };
+    if(!cur || cur.el!==el) cur = { kind:"buffer", el, src:null, startedAt:0, offset, dur:buf.duration, playing:false, raf:null };
     else cur.offset = offset;
     el.querySelector(".prog").style.width = (offset/buf.duration*100)+"%";
     el.querySelector(".cur").textContent = fmt(offset);
@@ -499,6 +622,25 @@ async function preloadDurations(items){
   await Promise.all(Array.from({length:4}, worker));
 }
 
+/* Warm the Opus pipeline in the background so a click is near-instant:
+   instantiate the WASM decoder once, then (in display order, one file at a
+   time, only while the browser is idle) prefetch + decode each .opus into the
+   AudioBuffer cache. Work is bounded and yields between files, so it never
+   competes with playback or user interaction. */
+function prewarmOpus(items){
+  const urls = items.map(it=>it.url).filter(isOpus);
+  if(!urls.length) return;
+  onIdle(()=>{ getWarmDecoder().catch(()=>{}); });   // pay the WASM init cost up front
+  let i = 0;
+  const step = ()=>{
+    if(i >= urls.length) return;
+    const url = urls[i++];
+    if(buffers.has(url)){ onIdle(step); return; }
+    decodeToBuffer(url).catch(()=>{}).then(()=> onIdle(step));
+  };
+  onIdle(step);
+}
+
 /* For .m4a (and other natively-supported formats) read the duration cheaply
    from a metadata-only media element — no full decode, works everywhere. */
 function getMediaDuration(url){
@@ -572,6 +714,7 @@ async function loadAudio(){
     preloadDurations(durItems);
     window.__trackCount = files.length;
     if(window.FUN) FUN.refreshLeaderboard();
+    prewarmOpus(durItems);
   }catch(err){
     box.innerHTML = `<div class="status">Couldn't reach the archives (${err.message}). If you just pushed, wait a moment and refresh.</div>`;
   }
