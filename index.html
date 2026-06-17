@@ -281,7 +281,7 @@
       <div class="score">Score <span id="gameScore">0</span></div>
       <button id="gameExit" type="button">✕ Back</button>
     </div>
-    <!-- Shove ability — push nearby Nazans away (Space / tap this button) -->
+    <!-- Shove ability — push nearby Nazans away (Space / tap your own Nazan / tap this button) -->
     <button id="gameShove" type="button" aria-label="Shove nearby Nazans away">💨 Shove</button>
     <!-- Start screen -->
     <div class="gamePanel" id="gameStart">
@@ -289,7 +289,7 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p>Cornered? Press <strong>Space</strong> or tap <strong>💨 Shove</strong> to blast nearby Nazans away. It needs a moment to recharge.</p>
+        <p>Cornered? <strong>Tap your own Nazan</strong> (or press <strong>Space</strong>) to blast nearby Nazans away. It needs a moment to recharge.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
         <div class="gameBtns">
           <button class="gameBtn" id="gamePlay" type="button">▶ Play</button>
@@ -1448,7 +1448,7 @@ loadFavicon();
     // Shove ability: a short-cooldown blast that pushes nearby Nazans away, giving
     // the player a fighting chance when the screen gets crowded at higher scores.
     let blastCd = 0, blastFx = 0;
-    const BLAST_COOLDOWN = 3.2;    // seconds before Shove can be used again
+    const BLAST_COOLDOWN = 3.3;    // seconds before Shove can be used again
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
 
@@ -1518,8 +1518,13 @@ loadFavicon();
         const d = Math.hypot(dx, dy) || 1;
         if(d < R){
           const nx = dx / d, ny = dy / d;
-          const push = base() * 0.022 * (0.45 + 0.55 * (1 - d / R));
-          e.vx += nx * push; e.vy += ny * push;
+          // Aim each Nazan straight away from the player and EASE OFF its speed —
+          // closer ones slow the most. Shoving never makes them faster (which used
+          // to backfire by sending them rushing back); it always buys you space.
+          const close = 1 - d / R;                 // 0 at the edge → 1 right on top
+          const spd = Math.hypot(e.vx, e.vy);
+          const newSpd = spd * (0.85 - 0.45 * close);
+          e.vx = nx * newSpd; e.vy = ny * newSpd;
         }
       }
       blastCd = BLAST_COOLDOWN; blastFx = 0.35;
@@ -1695,7 +1700,19 @@ loadFavicon();
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
       // Pointer (mouse + touch) — track position over the canvas.
       const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
-      canvas.addEventListener("pointerdown", (e)=>{ e.preventDefault(); setP(e); });
+      canvas.addEventListener("pointerdown", (e)=>{
+        e.preventDefault();
+        // Tapping / clicking directly on your own Nazan fires a Shove. This is the
+        // hands-free option for mouse and touch, where reaching the button means
+        // letting go of the controls. Falls through to movement when off-cooldown
+        // fails or you tap empty space.
+        if(running && player){
+          const dx = e.clientX - player.x, dy = e.clientY - player.y;
+          const reach = Math.max(player.r * 1.5, base() * 0.08);
+          if(dx * dx + dy * dy <= reach * reach && blast()) return;
+        }
+        setP(e);
+      });
       canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
       // Keyboard.
       window.addEventListener("keydown", (e)=>{
