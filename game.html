@@ -499,7 +499,7 @@
       const type = held; held = null;
       const def = POWERUPS[type];
       if(type === "shove"){ doShove(); }
-      else { activeEffect = { type, time: def.dur, max: def.dur }; }
+      else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
       pickup = null;
       pickupTimer = PICKUP_AFTER_USE;          // a new one may appear only after this is spent
       updatePrompt();
@@ -548,9 +548,8 @@
       if(activeEffect){
         // While an effect runs, only change the live region when whole seconds change.
         const def = POWERUPS[activeEffect.type];
-        const seconds = Math.max(0, Math.ceil(activeEffect.time));
         nextClass = "show active";
-        nextText = def.icon + " " + def.name + " · " + seconds + "s";
+        nextText = def.icon + " " + def.name + " · " + activeEffect.displaySeconds + "s";
       } else if(held){
         // Loaded and ready — make the controls obvious and draw the eye with a pulse.
         const def = POWERUPS[held];
@@ -598,8 +597,13 @@
       // Tick down the active timed power-up (freeze / snail / ghost / eating).
       if(activeEffect){
         activeEffect.time -= dt;
-        if(activeEffect.time <= 0) activeEffect = null;
-        updatePrompt();
+        if(activeEffect.time <= 0){
+          activeEffect = null;
+          updatePrompt();
+        } else if(activeEffect.time <= activeEffect.displaySeconds - 1){
+          activeEffect.displaySeconds = Math.max(1, Math.ceil(activeEffect.time));
+          updatePrompt();
+        }
       }
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
       updatePickups(dt);
