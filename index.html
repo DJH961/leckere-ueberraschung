@@ -788,6 +788,23 @@ loadFavicon();
   /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
   const sfx = (function(){
     let lastBoing = 0;
+    // Deterministic per-identity sound selection: the same key (e.g. a sticker
+    // image or a button) always yields the same flavour & pitches, while
+    // different keys sound different. Falls back to Math.random when no key.
+    function hashStr(s){
+      let h = 2166136261 >>> 0; s = String(s);
+      for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+    function mulberry32(a){
+      return function(){
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    function rngFor(key){ return (key == null) ? Math.random : mulberry32(hashStr(key)); }
     function tone(opts){
       // opts: type, f0, f1, dur, vol, wobble, wobbleRate, t0, glide
       try{
@@ -849,13 +866,16 @@ loadFavicon();
     }
     return {
       // comedic "boing" when a sticker bounces; volume scales with impact.
-      // Randomly picks between a few extra-goofy cartoon flavours.
-      boing(intensity){
+      // Each sticker (keyed by `key`) keeps a consistent flavour & pitch;
+      // different stickers sound different.
+      boing(intensity, key){
         const now = performance.now();
         if(now - lastBoing < 70) return;   // throttle rapid bounces
         lastBoing = now;
+        const R = rngFor(key);
+        const rnd = (a,b)=> a + R()*(b-a);
         const vol = Math.min(0.4, 0.07 + (intensity||0)*0.012);
-        const flavour = Math.floor(Math.random()*4);
+        const flavour = Math.floor(R()*4);
         if(flavour === 0){
           // classic springy boing with a wild wobble
           tone({ type:"sine", f0:rnd(380,520), dur:0.26, vol, wobble:70, wobbleRate:rnd(14,22),
@@ -875,9 +895,12 @@ loadFavicon();
           noise({ f0:rnd(260,360), f1:rnd(120,180), dur:0.16, vol:Math.min(0.18, vol), q:5, t0:0.02 });
         }
       },
-      // funny "blip" for non play/pause button clicks — random goofy voices
-      blip(){
-        const v = Math.floor(Math.random()*4);
+      // funny "blip" for non play/pause button clicks — each button (keyed by
+      // `key`) keeps a consistent goofy voice; different buttons sound different.
+      blip(key){
+        const R = rngFor(key);
+        const rnd = (a,b)=> a + R()*(b-a);
+        const v = Math.floor(R()*4);
         if(v === 0){
           // bubbly "boop-beep"
           tone({ type:"square", f0:rnd(520,680), f1:rnd(1100,1500), dur:0.07, vol:0.1 });
@@ -1085,7 +1108,7 @@ loadFavicon();
         if(px + w > W()){ px = W()-w; vx = -vx*bounce; impact = Math.max(impact, Math.abs(vx)); bounced = true; }
         if(py + h > H()){ py = H()-h; vy = -vy*bounce; vx *= 0.8; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
         if(py < 0){ py = 0; vy = -vy*bounce; impact = Math.max(impact, Math.abs(vy)); bounced = true; }
-        if(bounced && impact > 2.5) sfx.boing(impact);
+        if(bounced && impact > 2.5) sfx.boing(impact, img.src);
         img.style.left = px+"px"; img.style.top = py+"px";
         const resting = (py + h >= H()-1) && Math.abs(vy) < 1.2 && Math.abs(vx) < 0.4;
         if(!resting) raf = requestAnimationFrame(tick); else raf = null;
@@ -1198,7 +1221,7 @@ loadFavicon();
     // Funny blip on any button click except the per-track play/pause buttons
     document.addEventListener("click", (e)=>{
       const btn = e.target.closest && e.target.closest("button");
-      if(btn && !btn.classList.contains("play")) sfx.blip();
+      if(btn && !btn.classList.contains("play")) sfx.blip(btn.id || btn.className || btn.textContent);
     });
   });
   // run seasonal flair again once stickers load asynchronously
