@@ -159,6 +159,7 @@
     .gamePanel{align-items:stretch; justify-content:flex-start; gap:0;
       padding:calc(var(--mobile-panel-top) + env(safe-area-inset-top)) 10px calc(var(--mobile-panel-bottom) + env(safe-area-inset-bottom));}
     .gameCard{width:min(100%,430px); max-width:none;
+      /* First height is a vh fallback; dvh + safe-area insets handles mobile browser chrome. */
       height:calc(100vh - var(--mobile-panel-top) - var(--mobile-panel-bottom));
       height:calc(100dvh - var(--mobile-panel-top) - var(--mobile-panel-bottom) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       max-height:none; margin:0 auto; padding:16px 14px 14px; border-radius:22px;
