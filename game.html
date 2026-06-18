@@ -48,6 +48,33 @@
     backdrop-filter:blur(4px);}
   #gameExit:hover{border-color:var(--navy);}
   #gameExit:active{transform:scale(.96);}
+  /* Right-hand HUD button cluster (music toggle + back). */
+  #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 0 auto; pointer-events:none;}
+  #gameMusic{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
+    color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
+    border-radius:30px; padding:8px 14px; font-size:1rem; line-height:1;
+    box-shadow:0 4px 12px rgba(61,80,118,.18); backdrop-filter:blur(4px);}
+  #gameMusic:hover{border-color:var(--navy);}
+  #gameMusic:active{transform:scale(.96);}
+  /* Sticker picker — click ‹ / › to choose which Nazan you play as. */
+  .stickerPick{display:flex; flex-direction:column; align-items:center; gap:8px; margin:14px 0 4px;}
+  .stickerPick .spLabel{font-weight:800; color:var(--navy); font-size:.82rem;
+    text-transform:uppercase; letter-spacing:.6px;}
+  .spRow{display:flex; align-items:center; gap:14px;}
+  .spArrow{cursor:pointer; font:inherit; font-weight:800; font-size:1.5rem; line-height:1;
+    width:44px; height:44px; border-radius:50%; border:1px solid var(--card-border);
+    background:#fff; color:var(--navy); box-shadow:0 6px 16px rgba(61,80,118,.16);
+    display:flex; align-items:center; justify-content:center; padding:0;}
+  body.dark .spArrow{background:var(--card); color:var(--navy-dark);}
+  .spArrow:hover{border-color:var(--navy);}
+  .spArrow:active{transform:scale(.92);}
+  .spArrow:disabled{opacity:.4; cursor:not-allowed; box-shadow:none;}
+  .spPreview{width:88px; height:88px; border-radius:18px; display:flex;
+    align-items:center; justify-content:center; overflow:hidden;
+    background:linear-gradient(180deg, rgba(111,147,192,.16), rgba(111,147,192,.06));
+    border:1px solid var(--card-border);}
+  body.dark .spPreview{background:linear-gradient(180deg, rgba(91,125,176,.22), rgba(91,125,176,.08));}
+  .spPreview img{max-width:80px; max-height:80px; object-fit:contain;}
   /* Power-up prompt — a non-interactive floating hint at the bottom. */
   #gamePrompt{position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
     z-index:2; display:none; pointer-events:none; font:inherit; font-weight:800;
@@ -170,6 +197,12 @@
     .gameCard .best{font-size:.9rem;}
     .desktopHow{display:none;}
     .mobileHow{display:block;}
+    .stickerPick{gap:5px; margin:8px 0 2px;}
+    .stickerPick .spLabel{font-size:.76rem;}
+    .spRow{gap:10px;}
+    .spArrow{width:38px; height:38px; font-size:1.35rem;}
+    .spPreview{width:70px; height:70px; border-radius:16px;}
+    .spPreview img{max-width:64px; max-height:64px;}
     .nameField{margin:10px 0 5px; padding:10px; border-radius:16px;}
     .nameField label{font-size:.78rem;}
     .nameRow{width:100%; gap:8px; margin:9px 0 3px;}
@@ -201,7 +234,10 @@
     <canvas id="gameCanvas"></canvas>
     <div id="gameHud">
       <div class="score">Score <span id="gameScore">0</span></div>
-      <button id="gameExit" type="button">✕ Back</button>
+      <div class="hudBtns">
+        <button id="gameMusic" type="button" aria-label="Mute music">🔊</button>
+        <button id="gameExit" type="button">✕ Back</button>
+      </div>
     </div>
     <!-- Power-up prompt — non-interactive hint shown when a power-up is loaded -->
     <div id="gamePrompt" aria-live="polite"></div>
@@ -213,6 +249,14 @@
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
         <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode or snail mode. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; if Shove is ready, tap your Nazan or press Space.</p>
+        <div class="stickerPick">
+          <span class="spLabel">Your Nazan</span>
+          <div class="spRow">
+            <button class="spArrow" id="spPrevStart" type="button" aria-label="Previous sticker">‹</button>
+            <div class="spPreview"><img id="spImgStart" alt="Your chosen Nazan sticker" /></div>
+            <button class="spArrow" id="spNextStart" type="button" aria-label="Next sticker">›</button>
+          </div>
+        </div>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
         <div class="nameField">
           <label for="gameNameStart">Your name <span class="req">*</span></label>
@@ -239,6 +283,14 @@
         <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
         <div class="big" id="gameFinalScore">0</div>
         <p class="best" id="gameBestLine">Best: 0</p>
+        <div class="stickerPick">
+          <span class="spLabel">Your Nazan</span>
+          <div class="spRow">
+            <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
+            <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
+            <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+          </div>
+        </div>
         <div class="nameRow">
           <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
                  placeholder="Type your name" aria-label="Your name for the leaderboard" />
@@ -472,6 +524,93 @@
     };
   })();
 
+  /* ---------- Looping background music (Web Audio, no files) ----------
+     A short, upbeat, quiz-show / "kahoot-style" loop built entirely from
+     synthesized tones. Because every note is generated here in the browser,
+     it is original and copyright-free — there are no audio assets to ship.
+     A lookahead scheduler queues notes a fraction of a second ahead so the
+     loop stays rock-steady regardless of timer jitter. */
+  const music = (function(){
+    const midiHz = (n)=> 440 * Math.pow(2, (n - 69) / 12);
+    // Four-bar bouncy progression (A minor family) — bright and a bit cheeky.
+    const PROG = [
+      { root:57, tones:[0,3,7,12] },   // Am
+      { root:53, tones:[0,4,7,12] },   // F
+      { root:48, tones:[0,4,7,12] },   // C
+      { root:55, tones:[0,4,7,12] }    // G
+    ];
+    const BPM = 124;
+    const STEP = (60 / BPM) / 2;       // eighth-note grid
+    const STEPS_PER_BAR = 8;
+    const TOTAL_STEPS = STEPS_PER_BAR * PROG.length;
+    let playing = false, timer = null, step = 0, nextTime = 0, master = null;
+    function ensureMaster(){
+      const ctx = getCtx();
+      if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(ctx.destination); }
+      return master;
+    }
+    // A single soft note routed through the music master gain.
+    function note(freq, dur, vol, type, t){
+      try{
+        const ctx = getCtx();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type || "triangle"; o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g).connect(ensureMaster());
+        o.start(t); o.stop(t + dur + 0.03);
+      }catch(e){}
+    }
+    function scheduleStep(s, t){
+      const chord = PROG[Math.floor(s / STEPS_PER_BAR) % PROG.length];
+      const within = s % STEPS_PER_BAR;
+      // Bouncy bass on every beat (every two eighth-notes).
+      if(within % 2 === 0) note(midiHz(chord.root - 12), STEP * 1.6, 0.16, "square", t);
+      // Arpeggio climbing through the chord tones, one per eighth-note.
+      const tone = chord.tones[within % chord.tones.length];
+      note(midiHz(chord.root + tone + 12), STEP * 0.9, 0.09, "triangle", t);
+      // A sparkly high accent to give it that game-show lift.
+      if(within === 0 || within === 5){
+        note(midiHz(chord.root + tone + 24), STEP * 0.8, 0.05, "square", t);
+      }
+    }
+    function tick(){
+      const ctx = getCtx();
+      while(nextTime < ctx.currentTime + 0.12){
+        scheduleStep(step, nextTime);
+        nextTime += STEP;
+        step = (step + 1) % TOTAL_STEPS;
+      }
+    }
+    return {
+      start(){
+        const ctx = getCtx();
+        if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
+        ensureMaster();
+        if(playing) return;
+        playing = true;
+        master.gain.cancelScheduledValues(ctx.currentTime);
+        master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), ctx.currentTime);
+        master.gain.exponentialRampToValueAtTime(0.55, ctx.currentTime + 0.8);   // gentle fade-in
+        step = 0; nextTime = ctx.currentTime + 0.08;
+        timer = setInterval(tick, 25);
+      },
+      stop(){
+        if(!playing) return;
+        playing = false;
+        if(timer){ clearInterval(timer); timer = null; }
+        try{
+          const ctx = getCtx();
+          master.gain.cancelScheduledValues(ctx.currentTime);
+          master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), ctx.currentTime);
+          master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);  // fade-out
+        }catch(e){}
+      },
+      isPlaying(){ return playing; }
+    };
+  })();
+
   /* ---------- Minimal achievement toasts (shared localStorage with the main site) ---------- */
   function toast(icon, title, body){
     const box = $("#toasts"); if(!box) return;
@@ -615,6 +754,12 @@
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
+    // Which sticker the player controls — an index into window.__stickerUrls /
+    // `images` (kept in sync). The choice is persisted so it sticks between visits.
+    const PLAYER_STICKER_KEY = "nazanDodgePlayerSticker";
+    let pickIndex = 0;
+    // Background-music preference (on by default), persisted across visits.
+    let musicEnabled = LS.get("nazanDodgeMusic", true);
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
     // Global-board state for the current game-over screen.
@@ -673,6 +818,57 @@
       const urls = window.__stickerUrls || [];
       images = urls.map(u=>{ const im = new Image(); im.src = u; return im; });
     }
+    // ----- Player sticker picker (‹ / ›) -----
+    // Restore the saved choice as an index into the current sticker list. Stored
+    // by URL so it survives the list being re-ordered between loads.
+    function initPick(){
+      const urls = window.__stickerUrls || [];
+      if(!urls.length){ pickIndex = 0; return; }
+      const saved = LS.get(PLAYER_STICKER_KEY, null);
+      const i = saved ? urls.indexOf(saved) : -1;
+      pickIndex = i >= 0 ? i : 0;
+    }
+    // The Image the player controls (their chosen sticker), or null if none loaded.
+    function playerImage(){ return images[pickIndex] || images[0] || null; }
+    // Refresh both picker previews (start + game-over) and arrow availability.
+    function renderPickers(){
+      const urls = window.__stickerUrls || [];
+      const src = urls[pickIndex] || "";
+      const many = urls.length > 1;
+      [["spImgStart","spPrevStart","spNextStart"], ["spImgOver","spPrevOver","spNextOver"]]
+        .forEach(([img, prev, next])=>{
+          const im = $("#"+img); if(im && im.getAttribute("src") !== src) im.src = src;
+          const p = $("#"+prev), n = $("#"+next);
+          if(p) p.disabled = !many;
+          if(n) n.disabled = !many;
+        });
+    }
+    // Step the chosen sticker left/right (wrapping), persist it and update previews.
+    function cyclePicker(dir){
+      const urls = window.__stickerUrls || [];
+      const n = urls.length; if(n < 1) return;
+      pickIndex = ((pickIndex + dir) % n + n) % n;
+      LS.set(PLAYER_STICKER_KEY, urls[pickIndex]);
+      renderPickers();
+      try{ sfx.blip("nazan-dodge-pick"); }catch(e){}
+    }
+    // Re-sync images + picker once the (async) sticker list has arrived.
+    function refreshStickers(){ loadImages(); initPick(); renderPickers(); }
+    // ----- Background music helpers -----
+    function syncMusicBtn(){
+      const b = $("#gameMusic"); if(!b) return;
+      b.textContent = musicEnabled ? "🔊" : "🔇";
+      b.setAttribute("aria-label", musicEnabled ? "Mute music" : "Play music");
+    }
+    function startMusicIfEnabled(){
+      if(musicEnabled && root && root.classList.contains("show")){ try{ music.start(); }catch(e){} }
+    }
+    function toggleMusic(){
+      musicEnabled = !musicEnabled;
+      LS.set("nazanDodgeMusic", musicEnabled);
+      syncMusicBtn();
+      if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
+    }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
     function naturalPlayerR(){ return Math.max(20, base() * 0.05); }   // player's full size
@@ -720,7 +916,7 @@
       blastFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
-                 img: images.length ? images[0] : null };
+                 img: playerImage() };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
       for(let i = 0; i < 2; i++) spawnEnemy();
@@ -1151,6 +1347,7 @@
       updatePrompt();
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
+      startMusicIfEnabled();
       raf = requestAnimationFrame(step);
     }
     // Enable/disable the Play button so the round can only begin with a name.
@@ -1184,6 +1381,7 @@
       $("#gameFinalScore").textContent = String(final);
       $("#gameBestLine").textContent = (isHigh ? "🏆 New best: " : "Best: ") + Math.max(final, prev);
       overPane.classList.remove("hidden");
+      renderPickers();
       try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
       if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
       // Whether this run lands on the GLOBAL board is decided against the score this
@@ -1304,6 +1502,7 @@
     }
     function open(){
       loadImages();
+      initPick();
       $("#gameBestStart").textContent = String(highScore());
       startPane.classList.remove("hidden");
       overPane.classList.add("hidden");
@@ -1312,6 +1511,8 @@
       const startName = $("#gameNameStart");
       if(startName) startName.value = LS.get("playerName", "");
       updateStartValidity();
+      syncMusicBtn();
+      renderPickers();
       resize();
       renderBoard("#startLbList");
       try{ draw(); }catch(e){}
@@ -1319,6 +1520,7 @@
     function close(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
+      try{ music.stop(); }catch(e){}
       // This is a standalone page now: "Back" returns to the main site. The
       // ?fromgame=1 flag tells it to skip the rickroll and keep the egg button up.
       location.href = "index.html?fromgame=1";
@@ -1369,6 +1571,11 @@
           return;
         }
         if(e.key === "Escape"){ close(); return; }
+        // On a setup screen (lobby or game over), ‹ / › flip the player's sticker.
+        if(!running){
+          if(e.key === "ArrowLeft"){ e.preventDefault(); cyclePicker(-1); return; }
+          if(e.key === "ArrowRight"){ e.preventDefault(); cyclePicker(1); return; }
+        }
         // On the game-over screen, Enter or Space restarts the round.
         if(!running && overPane && !overPane.classList.contains("hidden")){
           if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){ e.preventDefault(); start(); return; }
@@ -1386,12 +1593,23 @@
       $("#gameExit").addEventListener("click", close);
       $("#gameStartBack").addEventListener("click", close);
       $("#gameOverBack").addEventListener("click", close);
+      // Sticker picker arrows on both the start and game-over screens.
+      const sp = (id, dir)=>{ const b = $("#"+id); if(b) b.addEventListener("click", ()=> cyclePicker(dir)); };
+      sp("spPrevStart", -1); sp("spNextStart", 1);
+      sp("spPrevOver", -1);  sp("spNextOver", 1);
+      // Music mute toggle.
+      const musicBtn = $("#gameMusic"); if(musicBtn) musicBtn.addEventListener("click", toggleMusic);
+      // Browsers block audio until the first user gesture; once one happens, kick the
+      // lobby music in if the player hasn't muted it.
+      const kickMusic = ()=>{ startMusicIfEnabled(); };
+      window.addEventListener("pointerdown", kickMusic, { once:true });
+      window.addEventListener("keydown", kickMusic, { once:true });
       const editName = $("#gameEditName"); if(editName) editName.addEventListener("click", toggleEditName);
       // Persist + mirror the player's name as they type it, on either screen.
       const nameStart = $("#gameNameStart"); if(nameStart) nameStart.addEventListener("input", (e)=>{ syncName(e.target.value); updateStartValidity(); });
       const nameOver  = $("#gameName");      if(nameOver)  nameOver.addEventListener("input",  (e)=> syncName(e.target.value));
     }
-    return { open, close, wire };
+    return { open, close, wire, refreshStickers };
   })();
 
   /* ---------- Boot ---------- */
@@ -1402,7 +1620,9 @@
   // late sticker load can't yank the player out of an already-started round.
   let opened = false;
   function openOnce(){ if(opened) return; opened = true; Game.open(); }
-  loadStickerUrls().then(openOnce);
+  // When the (async) sticker list arrives, open the screen and make sure the picker
+  // previews reflect the real stickers even if the fallback opened first with none.
+  loadStickerUrls().then(()=>{ openOnce(); Game.refreshStickers(); });
   setTimeout(openOnce, 1500);
 
   function applyThemeFromLS(){
