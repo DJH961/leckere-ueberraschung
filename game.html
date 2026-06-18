@@ -1211,7 +1211,7 @@
       if(fresh.length) voicePool = fresh;
       const img = voicePool.length ? voicePool[Math.floor(Math.random() * voicePool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
-                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0 });
+                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0, noWall: false });
       // A new Nazan joining the fray gives a little goofy blip — keyed by its image
       // so each one has its own consistent voice, matching the page's button blips.
       if(running){ try{ sfx.blip(img ? img.src : "nazan-dodge-spawn"); }catch(err){} }
@@ -1242,7 +1242,7 @@
       }
       const exit = base() * BANISH_EXIT_SPEED;
       e.vx = nx * exit; e.vy = ny * exit;
-      e.banished = true; e.returning = false; e.shoveT = 0;
+      e.banished = true; e.returning = false; e.shoveT = 0; e.noWall = false;
       e.age = 0;                            // comes back as gentle as a fresh spawn
     }
 
@@ -1257,7 +1257,7 @@
       const push = base() * BANISH_EXIT_SPEED;
       e.vx = nx * push; e.vy = ny * push;
       e.shoveT = SHOVE_WINDOW;
-      e.banished = false; e.returning = false;
+      e.banished = false; e.returning = false; e.noWall = true;
     }
 
     // Blast every Nazan within reach with a hard outward shove. This is the Shove power-up's
@@ -1485,7 +1485,7 @@
           } else if(e.x > e.r && e.x < W - e.r && e.y > e.r && e.y < H - e.r){
             // Re-entered the arena: rejoin play with a touch of maturity rather than a
             // fresh spawn's full crawl, so it works its pace back up a bit quicker.
-            e.banished = false; e.returning = false; e.age = BANISH_RETURN_AGE;
+            e.banished = false; e.returning = false; e.age = BANISH_RETURN_AGE; e.noWall = false;
           }
           continue;
         }
@@ -1531,11 +1531,9 @@
             e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
           }
         }
-        // A Nazan still carrying a fresh shove that's been pushed onto an edge sails
-        // clean off the screen (drifting back later) instead of bouncing — that's how a
-        // shove power guides one off. Without an active shove it just bounces as normal,
-        // so a Nazan pushed out in the open stays in play.
-        if(e.shoveT > 0 && (e.x < e.r || e.x > W - e.r || e.y < e.r || e.y > H - e.r)){
+        // A Nazan that was directly shoved/touched (or bounced off one that was) carries
+        // a noWall flag: hitting an edge banishes it outright instead of bouncing it back.
+        if(e.noWall && (e.x < e.r || e.x > W - e.r || e.y < e.r || e.y > H - e.r)){
           const sp = Math.hypot(e.vx, e.vy) || 1;
           banish(e, e.vx / sp, e.vy / sp);
           continue;
@@ -1571,6 +1569,10 @@
           if(rvn < 0){                              // only when they're approaching
             a.vx += rvn * nx; a.vy += rvn * ny;
             b.vx -= rvn * nx; b.vy -= rvn * ny;
+            // Propagate the no-border flag one hop: a Nazan that bounces directly off
+            // a shoved/touched Nazan also sails through any edge it hits.
+            if(a.noWall) b.noWall = true;
+            if(b.noWall) a.noWall = true;
             // A solid Nazan-on-Nazan smack boings, just like the stickers colliding
             // on the page. Soft grazes stay quiet so only real impacts speak up.
             const impact = -rvn / (base() * 0.004);
