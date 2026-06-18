@@ -1216,9 +1216,12 @@ loadFavicon();
   function gotRickrolled(){
     const n = LS.get("victimCount", 0) + 1; LS.set("victimCount", n);
     renderVictims();
-    if(n === 1) achieve("first_roll");
-    if(n === 5) achieve("roll_5");
-    if(n === 10) achieve("roll_10");
+    // Use >= (not ===) so a lower-grade achievement still unlocks for players who
+    // blew past its threshold before it existed: achieve() is idempotent, so already
+    // earned ones are skipped and only the missing lower grades get awarded.
+    if(n >= 1) achieve("first_roll");
+    if(n >= 5) achieve("roll_5");
+    if(n >= 10) achieve("roll_10");
   }
   function coward(){ mood('skip'); achieve("coward"); }
 
@@ -1235,10 +1238,13 @@ loadFavicon();
 
     const total = Object.values(plays).reduce((s,r)=> s + r.count, 0);
     const distinct = Object.keys(plays).length;
-    if(total === 1) achieve("first_play");
-    if(total === 25) achieve("dedicated");
-    if(distinct === 3) achieve("globetrotter");
-    if(distinct === 5) achieve("polyglot_5");
+    // >= so lower-grade achievements unlock retroactively for players already past
+    // the threshold (e.g. an achievement added after they crossed it). achieve() is
+    // idempotent, so this only fills in the missing lower grades.
+    if(total >= 1) achieve("first_play");
+    if(total >= 25) achieve("dedicated");
+    if(distinct >= 3) achieve("globetrotter");
+    if(distinct >= 5) achieve("polyglot_5");
     if(/^latin/i.test(lang)) achieve("scholar");
     const totalLangs = window.__trackCount || 0;
     if(totalLangs && distinct >= totalLangs) achieve("all_langs");

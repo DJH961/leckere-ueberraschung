@@ -53,6 +53,7 @@
   #gamePrompt.show{display:inline-flex; align-items:center; gap:6px;}
   #gamePrompt.ready{animation:promptPulse 1s ease-in-out infinite;}
   #gamePrompt.active{background:rgba(61,80,118,.78);}
+  #gamePrompt.ending{background:rgba(61,80,118,.55); animation:promptPulse .6s ease-in-out infinite;}
   @keyframes promptPulse{0%,100%{transform:translateX(-50%) scale(1);}
     50%{transform:translateX(-50%) scale(1.05);}}
   @media (max-width:600px){
@@ -72,6 +73,16 @@
   .gameCard p{margin:6px 0; color:var(--muted); font-size:.98rem;}
   .gameCard .big{font-size:clamp(1.6rem,7vw,2.4rem); font-weight:800; color:var(--navy); margin:6px 0;}
   .gameCard .best{color:var(--muted); font-weight:700;}
+  /* Nazan's random taunt on game over — deliberately loud so it stands out. */
+  .gameCard .nazanQuote{display:inline-block; margin:4px auto 10px; padding:9px 18px;
+    font-weight:800; font-size:clamp(1rem,4.6vw,1.4rem); line-height:1.2; color:#fff;
+    background:linear-gradient(135deg,#ff7a59,#e8743b); border-radius:30px;
+    box-shadow:0 8px 22px rgba(232,116,59,.45); transform:rotate(-2deg);
+    text-shadow:0 1px 2px rgba(0,0,0,.18); animation:nazanQuotePop .42s cubic-bezier(.18,1.5,.4,1) both;}
+  .gameCard .nazanQuote::before{content:"💬 ";}
+  body.dark .gameCard .nazanQuote{background:linear-gradient(135deg,#ff8c6b,#d6602b);}
+  @keyframes nazanQuotePop{0%{transform:rotate(-2deg) scale(.4); opacity:0;}
+    60%{transform:rotate(-2deg) scale(1.12);} 100%{transform:rotate(-2deg) scale(1); opacity:1;}}
   .gameBtns{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:16px;}
   .gameBtn{cursor:pointer; font:inherit; font-weight:700; border-radius:40px; padding:13px 26px;
     font-size:1.02rem; border:0; color:#fff; background:var(--navy);
@@ -169,6 +180,7 @@
     <div class="gamePanel hidden" id="gameOver">
       <div class="gameCard">
         <h2>Caught!</h2>
+        <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
         <div class="big" id="gameFinalScore">0</div>
         <p class="best" id="gameBestLine">Best: 0</p>
         <div class="nameRow">
@@ -512,6 +524,19 @@
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
+    // Random things Nazan says when you get caught — shown big and loud on game over.
+    const NAZAN_QUOTES = [
+      "You need to blow not suck",
+      "Yalla",
+      "Academically Aroused",
+      "Damn bro that's crazy",
+      "Wird schon passen",
+      "Sending love",
+      "That's crazy bro",
+      "Kevin",
+      "leckere Überraschung",
+      "sorpresa deliciosa"
+    ];
     const root   = $("#game");
     const canvas = $("#gameCanvas");
     const ctx    = canvas ? canvas.getContext("2d") : null;
@@ -545,6 +570,11 @@
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
     const REPEL_STRENGTH = 0.02;     // Force Field outward push per frame, fraction of base()
+    // Just before a timed power-up actually lapses, flip its VISUALS back to normal
+    // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
+    // last sliver of time. That tiny grace period is a clear heads-up that the power
+    // is about to end, so you can scramble to safety instead of dying unaware.
+    const EFFECT_GRACE = 0.4;        // seconds of "winding down" at the end of an effect
     const PU_TYPES = Object.keys(POWERUPS);
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
     let held = null;                 // power-up type currently carried (one at a time), or null
@@ -749,8 +779,15 @@
       if(activeEffect){
         // While an effect runs, only change the live region when whole seconds change.
         const def = POWERUPS[activeEffect.type];
-        nextClass = "show active";
-        nextText = def.icon + " " + def.name + " · " + activeEffect.displaySeconds + "s";
+        if(activeEffect.ending){
+          // Grace window: tell the player it's wearing off (the visuals have already
+          // reverted) while they still briefly hold the power.
+          nextClass = "show ending";
+          nextText = def.icon + " " + def.name + " wearing off…";
+        } else {
+          nextClass = "show active";
+          nextText = def.icon + " " + def.name + " · " + activeEffect.displaySeconds + "s";
+        }
       } else if(held){
         // Loaded and ready — make the controls obvious and draw the eye with a pulse.
         const def = POWERUPS[held];
@@ -804,9 +841,17 @@
         if(activeEffect.time <= 0){
           activeEffect = null;
           updatePrompt();
-        } else if(activeEffect.time <= activeEffect.displaySeconds - 1){
-          activeEffect.displaySeconds = Math.ceil(activeEffect.time);
-          updatePrompt();
+        } else {
+          // Enter the "winding down" grace window a hair before the effect lapses: the
+          // visuals revert now (see draw()/updatePrompt()) but the power stays active.
+          if(!activeEffect.ending && activeEffect.time <= EFFECT_GRACE){
+            activeEffect.ending = true;
+            updatePrompt();
+          }
+          if(activeEffect.time <= activeEffect.displaySeconds - 1){
+            activeEffect.displaySeconds = Math.ceil(activeEffect.time);
+            updatePrompt();
+          }
         }
       }
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
@@ -969,7 +1014,8 @@
     function draw(){
       ctx.clearRect(0, 0, W, H);
       // Full-screen colour wash while a timed power-up runs, so its effect is obvious.
-      if(activeEffect){
+      // During the grace window we drop the wash to signal the power is wearing off.
+      if(activeEffect && !activeEffect.ending){
         const def = POWERUPS[activeEffect.type];
         ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = def.color; ctx.fillRect(0, 0, W, H); ctx.restore();
       }
@@ -987,7 +1033,7 @@
       drawPickup();
       // Force Field: a clearly visible energy bubble around the player, so the safe
       // zone keeping Nazans at arm's length is obvious at a glance.
-      if(activeEffect && activeEffect.type === "repel" && player){
+      if(activeEffect && activeEffect.type === "repel" && !activeEffect.ending && player){
         const R = base() * REPEL_RADIUS;
         const t = elapsed;
         ctx.save();
@@ -1008,9 +1054,11 @@
         ctx.restore();
       }
       if(player){
-        if(activeEffect && activeEffect.type === "ghost"){
+        // While winding down (ending), draw the player in its normal solid state so the
+        // visual switch lands before the power actually lapses.
+        if(activeEffect && !activeEffect.ending && activeEffect.type === "ghost"){
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
-        } else if(activeEffect && activeEffect.type === "eat"){
+        } else if(activeEffect && !activeEffect.ending && activeEffect.type === "eat"){
           drawSticker(player, true, "#e8743b");   // hungry golden ring
         } else {
           drawSticker(player, true);
@@ -1048,10 +1096,20 @@
         hint.textContent = "Enter your name to play — your scores land on the global board.";
       }
     }
+    // Pick a random Nazan taunt and pop it in, restarting the entry animation each
+    // time so a fresh line still draws the eye even on repeated deaths.
+    function showNazanQuote(){
+      const el = $("#gameNazanQuote"); if(!el) return;
+      el.textContent = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      el.style.animation = "none";
+      void el.offsetWidth;          // force reflow so the pop animation replays
+      el.style.animation = "";
+    }
     function gameOver(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
+      showNazanQuote();
       const final = Math.floor(score);
       const prev = highScore();
       const isHigh = final > prev;
@@ -1061,18 +1119,25 @@
       overPane.classList.remove("hidden");
       try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
       if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
-      // Auto-submit: the name is already known (it's mandatory to start), so the
-      // score goes straight onto the global board. The only manual control left is
-      // editing the name (see toggleEditName / gameEditName button).
-      pendingScore = final;
+      // Auto-submit, but ONLY when this run is a new personal best — that keeps the
+      // global board to each player's best score instead of every attempt. The name is
+      // already known (mandatory to start); the one manual control left is editing the
+      // name (see toggleEditName / gameEditName button).
+      pendingScore = isHigh ? final : 0;   // only a NEW personal best is eligible to post
       submitted = false;
       editingName = false;
       const nameEl = $("#gameName"), editBtn = $("#gameEditName"), hintEl = $("#gameNameHint");
       const storedName = (LS.get("playerName", "") || "").trim();
       if(nameEl){ nameEl.value = storedName; nameEl.readOnly = true; }
-      if(editBtn){ editBtn.textContent = "✏️ Edit name"; editBtn.disabled = (final <= 0); }
-      if(final <= 0){
-        if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Score a point or two first, then you can claim a spot."; }
+      if(editBtn){ editBtn.textContent = "✏️ Edit name"; editBtn.disabled = !isHigh; }
+      if(!isHigh){
+        // Not a personal best — keep it off the global board; only your best counts.
+        if(hintEl){
+          hintEl.className = "nameHint";
+          hintEl.textContent = final <= 0
+            ? "Score a point or two first, then you can claim a spot."
+            : "Not a new personal best — beat " + prev + " to put a fresh score on the board.";
+        }
         renderBoard("#overLbList");
       } else {
         if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Posting your score to the global board…"; }
