@@ -1157,64 +1157,59 @@ loadFavicon();
   });
 
   /* ---------- Draggable / throwable stickers ---------- */
-  // Registry of stickers that have been "let loose" (flung at least once). Only
-  // these take part in sticker-vs-sticker collisions and the tempo boost; the
-  // stickers still parked in the page layout are left completely alone.
+  // Every sticker that gets "let loose" (flung at least once) joins ONE shared
+  // physics world that runs on a SINGLE animation-frame loop. The previous design
+  // gave every loose sticker its own requestAnimationFrame, and each of those
+  // scanned all the others for collisions — so n loose Nazans cost roughly n×n
+  // work spread across n separate loops. That is what made the page crawl on
+  // mobile (and the Easter egg slow to reach), and it made settling erratic.
+  // One loop steps the whole world once per frame: far cheaper and predictable.
   const flungStickers = [];
-  const COLLIDE_BOOST = 1.18;          // each sticker-on-sticker hit adds a little
-  const MAX_SPEED     = 46;            // ...energy, capped so it stays funny not insane
-  // The boost is what keeps the loose Nazans lively, but with many of them crammed
-  // into a small screen the collisions never stop re-energising each other and the
-  // page can't settle. Two valves tame this: a global cooldown so the boost can only
-  // fire occasionally (letting friction win between bursts and the page calm down),
-  // and a master switch that turns the boost off entirely once the secret is found.
-  let   boostEnabled  = true;          // flipped off when the minigame is discovered
-  let   stickersFrozen = false;        // hard stop: once the secret is found, no more bouncing
-  let   lastBoostAt   = 0;             // timestamp of the most recent boosted hit
-  const BOOST_COOLDOWN = 700;          // ms the boost must rest before it can fire again
-  // The boost keeps the Nazans lively while you are actually playing with them, but it
-  // must fade once you leave them alone or the heap can never settle. We only boost
-  // for a short window after the last interaction, so an untouched pile calms down.
-  let   lastInteractAt = 0;            // timestamp of the last drag/fling
-  const BOOST_ACTIVE_MS = 2500;        // boost only fires within this long of an interaction
-  const IDLE_FRICTION  = 0.82;         // once untouched, every sticker bleeds energy each frame
-  const IDLE_MAX_SPEED = 8;            // ...and its speed is capped so a packed heap can't explode
-  const POS_RELAX      = 0.5;          // fraction of an overlap eased apart per frame (stable stacks)
-  // The boost must only fire on a genuinely lively contact. A pile that is merely
-  // settling under gravity nudges its neighbours at roughly one gravity-step per
-  // frame; if those gentle taps could trigger the boost, the heap would re-energise
-  // itself forever and never come to rest (the endless micro-jitter on mobile).
-  const BOOST_MIN_APPROACH = 1.6;      // min approach speed before a hit earns the boost
-  // Settling / sleep thresholds: once a sticker is supported (on the floor or sitting
-  // on a calm neighbour) and barely moving for this many frames, it parks for good so
-  // a packed heap can finally fall completely still instead of twitching endlessly.
-  const REST_SPEED   = 1.5;            // a neighbour this slow counts as solid support
-  const REST_VX      = 0.5;            // |vx| below this is "barely moving" sideways
-  const REST_VY      = 1.2;            // |vy| below this is "barely moving" vertically
-  const SLEEP_FRAMES = 36;             // ~0.6s of calm before a sticker sleeps
-  // A near-resting heap must actively shed its leftover energy or gravity keeps
-  // pumping it back in. Unboosted contacts are made slightly inelastic, and a
-  // supported, slow-moving sticker has its velocity damped each frame (with a small
-  // dead-zone that snaps tiny speeds to zero) so the jitter decays to a full stop.
-  const COLLIDE_DAMP = 0.7;            // energy kept by an ordinary (unboosted) contact
-  const SETTLE_BAND  = 3;              // only damp stickers already moving this slowly
-  const SETTLE_DAMP  = 0.8;            // vertical velocity retained per frame while settling
-  const FLOOR_FRICTION = 0.5;          // strong sideways friction so a settled sticker stops sliding
-  const VEL_DEADZONE = 0.3;            // speeds below this are snapped to a dead stop
-  let   activeDrags  = 0;              // how many stickers are being held right now
 
-  // Drain all momentum from the loose stickers, switch the boost off AND halt every
-  // running animation frame so they freeze in place. Gravity would otherwise keep
-  // re-accelerating a sticker after its velocity is zeroed (most visible on mobile,
-  // where the page stays alive behind the minigame), so we also cancel the rafs and
-  // latch a freeze flag that stops any future ticks from starting.
+  // PANDEMONIUM, in one number. Every fling or drag pumps a single global "chaos"
+  // level up to 1. While chaos is high the Nazans get a tempo boost — collisions
+  // ADD energy, gravity runs a little hotter, and the whole heap stays lively.
+  // Chaos then bleeds away a little every frame, so once you stop stirring them up
+  // the boost fades, friction wins and the pile settles. Because the fade is purely
+  // time-based, the heap calms down after roughly the same delay whether two
+  // Nazans are loose or twenty — no more "settles instantly" vs. "never settles".
+  let   chaos          = 0;            // 0 = calm, 1 = full pandemonium
+  const CHAOS_DECAY    = 0.99;         // chaos kept per frame while you leave them be
+  const CHAOS_LIVELY   = 0.12;         // above this, contacts energise (boost on)
+  let   stickersFrozen = false;        // hard stop once the secret game is found
+
+  const COLLIDE_BOOST  = 1.18;         // lively contact during pandemonium (>1 = boost)
+  const COLLIDE_DAMP   = 0.7;          // calm contact bleeds energy so heaps settle
+  const MAX_SPEED      = 46;           // cap so the chaos stays funny, not insane
+  const POS_RELAX      = 0.5;          // fraction of an overlap eased apart per frame
+  // Settling: a supported, slow sticker is damped each frame and tiny speeds snap to
+  // a dead stop, and the whole loop halts once everything is calm.
+  const SETTLE_BAND    = 3;            // only damp stickers already moving this slowly
+  const SETTLE_DAMP    = 0.8;          // vertical velocity kept per frame while settling
+  const FLOOR_FRICTION = 0.5;          // sideways friction so a settled sticker stops
+  const VEL_DEADZONE   = 0.3;          // speeds below this are snapped to zero
+  const SLEEP_SPEED    = 0.4;          // mean speed below which the calm world sleeps
+
+  let   activeDrags    = 0;            // how many stickers are being held right now
+  let   worldRaf       = null;         // the single shared animation frame
+
+  // Stir the world up: full chaos, and make sure the loop is running.
+  function bumpChaos(){ chaos = 1; wakeWorld(); }
+
+  // Start the shared loop if it isn't already running (and the page isn't calmed).
+  function wakeWorld(){
+    if(stickersFrozen || worldRaf) return;
+    worldRaf = requestAnimationFrame(stepWorld);
+  }
+
+  // Drain all momentum, kill the chaos and stop the loop entirely. Used when the
+  // secret game is found so nothing keeps animating behind it (a big perf win on
+  // mobile, where the page stays alive under the minigame).
   function calmStickers(){
-    boostEnabled = false;
     stickersFrozen = true;
-    for(const st of flungStickers){
-      st.vx = 0; st.vy = 0;
-      if(st.raf){ cancelAnimationFrame(st.raf); st.raf = null; }
-    }
+    chaos = 0;
+    for(const st of flungStickers){ st.vx = 0; st.vy = 0; }
+    if(worldRaf){ cancelAnimationFrame(worldRaf); worldRaf = null; }
   }
 
   function clampSpeed(st){
@@ -1223,8 +1218,10 @@ loadFavicon();
   }
 
   // Resolve a collision between two flung stickers (circle approximation).
-  // Returns the impact magnitude when they actually bounced, else 0.
-  function collide(a, b){
+  // Returns the impact magnitude when they actually bounced, else 0. While the
+  // world is `lively` the bounce gains energy (the tempo boost); otherwise it is
+  // slightly inelastic so heaps can lose energy and settle.
+  function collide(a, b, lively){
     if(a === b) return 0;
     const aw = a.img.offsetWidth, ah = a.img.offsetHeight;
     const bw = b.img.offsetWidth, bh = b.img.offsetHeight;
@@ -1238,26 +1235,20 @@ loadFavicon();
     if(dist === 0){ dx = (Math.random()-0.5) || 0.01; dy = (Math.random()-0.5) || 0.01; dist = Math.hypot(dx, dy); }
     const nx = dx/dist, ny = dy/dist;
     const overlap = minDist - dist;
-    // Push the pair apart so they can never end up stacked on each other.
-    // A sticker held under the pointer acts as an immovable wall.
+    // Push the pair apart so they never end up stacked. A held sticker is a wall.
     if(a.dragging && !b.dragging){ b.px += nx*overlap; b.py += ny*overlap; }
     else if(b.dragging && !a.dragging){ a.px -= nx*overlap; a.py -= ny*overlap; }
     else {
-      // Resolve only a fraction of the overlap per frame. In a packed heap a sticker
-      // overlaps several neighbours at once and each pair is also resolved from the
-      // other sticker's own tick; correcting the full overlap every time overshoots
-      // and the pile "explodes". Easing it apart gradually keeps dense stacks stable.
+      // Ease apart only a fraction per frame: in a packed heap each sticker overlaps
+      // several neighbours, so correcting the full overlap at once overshoots and the
+      // pile "explodes". A gradual nudge keeps dense stacks stable.
       const corr = overlap * POS_RELAX / 2;
       a.px -= nx*corr; a.py -= ny*corr; b.px += nx*corr; b.py += ny*corr;
     }
     // Velocity exchange along the contact normal (equal mass, near-elastic).
     const rvn = (b.vx - a.vx)*nx + (b.vy - a.vy)*ny;
     if(rvn < 0){
-      // The boost only kicks in when it isn't on cooldown and hasn't been switched
-      // off — otherwise the bounce stays purely elastic so friction can take over.
-      const now = performance.now();
-      let factor = COLLIDE_DAMP;   // ordinary contacts lose a little energy so heaps can settle
-      if(boostEnabled && now - lastInteractAt < BOOST_ACTIVE_MS && -rvn > BOOST_MIN_APPROACH && now - lastBoostAt > BOOST_COOLDOWN){ factor = COLLIDE_BOOST; lastBoostAt = now; }
+      const factor = lively ? COLLIDE_BOOST : COLLIDE_DAMP;
       let j = -rvn * factor;     // >1 → the tempo boost that keeps them lively
       if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
       else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
@@ -1268,8 +1259,8 @@ loadFavicon();
     return 0;
   }
 
-  // Cheap overlap test (no mutation) used to keep a sticker awake while it is
-  // still resting against another one.
+  // Cheap overlap test (no mutation) used to keep a settled sticker counted as
+  // resting against the neighbour holding it up.
   function overlaps(a, b){
     if(a === b) return false;
     const acx = a.px + a.img.offsetWidth/2, acy = a.py + a.img.offsetHeight/2;
@@ -1278,8 +1269,86 @@ loadFavicon();
     return Math.hypot(bcx-acx, bcy-acy) < minDist;
   }
 
+  // The one and only physics tick. Steps every loose sticker once: integrate &
+  // bounce off walls, resolve each pair of stickers a single time, damp anything
+  // that is settling, then let chaos decay and decide whether to keep running.
+  function stepWorld(){
+    worldRaf = null;
+    if(stickersFrozen) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const lively = chaos > CHAOS_LIVELY;
+    const gravity = lively ? 0.9 : 0.6;   // tempo boost: things fall/bounce hotter
+    const friction = 0.99, bounce = 0.7;
+
+    // 1) Integrate gravity + friction, bounce off the four walls.
+    for(const st of flungStickers){
+      if(st.dragging || !st.fixed) continue;
+      const img = st.img, w = img.offsetWidth, h = img.offsetHeight;
+      st.vy += gravity; st.vx *= friction;
+      st.px += st.vx; st.py += st.vy;
+      let impact = 0;
+      if(st.px < 0){ st.px = 0; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); }
+      if(st.px + w > W){ st.px = W-w; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); }
+      if(st.py + h > H){ st.py = H-h; st.vy = -st.vy*bounce; st.vx *= 0.8; impact = Math.max(impact, Math.abs(st.vy)); }
+      if(st.py < 0){ st.py = 0; st.vy = -st.vy*bounce; impact = Math.max(impact, Math.abs(st.vy)); }
+      if(impact > 2.5){ try{ sfx.boing(impact, img.src); }catch(e){} }
+      st.supported = (st.py + h >= H-1);   // on the floor → supported
+    }
+
+    // 2) Resolve every pair of stickers exactly once.
+    for(let i=0;i<flungStickers.length;i++){
+      const a = flungStickers[i];
+      if(!a.fixed) continue;
+      for(let j=i+1;j<flungStickers.length;j++){
+        const b = flungStickers[j];
+        if(!b.fixed) continue;
+        const hit = collide(a, b, lively);
+        if(hit > 1.6){ try{ sfx.boing(hit + 2, a.img.src); sfx.boing(hit + 2, b.img.src); }catch(e){} }
+        if(hit > 0 || overlaps(a, b)){
+          // Whichever sits lower holds the other up — if it is itself barely moving.
+          const ah = a.img.offsetHeight, bh = b.img.offsetHeight;
+          const aBelow = (a.py + ah/2) > (b.py + bh/2);
+          if(aBelow){ if(Math.hypot(a.vx, a.vy) < SETTLE_BAND) b.supported = true; }
+          else      { if(Math.hypot(b.vx, b.vy) < SETTLE_BAND) a.supported = true; }
+        }
+      }
+    }
+
+    // 3) Re-clamp inside the viewport (the heap can shove a sticker through a wall),
+    //    damp anything that is settling, then write positions to the DOM.
+    for(const st of flungStickers){
+      if(st.dragging || !st.fixed) continue;
+      const img = st.img, w = img.offsetWidth, h = img.offsetHeight;
+      if(st.px < 0){ st.px = 0; if(st.vx < 0) st.vx = 0; }
+      if(st.px + w > W){ st.px = W-w; if(st.vx > 0) st.vx = 0; }
+      if(st.py < 0){ st.py = 0; if(st.vy < 0) st.vy = 0; }
+      if(st.py + h > H){ st.py = H-h; if(st.vy > 0) st.vy = 0; }
+      // Once the pandemonium has faded, a supported, slow sticker sheds its last
+      // energy and snaps tiny speeds to a dead stop so the heap actually rests.
+      if(!lively && st.supported && Math.hypot(st.vx, st.vy) < SETTLE_BAND){
+        st.vx *= FLOOR_FRICTION; st.vy *= SETTLE_DAMP;
+        if(Math.abs(st.vx) < VEL_DEADZONE) st.vx = 0;
+        if(Math.abs(st.vy) < VEL_DEADZONE) st.vy = 0;
+      }
+      img.style.left = st.px+"px"; img.style.top = st.py+"px";
+    }
+
+    // 4) Let the chaos fade (only while you are not actively holding a sticker), then
+    //    keep running until everything is genuinely calm — chaos gone, nothing held,
+    //    and almost no movement left anywhere.
+    if(!activeDrags) chaos *= CHAOS_DECAY;
+    let total = 0, n = 0;
+    for(const st of flungStickers){ if(st.fixed && !st.dragging){ total += Math.hypot(st.vx, st.vy); n++; } }
+    const mean = n ? total/n : 0;
+    if(activeDrags || chaos > 0.02 || mean > SLEEP_SPEED){
+      worldRaf = requestAnimationFrame(stepWorld);
+    } else {
+      for(const st of flungStickers){ st.vx = 0; st.vy = 0; }   // park the heap for good
+    }
+  }
+
   function makeDraggable(img){
-    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, raf:null, still:0 };
+    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, supported:false };
     img._phys = st;
     let lastT = 0;
     function lift(clientX, clientY){
@@ -1295,14 +1364,9 @@ loadFavicon();
       e.preventDefault();
       const p = e.touches ? e.touches[0] : e;
       if(!st.fixed) lift(p.clientX, p.clientY);
-      if(st.raf){ cancelAnimationFrame(st.raf); st.raf=null; }
-      st.dragging = true; st.vx = st.vy = 0; st.still = 0; lastT = performance.now();
-      lastInteractAt = lastT;            // keep the tempo boost alive while you play
-      // Holding a sticker wakes the whole heap (and keeps it awake — see the sleep
-      // check in tick) so any sticker that loses its support when this one is pulled
-      // out can fall properly instead of hanging in mid-air.
+      st.dragging = true; st.vx = st.vy = 0; lastT = performance.now();
       activeDrags++;
-      for(const o of flungStickers){ if(o !== st){ o.still = 0; startTick(o); } }
+      bumpChaos();                       // unsticking / grabbing stirs up pandemonium
       img.dragOX = p.clientX - st.px; img.dragOY = p.clientY - st.py;
       img.style.cursor = "grabbing";
       window.addEventListener("pointermove", onMove, {passive:false});
@@ -1312,11 +1376,11 @@ loadFavicon();
       if(!st.dragging) return;
       e.preventDefault();
       const now = performance.now(), dt = Math.max(1, now - lastT);
-      lastInteractAt = now;             // still interacting → keep the boost lively
       const nx = e.clientX - img.dragOX, ny = e.clientY - img.dragOY;
       st.vx = (nx - st.px)/dt*16; st.vy = (ny - st.py)/dt*16;
       st.px = nx; st.py = ny; lastT = now;
       img.style.left = st.px+"px"; img.style.top = st.py+"px";
+      chaos = 1;                          // keep the boost alive while you play
     }
     function onUp(){
       st.dragging = false;
@@ -1324,94 +1388,10 @@ loadFavicon();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       img.style.cursor = "grab";
-      startTick(st);
+      wakeWorld();
     }
     img.addEventListener("pointerdown", onDown);
     img.addEventListener("dragstart", (e)=> e.preventDefault());
-  }
-
-  // Wake a resting (already flung) sticker so it can react to being hit.
-  function startTick(st){
-    if(stickersFrozen) return;          // page is calmed (minigame found) — stay put
-    if(st.raf || st.dragging || !st.fixed) return;
-    const W = ()=> window.innerWidth, H = ()=> window.innerHeight;
-    const gravity = 0.6, friction = 0.99, bounce = 0.7;
-    (function tick(){
-      st.raf = null;
-      if(stickersFrozen) return;        // freeze kicked in mid-flight — stop now
-      const img = st.img, w = img.offsetWidth, h = img.offsetHeight;
-      st.vy += gravity; st.vx *= friction;
-      st.px += st.vx; st.py += st.vy;
-      let bounced = false, impact = 0;
-      if(st.px < 0){ st.px = 0; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); bounced = true; }
-      if(st.px + w > W()){ st.px = W()-w; st.vx = -st.vx*bounce; impact = Math.max(impact, Math.abs(st.vx)); bounced = true; }
-      if(st.py + h > H()){ st.py = H()-h; st.vy = -st.vy*bounce; st.vx *= 0.8; impact = Math.max(impact, Math.abs(st.vy)); bounced = true; }
-      if(st.py < 0){ st.py = 0; st.vy = -st.vy*bounce; impact = Math.max(impact, Math.abs(st.vy)); bounced = true; }
-      // Bounce off the other already-flung stickers (never stack on them), and
-      // ride the tempo boost from each contact.
-      let touching = false, supportedBelow = false;
-      for(const other of flungStickers){
-        if(other === st) continue;
-        const hit = collide(st, other);
-        const inContact = hit > 0 || overlaps(st, other);
-        if(hit > 0){
-          if(hit > 1.6){ sfx.boing(hit + 2, img.src); sfx.boing(hit + 2, other.img.src); }
-          other.img.style.left = other.px+"px"; other.img.style.top = other.py+"px";
-          if(!other.dragging) startTick(other);   // wake a resting sticker that got struck
-        }
-        if(inContact){
-          touching = true;
-          // Is this neighbour holding us up? It counts as support when its body sits
-          // below ours and it is itself barely moving (part of a settled heap).
-          const oh = other.img.offsetHeight;
-          const below = (other.py + oh/2) > (st.py + h/2);
-          if(below && Math.hypot(other.vx, other.vy) < REST_SPEED) supportedBelow = true;
-        }
-      }
-      if(bounced && impact > 2.5) sfx.boing(impact, img.src);
-      // Re-clamp inside the viewport AFTER collisions: a sticker at the bottom of a
-      // heap can be shoved through the floor (or a wall) by the pile pressure above
-      // it, since the overlap resolution above runs after the initial wall bounce.
-      // Pin it back to the edge and kill the velocity that points into the wall so it
-      // can't keep grinding through it.
-      if(st.px < 0){ st.px = 0; if(st.vx < 0) st.vx = 0; }
-      if(st.px + w > W()){ st.px = W()-w; if(st.vx > 0) st.vx = 0; }
-      if(st.py < 0){ st.py = 0; if(st.vy < 0) st.vy = 0; }
-      if(st.py + h > H()){ st.py = H()-h; if(st.vy > 0) st.vy = 0; }
-      img.style.left = st.px+"px"; img.style.top = st.py+"px";
-      // Settling: a sticker that is supported (on the floor or resting on a calm
-      // neighbour) and barely moving for a sustained stretch falls asleep — even while
-      // touching others. Without this, a packed heap keeps re-nudging itself forever
-      // (the endless micro-jitter most visible on small/mobile screens). The heap is
-      // never allowed to sleep while a sticker is being held, so pulling one out lets
-      // the others above it drop instead of hanging in the air.
-      const onFloor = (st.py + h >= H()-1);
-      const supported = onFloor || supportedBelow;
-      // Bleed the leftover energy out of the heap so it can actually come to rest.
-      // While you are playing the Nazans stay lively; once you leave them alone (no
-      // interaction for a moment) a gentle friction drains every sticker, and a
-      // supported, slow one snaps tiny speeds to a dead stop — so the pile always
-      // settles instead of trembling under gravity forever.
-      if(performance.now() - lastInteractAt > BOOST_ACTIVE_MS){
-        st.vx *= IDLE_FRICTION; st.vy *= IDLE_FRICTION;
-        const sp = Math.hypot(st.vx, st.vy);            // safety cap: never let an idle heap run away
-        if(sp > IDLE_MAX_SPEED){ const k = IDLE_MAX_SPEED / sp; st.vx *= k; st.vy *= k; }
-      }
-      if(supported && Math.hypot(st.vx, st.vy) < SETTLE_BAND){
-        st.vx *= FLOOR_FRICTION; st.vy *= SETTLE_DAMP;   // ground friction stops sideways sliding
-        if(Math.abs(st.vx) < VEL_DEADZONE) st.vx = 0;
-        if(Math.abs(st.vy) < VEL_DEADZONE) st.vy = 0;
-      }
-      const slow = Math.abs(st.vy) < REST_VY && Math.abs(st.vx) < REST_VX;
-      st.still = (supported && slow) ? st.still + 1 : 0;
-      if(!activeDrags && st.still >= SLEEP_FRAMES){
-        st.vx = 0; st.vy = 0;             // park it for good until something disturbs it
-        return;                           // no new frame → the heap finally rests
-      }
-      const isResting = onFloor && Math.abs(st.vy) < 1.2 && Math.abs(st.vx) < 0.4;
-      // Keep animating while airborne or still nudging apart from another sticker.
-      if(!isResting || touching){ st.raf = requestAnimationFrame(tick); }
-    })();
   }
 
   /* ---------- Easter-egg button + Nazan Dodge minigame ---------- */
