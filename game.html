@@ -602,8 +602,8 @@
     // ever help the player, never make things worse.
     function doShove(){
       const R = base() * 0.62;
-      const slow = base() * 0.006;                 // gentle drift speed after the blast
-      const WALL_TOL = 0.5;                         // px tolerance for "touching a wall"
+      const driftSpeed = base() * 0.006;                 // gentle drift speed after the blast
+      const WALL_TOLERANCE = 0.5;                         // px tolerance for "touching a wall"
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
@@ -619,24 +619,24 @@
           // just bounce it off the wall back into the player — instant death. So when an
           // axis is clamped against a wall we send it SLIDING ALONG that wall, away from
           // the player, instead of into it.
-          const atWallX = (e.x <= e.r + WALL_TOL) || (e.x >= W - e.r - WALL_TOL);
-          const atWallY = (e.y <= e.r + WALL_TOL) || (e.y >= H - e.r - WALL_TOL);
+          const atWallX = (e.x <= e.r + WALL_TOLERANCE) || (e.x >= W - e.r - WALL_TOLERANCE);
+          const atWallY = (e.y <= e.r + WALL_TOLERANCE) || (e.y >= H - e.r - WALL_TOLERANCE);
           let vx, vy;
           if(atWallY && !atWallX){                 // pinned top/bottom → slide sideways
-            vx = ((e.x >= player.x) ? 1 : -1) * slow; vy = 0;
+            vx = ((e.x >= player.x) ? 1 : -1) * driftSpeed; vy = 0;
           } else if(atWallX && !atWallY){          // pinned left/right → slide vertically
-            vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * slow;
+            vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * driftSpeed;
           } else if(atWallX && atWallY){           // jammed in a corner: slide along the wall
             // that runs PERPENDICULAR to the player, since sliding toward the player's own
             // row/column only closes the gap. If the player is mostly to the side, slide
             // vertically; if mostly above/below, slide horizontally.
             if(Math.abs(dx) >= Math.abs(dy)){
-              vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * slow;
+              vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * driftSpeed;
             } else {
-              vx = ((e.x >= player.x) ? 1 : -1) * slow; vy = 0;
+              vx = ((e.x >= player.x) ? 1 : -1) * driftSpeed; vy = 0;
             }
           } else {                                  // open space → just drift outward
-            vx = nx * slow; vy = ny * slow;
+            vx = nx * driftSpeed; vy = ny * driftSpeed;
           }
           e.vx = vx; e.vy = vy;
           // Properly defang it: a Nazan's danger comes from its accumulated age (the
