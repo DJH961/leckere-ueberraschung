@@ -179,8 +179,8 @@
   .lbList li .pts{flex:0 0 auto; font-weight:800; color:var(--navy);}
   .lbEmpty{color:var(--muted); font-size:.88rem; text-align:center;}
   @media (max-width:600px){
-    #game{--mobile-panel-top:58px; --mobile-panel-bottom:10px; --mobile-leaderboard-min:180px;}
-    #gameHud{padding:calc(10px + env(safe-area-inset-top)) 10px 10px;}
+    #game{--mobile-panel-top:54px; --mobile-panel-bottom:8px; --mobile-leaderboard-min:170px;}
+    #gameHud{padding:calc(8px + env(safe-area-inset-top)) 10px 8px;}
     #gameHud .score{font-size:1rem; padding:6px 11px; border-radius:12px;}
     #gameExit{font-size:.86rem; padding:7px 13px;}
     .gamePanel{align-items:stretch; justify-content:flex-start; gap:0;
@@ -189,38 +189,38 @@
       /* First height is a vh fallback; dvh + safe-area insets handles mobile browser chrome. */
       height:calc(100vh - var(--mobile-panel-top) - var(--mobile-panel-bottom));
       height:calc(100dvh - var(--mobile-panel-top) - var(--mobile-panel-bottom) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-      max-height:none; margin:0 auto; padding:16px 14px 14px; border-radius:22px;
+      max-height:none; margin:0 auto; padding:12px 14px 10px; border-radius:22px;
       gap:0; box-shadow:0 14px 36px rgba(61,80,118,.28);}
-    .gameCard h2{font-size:clamp(1.35rem,7vw,1.8rem); margin-bottom:5px;}
-    .gameCard p{font-size:.9rem; line-height:1.28; margin:4px 0;}
+    .gameCard h2{font-size:clamp(1.35rem,7vw,1.8rem); margin-bottom:4px;}
+    .gameCard p{font-size:.9rem; line-height:1.28; margin:3px 0;}
     .gameCard .big{font-size:clamp(1.7rem,10vw,2.25rem); margin:2px 0;}
     .gameCard .best{font-size:.9rem;}
     .desktopHow{display:none;}
     .mobileHow{display:block;}
-    .stickerPick{gap:5px; margin:8px 0 2px;}
+    .stickerPick{gap:4px; margin:6px 0 1px;}
     .stickerPick .spLabel{font-size:.76rem;}
     .spRow{gap:10px;}
     .spArrow{width:38px; height:38px; font-size:1.35rem;}
     .spPreview{width:70px; height:70px; border-radius:16px;}
     .spPreview img{max-width:64px; max-height:64px;}
-    .nameField{margin:10px 0 5px; padding:10px; border-radius:16px;}
+    .nameField{margin:6px 0 3px; padding:8px 10px; border-radius:16px;}
     .nameField label{font-size:.78rem;}
-    .nameRow{width:100%; gap:8px; margin:9px 0 3px;}
+    .nameRow{width:100%; gap:8px; margin:7px 0 2px;}
     .nameRow input{width:100%; min-width:0; padding:10px 12px;}
     #gameOver .nameRow{display:grid; grid-template-columns:1fr; align-items:stretch;}
     .nameHint{font-size:.78rem; line-height:1.25; min-height:auto;}
-    .lbBox{margin:10px 0 8px; padding:10px; border:1px solid var(--card-border);
+    .lbBox{margin:6px 0 4px; padding:10px; border:1px solid var(--card-border);
       border-radius:16px; background:rgba(255,255,255,.66);
       box-shadow:inset 0 0 0 1px rgba(111,147,192,.06);
       flex:1 1 calc(var(--mobile-leaderboard-min) + 30px); min-height:var(--mobile-leaderboard-min);}
     body.dark .lbBox{background:rgba(22,29,46,.66);}
-    .lbBox h3{font-size:.9rem; margin-bottom:7px;}
+    .lbBox h3{font-size:.9rem; margin-bottom:6px;}
     .lbList li{font-size:.88rem; padding:8px 9px; gap:7px; border-radius:11px;}
     .lbList li .rank{flex-basis:2.45em;}
     .gameBtns{display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; margin-top:auto;
-      padding-top:6px; flex:0 0 auto;}
+      padding-top:4px; flex:0 0 auto;}
     .gameBtn{width:100%; padding:11px 12px; font-size:.94rem;}
-    .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 6px; padding:8px 13px;}
+    .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 4px; padding:7px 13px;}
   }
   @media (max-width:360px){
     #game{--mobile-leaderboard-min:155px;}
@@ -265,7 +265,7 @@
                    placeholder="Type your name" aria-label="Your name for the leaderboard" />
           </div>
         </div>
-        <p class="nameHint" id="gameStartNameHint">Enter your name to play — your scores land on the global board.</p>
+        <p class="nameHint" id="gameStartNameHint">Enter your name to join the global board.</p>
         <div class="lbBox" id="startLbBox">
           <h3>🌍 Global Top Nazans</h3>
           <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
