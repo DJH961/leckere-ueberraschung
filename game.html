@@ -237,7 +237,7 @@
     <div id="gameHud">
       <div class="score">Score <span id="gameScore">0</span></div>
       <div class="hudBtns">
-        <button id="gameMusic" type="button" aria-label="Mute music">🔊</button>
+        <button id="gameMusic" type="button" aria-label="Mute sound">🔊</button>
         <button id="gameExit" type="button">✕ Back</button>
       </div>
     </div>
@@ -249,7 +249,7 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode or snail mode. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode, snail mode or a golden <strong>Star</strong> that makes you invincible and lets you barge straight through Nazans. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; if Shove is ready, tap your Nazan or press Space.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
@@ -342,6 +342,27 @@
   let _ctx = null;
   function getCtx(){ _ctx = _ctx || new (window.AudioContext || window.webkitAudioContext)(); return _ctx; }
 
+  // Single master mixer node that EVERY sound — effects, voice clips and the
+  // background music — connects to instead of the raw destination. Muting this
+  // one node therefore silences the whole game, not just the music.
+  let _master = null, _audioMuted = false;
+  function getMaster(){
+    const ctx = getCtx();
+    if(!_master){
+      _master = ctx.createGain();
+      _master.gain.value = _audioMuted ? 0 : 1;
+      _master.connect(ctx.destination);
+    }
+    return _master;
+  }
+  function setAudioMuted(m){
+    _audioMuted = !!m;
+    // Only adjust the live node if it already exists; otherwise the saved state
+    // is honoured when getMaster() lazily builds it (avoids creating an
+    // AudioContext before the first user gesture).
+    if(_master){ try{ _master.gain.value = _audioMuted ? 0 : 1; }catch(e){} }
+  }
+
   /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
   const sfx = (function(){
     let lastBoing = 0;                 // global throttle so we never overload the mixer
@@ -394,7 +415,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        osc.connect(g).connect(ctx.destination);
+        osc.connect(g).connect(getMaster());
         osc.start(t); osc.stop(t + dur + 0.05);
       }catch(e){}
     }
@@ -418,7 +439,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        src.connect(bp).connect(g).connect(ctx.destination);
+        src.connect(bp).connect(g).connect(getMaster());
         src.start(t); src.stop(t + dur + 0.02);
       }catch(e){}
     }
@@ -556,7 +577,7 @@
         g.gain.linearRampToValueAtTime(vol, t + fi);                 // tiny fade-in kills the click
         g.gain.setValueAtTime(vol, Math.max(t + fi, t + dur - fo));
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
-        src.connect(g).connect(ctx.destination);
+        src.connect(g).connect(getMaster());
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
@@ -612,6 +633,25 @@
         tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
         tone({ type:"square", f0:523, dur:0.1, vol:0.1, t0:0.1 });
         tone({ type:"square", f0:784, f1:880, dur:0.22, vol:0.11, t0:0.2, wobble:22 });
+      },
+      // Bright, fast, looping-feel "invincibility" jingle in the spirit of Mario
+      // Kart's golden star — a quick repeating run of ascending notes that sparkles
+      // up the scale. Built from the same goofy synth family as everything else, so
+      // it's original and copyright-free.
+      starPower(){
+        // A short rising motif (C E G C E G …) repeated a few times, climbing each
+        // pass, to give that giddy "I'm unstoppable!" twinkle.
+        const base = [523.25, 659.25, 783.99];   // C5 E5 G5
+        const step = 0.075;
+        let t = 0;
+        for(let pass = 0; pass < 4; pass++){
+          const climb = Math.pow(2, pass / 12);   // nudge the whole run up each pass
+          for(let i = 0; i < base.length; i++){
+            tone({ type:"square",   f0:base[i]*climb, dur:0.09, vol:0.09, t0:t });
+            tone({ type:"triangle", f0:base[i]*climb*2, dur:0.09, vol:0.05, t0:t });  // shimmer octave
+            t += step;
+          }
+        }
       }
     };
   })();
@@ -638,7 +678,7 @@
     let playing = false, timer = null, step = 0, nextTime = 0, master = null;
     function ensureMaster(){
       const ctx = getCtx();
-      if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(ctx.destination); }
+      if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(getMaster()); }
       return master;
     }
     // A single soft note routed through the music master gain.
@@ -852,6 +892,7 @@
     let pickIndex = 0;
     // Background-music preference (on by default), persisted across visits.
     let musicEnabled = LS.get("nazanDodgeMusic", true);
+    setAudioMuted(!musicEnabled);   // honour the saved choice for ALL game audio
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
     // Global-board state for the current game-over screen.
@@ -869,9 +910,13 @@
       ghost:  { icon:"👻", name:"Invisible",   color:"#7e57c2", dur:5 },   // Nazans pass right through you
       repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:4 },   // a bubble that keeps Nazans pushed away
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
-      snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 }    // Nazans crawl in slow motion
+      snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
+      star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 }    // Mario-Kart star: invincible, faster, plough through Nazans
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
+    const STAR_SPEED_MUL = 1.5;      // Star Power makes the player dash faster, like a Mario Kart star
+    const STAR_KNOCKBACK = 0.012;    // outward kick given to a Nazan ploughed through under Star Power, fraction of base()
+    const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
     const REPEL_STRENGTH = 0.02;     // Force Field outward push per frame, fraction of base()
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
@@ -950,7 +995,7 @@
     function syncMusicBtn(){
       const b = $("#gameMusic"); if(!b) return;
       b.textContent = musicEnabled ? "🔊" : "🔇";
-      b.setAttribute("aria-label", musicEnabled ? "Mute music" : "Play music");
+      b.setAttribute("aria-label", musicEnabled ? "Mute sound" : "Unmute sound");
     }
     function startMusicIfEnabled(){
       if(musicEnabled && root && root.classList.contains("show")){ try{ music.start(); }catch(e){} }
@@ -958,6 +1003,7 @@
     function toggleMusic(){
       musicEnabled = !musicEnabled;
       LS.set("nazanDodgeMusic", musicEnabled);
+      setAudioMuted(!musicEnabled);   // mute/unmute EVERYTHING (sfx, voices and music)
       syncMusicBtn();
       if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
     }
@@ -1084,7 +1130,9 @@
       pickup = null;
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
       updatePrompt();
-      try{ sfx.boing(3, "powerup-" + type); }catch(e){}
+      // The Star gets its own iconic invincibility jingle; everything else keeps the boing.
+      if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
+      else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
       return true;
     }
 
@@ -1162,7 +1210,7 @@
       // Tiny Mode shrinks the player's effective size (collisions and drawing both
       // use player.r); every other state restores it to its natural radius.
       if(player) player.r = player.baseR * (activeEffect && activeEffect.type === "shrink" ? SHRINK_MUL : 1);
-      const sp = base() * 0.9 * dt;          // keyboard speed (per second, scaled)
+      const sp = base() * 0.9 * dt * (activeEffect && activeEffect.type === "star" ? STAR_SPEED_MUL : 1); // keyboard speed (per second, scaled; Star dashes faster)
       let kx = 0, ky = 0;
       if(keys.ArrowLeft || keys.a) kx -= 1;
       if(keys.ArrowRight || keys.d) kx += 1;
@@ -1314,6 +1362,20 @@
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
           }
+          // Star Power: invincible like Mario Kart's star — barge straight through any
+          // Nazan you touch, flinging it away (and banking a few points) instead of dying.
+          if(activeEffect && activeEffect.type === "star"){
+            const d = Math.hypot(dx, dy) || 1;
+            const nx = dx / d, ny = dy / d;
+            const kick = base() * STAR_KNOCKBACK;
+            e.x = Math.min(Math.max(e.x + nx * (e.r + player.r), e.r), W - e.r);
+            e.y = Math.min(Math.max(e.y + ny * (e.r + player.r), e.r), H - e.r);
+            e.vx = nx * kick; e.vy = ny * kick; e.age = Math.min(e.age, 1.5);
+            score += STAR_POINTS;
+            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+            try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
+            continue;
+          }
           if(activeEffect && activeEffect.type === "ghost") continue;
           gameOver(); return;
         }
@@ -1415,6 +1477,31 @@
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
         } else if(activeEffect && !activeEffect.ending && activeEffect.type === "eat"){
           drawSticker(player, true, "#e8743b");   // hungry golden ring
+        } else if(activeEffect && !activeEffect.ending && activeEffect.type === "star"){
+          // Mario Kart star: a shimmering rainbow halo that cycles colour fast, plus a
+          // ring of twinkling sparkles, so invincibility reads instantly.
+          const t = elapsed;
+          const hue = (t * 540) % 360;                 // race through the rainbow
+          ctx.save();
+          ctx.translate(player.x, player.y);
+          const glow = ctx.createRadialGradient(0, 0, player.r * 0.6, 0, 0, player.r + 14);
+          glow.addColorStop(0, "hsla(" + hue + ",100%,70%,0)");
+          glow.addColorStop(0.7, "hsla(" + hue + ",100%,65%,.25)");
+          glow.addColorStop(1, "hsla(" + ((hue + 60) % 360) + ",100%,60%,.55)");
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(0, 0, player.r + 14, 0, Math.PI * 2); ctx.fill();
+          // little sparkle stars orbiting the player
+          ctx.fillStyle = "#fff7d6";
+          for(let k = 0; k < 6; k++){
+            const a = t * 5 + k * (Math.PI * 2 / 6);
+            const rr = player.r + 8 + Math.sin(t * 8 + k) * 3;
+            ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(t * 9 + k));
+            ctx.font = (player.r * 0.5).toFixed(0) + "px system-ui, sans-serif";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText("✦", Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          ctx.restore();
+          drawSticker(player, true, "hsl(" + hue + ",100%,60%)");   // rainbow ring on the Nazan itself
         } else {
           drawSticker(player, true);
         }
