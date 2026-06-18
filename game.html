@@ -680,8 +680,8 @@
         const rr = pickup.r + player.r;
         if(dx * dx + dy * dy < rr * rr){       // collected!
           held = pickup.type; pickup = null;
-          updatePrompt();
           try{ sfx.blip("powerup-collect"); }catch(e){}
+          activate();                          // fire it instantly — no holding, no timing it
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
         }
