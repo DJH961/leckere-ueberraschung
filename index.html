@@ -208,7 +208,7 @@
     75%{transform:scale(1.12) rotate(7deg);}}
 
   /* ===== Achievement tracker (👁 eye button + panel) ===== */
-  #achBtn{position:fixed; top:14px; right:14px; z-index:9998;
+  #achBtn{position:fixed; top:14px; left:14px; z-index:9998;
     width:44px; height:44px; padding:0; cursor:pointer; display:inline-flex;
     align-items:center; justify-content:center; font-size:20px; line-height:1;
     border:1px solid var(--card-border); border-radius:50%; color:var(--navy);
@@ -273,7 +273,7 @@
   <!-- ===== ACHIEVEMENT TOASTS ===== -->
   <div id="toasts" aria-live="polite"></div>
 
-  <!-- ===== ACHIEVEMENT TRACKER (ℹ️ info, top-right) ===== -->
+  <!-- ===== ACHIEVEMENT TRACKER (ℹ️ info, top-left) ===== -->
   <button id="achBtn" type="button" aria-label="View achievements" title="Achievements"><span class="i">i</span><span class="dot" id="achCount">0</span></button>
   <div id="achOverlay" role="dialog" aria-modal="true" aria-label="Achievements">
     <div id="achPanel">
@@ -638,6 +638,7 @@ const LANG_FLAGS = {
   irish:"🇮🇪", scottish:"🏴󠁧󠁢󠁳󠁣󠁴󠁿", estonian:"🇪🇪", latvian:"🇱🇻", lithuanian:"🇱🇹",
   georgian:"🇬🇪", armenian:"🇦🇲", azerbaijani:"🇦🇿", kazakh:"🇰🇿", mongolian:"🇲🇳",
   albanian:"🇦🇱", macedonian:"🇲🇰", bosnian:"🇧🇦", maltese:"🇲🇹", luxembourgish:"🇱🇺",
+  moroccan:"🇲🇦", bavarian:"images/flag-bavaria.svg",
   latin:"🏛️", esperanto:"🌍"
 };
 function langInfo(filename){
@@ -648,8 +649,13 @@ function langInfo(filename){
 }
 /* Windows omits country-flag emoji glyphs, so turn regional-indicator flags
    into real SVG flag images (ISO code derived from the emoji). Non-country
-   symbols (🏛️ 🌍 🌐 🏴) keep their emoji, which Windows renders fine. */
+   symbols (🏛️ 🌍 🌐 🏴) keep their emoji, which Windows renders fine.
+   A value may also be a direct image path/URL (e.g. subdivision flags such as
+   Bavaria, which have no emoji); those render as an <img> as-is. */
 function flagHTML(emoji){
+  if(typeof emoji === "string" && (/^https?:\/\//.test(emoji) || /\.(svg|png|jpe?g|webp)$/i.test(emoji))){
+    return `<img class="flag-img" src="${emoji}" alt="flag" loading="lazy">`;
+  }
   const cps = Array.from(emoji).map(c => c.codePointAt(0));
   const RI = 0x1F1E6;                                   // regional indicator 'A'
   if(cps.length === 2 && cps.every(c => c >= RI && c <= RI + 25)){
@@ -1256,7 +1262,7 @@ loadFavicon();
     if(!entries.length){ lb.innerHTML = "🎵 No legends played yet. Your reputation is spotless… for now."; return; }
     const [lang, rec] = entries[0];
     const quip = rec.count >= 7 ? " Seek help." : rec.count >= 3 ? " A connoisseur." : "";
-    lb.innerHTML = `Your most-played legend: <b>${rec.flag} ${lang}</b> (${rec.count} play${rec.count===1?"":"s"}).${quip}`;
+    lb.innerHTML = `Your most-played legend: <b>${flagHTML(rec.flag)} ${lang}</b> (${rec.count} play${rec.count===1?"":"s"}).${quip}`;
   }
 
   /* ---------- Confetti + sticker rain (Konami) ---------- */
