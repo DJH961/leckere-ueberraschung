@@ -133,6 +133,11 @@
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
         <p>Cornered? <strong>Grab a power-up</strong> when one pops up — then <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) to unleash it. Flavours include eating mode, a powerful shove, invisibility, a force field, tiny mode and snail mode. Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
+        <div class="nameRow">
+          <input id="gameNameStart" type="text" maxlength="16" autocomplete="off"
+                 placeholder="Type your name" aria-label="Your name for the leaderboard" />
+        </div>
+        <p class="nameHint" id="gameStartNameHint">Type your name so your scores land on the global board.</p>
         <div class="lbBox" id="startLbBox">
           <h3>🌍 Global Top Nazans</h3>
           <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
@@ -187,7 +192,7 @@
   // to the same URL — exactly what an open Firebase RTDB node accepts, no SDK or
   // API key needed in the client. Leave it as "" and the board still works, but
   // only locally (per-device) as a graceful fallback.
-  const GLOBAL_SCORES_URL = "";
+  const GLOBAL_SCORES_URL = "https://nazan-dodge-default-rtdb.europe-west1.firebasedatabase.app/nazanDodge";
   const $ = (s)=>document.querySelector(s);
 
   const LS = {
@@ -429,11 +434,25 @@
     const MAX = 10;
     const enabled = !!GLOBAL_SCORES_URL;
 
+    // One-time cleanup: older builds let the same player pile up multiple rows.
+    // Wipe the local board once so the new de-duplicated logic starts clean.
+    if(!LS.get("nazanBoardDedupedV1", false)){
+      LS.set(LOCAL_KEY, []);
+      LS.set("nazanBoardDedupedV1", true);
+    }
+
     function clean(list){
+      const seen = Object.create(null);   // one row per player (case-insensitive name)
       return (Array.isArray(list) ? list : [])
         .filter(e => e && typeof e.name === "string" && Number.isFinite(e.score) && e.score >= 0)
         .map(e => ({ name: String(e.name).slice(0, 16), score: Math.floor(e.score), ts: e.ts || 0 }))
         .sort((a,b)=> b.score - a.score)
+        .filter(e => {
+          const key = e.name.trim().toLowerCase();
+          if(!key || seen[key]) return false;   // keep only the player's best (first after sort)
+          seen[key] = true;
+          return true;
+        })
         .slice(0, MAX);
     }
     function localList(){ return clean(LS.get(LOCAL_KEY, [])); }
@@ -691,8 +710,8 @@
         const rr = pickup.r + player.r;
         if(dx * dx + dy * dy < rr * rr){       // collected!
           held = pickup.type; pickup = null;
-          updatePrompt();
           try{ sfx.blip("powerup-collect"); }catch(e){}
+          activate();                          // fire it instantly — no holding, no timing it
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
         }
@@ -1016,6 +1035,16 @@
         ol.innerHTML = `<li class="lbEmpty">Couldn't load the board right now.</li>`;
       }
     }
+    // Keep the player's name in one place: typing it on EITHER the start screen or
+    // the game-over screen persists it and mirrors it to the other field, so the same
+    // name is reused for every score unless the player edits it.
+    function syncName(value){
+      const name = String(value || "").slice(0, 16);
+      LS.set("playerName", name);
+      const startInput = $("#gameNameStart"), overInput = $("#gameName");
+      if(startInput && startInput.value !== name) startInput.value = name;
+      if(overInput && overInput.value !== name) overInput.value = name;
+    }
     async function submitScore(){
       const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
       const name = (nameEl ? nameEl.value : "").trim();
@@ -1026,7 +1055,7 @@
       }
       if(submitted || pendingScore <= 0) return;
       submitted = true;
-      LS.set("playerName", name);
+      syncName(name);
       if(btnEl){ btnEl.disabled = true; btnEl.textContent = "✓ Submitted"; }
       if(nameEl) nameEl.disabled = true;
       if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Nice — your score is on the board!"; }
@@ -1043,6 +1072,8 @@
       overPane.classList.add("hidden");
       root.classList.add("show");
       root.setAttribute("aria-hidden", "false");
+      const startName = $("#gameNameStart");
+      if(startName) startName.value = LS.get("playerName", "");
       resize();
       renderBoard("#startLbList");
       try{ draw(); }catch(e){}
@@ -1089,10 +1120,14 @@
       // Keyboard.
       window.addEventListener("keydown", (e)=>{
         if(!root.classList.contains("show")) return;
-        // Don't hijack typing in the name field: let it behave like a normal input
-        // (Enter submits the score instead of restarting the round).
-        if(e.target && e.target.id === "gameName"){
-          if(e.key === "Enter"){ e.preventDefault(); submitScore(); }
+        // Don't hijack typing in either name field: let it behave like a normal input
+        // (Enter submits the score instead of restarting / moving the player).
+        if(e.target && (e.target.id === "gameName" || e.target.id === "gameNameStart")){
+          if(e.key === "Enter"){
+            e.preventDefault();
+            if(e.target.id === "gameName") submitScore();
+            else if(!running) start();
+          }
           return;
         }
         if(e.key === "Escape"){ close(); return; }
@@ -1114,6 +1149,9 @@
       $("#gameStartBack").addEventListener("click", close);
       $("#gameOverBack").addEventListener("click", close);
       const sub = $("#gameSubmit"); if(sub) sub.addEventListener("click", submitScore);
+      // Persist + mirror the player's name as they type it, on either screen.
+      const nameStart = $("#gameNameStart"); if(nameStart) nameStart.addEventListener("input", (e)=> syncName(e.target.value));
+      const nameOver  = $("#gameName");      if(nameOver)  nameOver.addEventListener("input",  (e)=> syncName(e.target.value));
     }
     return { open, close, wire };
   })();
