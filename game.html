@@ -384,6 +384,17 @@
       };
     }
     function rngFor(key){ return key ? mulberry32(hashStr(key)) : Math.random; }
+    // Keep every effect gentle and even: pull the whole lot down a touch through one
+    // shared bus, and play the voice clips at a single steady level (no impact-scaled
+    // blare) so a quiet blip and a loud "boing" sit at about the same volume.
+    const SFX_MASTER = 0.7;            // overall trim so nothing is jarring
+    const CLIP_VOL   = 0.32;           // one calm level for Nazan's voice clips
+    let _sfxBus = null;
+    function sfxOut(){
+      const ctx = getCtx();
+      if(!_sfxBus){ _sfxBus = ctx.createGain(); _sfxBus.gain.value = SFX_MASTER; _sfxBus.connect(getMaster()); }
+      return _sfxBus;
+    }
     function tone(opts){
       // opts: type, f0, f1, dur, vol, wobble, wobbleRate, t0, glide
       try{
@@ -415,7 +426,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        osc.connect(g).connect(getMaster());
+        osc.connect(g).connect(sfxOut());
         osc.start(t); osc.stop(t + dur + 0.05);
       }catch(e){}
     }
@@ -439,7 +450,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        src.connect(bp).connect(g).connect(getMaster());
+        src.connect(bp).connect(g).connect(sfxOut());
         src.start(t); src.stop(t + dur + 0.02);
       }catch(e){}
     }
@@ -460,6 +471,61 @@
       "sound effects/PTT-20260618-WA0059.opus"
     ];
     const clipBuffers = new Map();     // url -> AudioBuffer (decoded, trimmed, ready to play)
+    // Every Nazan sticker is tied to ONE fixed voice clip — the SAME one here in the
+    // game and on the main page — so a given Nazan always says the same line wherever
+    // she turns up. The clips are dealt round-robin across the alphabetically-sorted
+    // sticker list, so the handful of lines spread as evenly as possible and as few
+    // Nazans as possible share a line. Non-sticker keys (walls, power-ups, death) fall
+    // back to a stable hash so they stay consistent too; a missing key uses the bag.
+    let _clipIdxMap = null, _clipIdxLen = -1;
+    // A handful of stickers say, in writing or gesture, exactly what one of the
+    // voice clips says — so we pin those by hand instead of leaving them to the
+    // round-robin. The classic is the "YALLA" sticker, which now always speaks the
+    // "Yalla!" clip. Keys are the (decoded) sticker file names; values are indices
+    // into BOUNCE_CLIPS. Indices: 0 "Hä?" · 3 "Yes sir!" · 4 "That's crazy bro" ·
+    // 1 "Yalla!" · 6/7/8 the "Leckere Überraschung / delicious surprise" trio.
+    const CLIP_OVERRIDES = {
+      "STK-20240515-WA0033.webp": 1,   // "YALLA"               → "Yalla!"
+      "STK-20240425-WA0046.webp": 0,   // "Confusion"           → "Hä?"
+      "Official Logo.webp":       6,   // "Leckere Überraschung" → clip 6
+      "STK-20241103-WA0017.webp": 7,   // "delicious surprise"  → clip 7
+      "STK-20241202-WA0008.webp": 8,   // "Egyptian surprise"   → clip 8
+      "STK-20260616-WA0025.webp": 3,   // "YES, I'm a provider" → "Yes sir!"
+      "STK-20260616-WA0063.webp": 4    // "Why did you say that?"→ "That's crazy bro"
+    };
+    function clipBaseName(key){
+      let s = String(key == null ? "" : key);
+      s = s.split(/[?#]/)[0];                    // drop any query/hash
+      s = s.substring(s.lastIndexOf("/") + 1);   // keep the file name only
+      try{ s = decodeURIComponent(s); }catch(e){}
+      return s;
+    }
+    function buildClipIdxMap(){
+      const list = window.__stickerUrls || [];
+      if(_clipIdxMap && _clipIdxLen === list.length) return;
+      const names = list.map(clipBaseName).sort();
+      _clipIdxMap = new Map();
+      // Hand-matched stickers keep their pinned clip; everyone else is dealt the
+      // remaining lines round-robin so the handful of clips spread as evenly as
+      // possible and as few Nazans as possible share a line.
+      let i = 0;
+      for(const n of names){
+        if(Object.prototype.hasOwnProperty.call(CLIP_OVERRIDES, n)){
+          _clipIdxMap.set(n, CLIP_OVERRIDES[n] % BOUNCE_CLIPS.length);
+        } else {
+          _clipIdxMap.set(n, i % BOUNCE_CLIPS.length);
+          i++;
+        }
+      }
+      _clipIdxLen = list.length;
+    }
+    function clipIndexFor(key){
+      if(key == null) return -1;                 // no identity → caller deals from the bag
+      buildClipIdxMap();
+      const bn = clipBaseName(key);
+      if(_clipIdxMap && _clipIdxMap.has(bn)) return _clipIdxMap.get(bn);
+      return hashStr(bn) % BOUNCE_CLIPS.length;   // stable fallback for non-sticker keys
+    }
     // Several of Nazan's raw recordings start with a big chunk of dead air (up to
     // ~0.7s) and trail off into silence too. Played as-is that makes the bounce
     // "boing" fire whenever it feels like it (long after the Nazan hit the wall)
@@ -560,9 +626,14 @@
       }
       return null;
     }
-    function playClip(intensity){
+    function playClip(intensity, key){
       preloadClips();
-      const buf = nextClipBuf();
+      // Prefer this Nazan's own fixed clip; if it hasn't decoded yet (or there's no
+      // identity), fall back to the shuffle bag so a bounce still speaks right away.
+      let buf = null;
+      const idx = clipIndexFor(key);
+      if(idx >= 0) buf = clipBuffers.get(BOUNCE_CLIPS[idx]) || null;
+      if(!buf) buf = nextClipBuf();
       if(!buf) return;                 // still decoding — it'll be ready for the next bounce
       if(activeClips >= 4) return;
       try{
@@ -570,24 +641,24 @@
         if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
         const src = ctx.createBufferSource(); src.buffer = buf;
         const g = ctx.createGain();
-        const vol = Math.min(1, 0.55 + (intensity||0)*0.03);
+        const vol = CLIP_VOL;          // one steady, gentle level for every clip
         const t = ctx.currentTime, dur = buf.duration;
         const fi = Math.min(0.005, dur*0.25), fo = Math.min(0.02, dur*0.25);
         g.gain.setValueAtTime(0.0001, t);
         g.gain.linearRampToValueAtTime(vol, t + fi);                 // tiny fade-in kills the click
         g.gain.setValueAtTime(vol, Math.max(t + fi, t + dur - fo));
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
-        src.connect(g).connect(getMaster());
+        src.connect(g).connect(sfxOut());
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
       }catch(e){}
     }
     return {
-      // Nazan's funny voice comment when a Nazan bounces; volume scales with
-      // impact. Clips are dealt from a shuffle bag, so every comment is heard
-      // before any repeats — a crowd is a chorus of distinct lines, not the same
-      // one over and over. `key` still throttles each individual Nazan.
+      // Nazan's funny voice comment when a Nazan bounces. Each Nazan (keyed by its
+      // image) is tied to one fixed clip — the SAME one on the main page too — so a
+      // given Nazan always says the same line while different ones differ. `key`
+      // also throttles each individual Nazan so it can't talk over itself.
       boing(intensity, key){
         const now = performance.now();
         // Clips are ~1s of speech, so throttle harder than the old synth boing to
@@ -599,7 +670,7 @@
           lastBoingKey.set(key, now);
         } else if(now - lastBoing < 200){ return; }
         lastBoing = now;
-        playClip(intensity);
+        playClip(intensity, key);
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
       // `key`) keeps a consistent goofy voice; different buttons sound different.
@@ -652,30 +723,56 @@
             t += step;
           }
         }
-      }
+      },
+      // Which voice clip a Nazan is tied to (an index into BOUNCE_CLIPS), so spawns
+      // can space same-voiced Nazans apart instead of three shouting the same line.
+      soundIndexFor(key){ return clipIndexFor(key); },
+      soundCount(){ return BOUNCE_CLIPS.length; }
     };
   })();
 
   /* ---------- Looping background music (Web Audio, no files) ----------
-     A short, upbeat, quiz-show / "kahoot-style" loop built entirely from
-     synthesized tones. Because every note is generated here in the browser,
-     it is original and copyright-free — there are no audio assets to ship.
-     A lookahead scheduler queues notes a fraction of a second ahead so the
-     loop stays rock-steady regardless of timer jitter. */
+     Short, upbeat loops built entirely from synthesized tones. Because every
+     note is generated here in the browser, every theme is original and
+     copyright-free — there are no audio assets to ship. A lookahead scheduler
+     queues notes a fraction of a second ahead so the loop stays rock-steady
+     regardless of timer jitter. The mood follows the action: a quiz-show bounce
+     normally, a hungry chomp-chase during Eating Mode, and a fast sparkling
+     run during Star Power. Themes swap only on a bar line so it never lurches. */
   const music = (function(){
     const midiHz = (n)=> 440 * Math.pow(2, (n - 69) / 12);
-    // Four-bar bouncy progression (A minor family) — bright and a bit cheeky.
-    const PROG = [
-      { root:57, tones:[0,3,7,12] },   // Am
-      { root:53, tones:[0,4,7,12] },   // F
-      { root:48, tones:[0,4,7,12] },   // C
-      { root:55, tones:[0,4,7,12] }    // G
-    ];
-    const BPM = 124;
-    const STEP = (60 / BPM) / 2;       // eighth-note grid
     const STEPS_PER_BAR = 8;
-    const TOTAL_STEPS = STEPS_PER_BAR * PROG.length;
+    // Each theme is a four-chord, eighth-note phrase plus a "style" that decides
+    // how each step is voiced. All four-chord, so they swap cleanly bar-to-bar.
+    const THEMES = {
+      // Default: bright, cheeky, quiz-show / "kahoot-style" bounce (A minor family).
+      default: { bpm:124, style:"quiz", prog:[
+        { root:57, tones:[0,3,7,12] },   // Am
+        { root:53, tones:[0,4,7,12] },   // F
+        { root:48, tones:[0,4,7,12] },   // C
+        { root:55, tones:[0,4,7,12] }    // G
+      ]},
+      // Eating Mode: a hungry, prowling chomp-chase — low, fast and a touch tense,
+      // in the spirit of a maze game's pellet munch (an original "wakka" pulse).
+      eat: { bpm:152, style:"chase", prog:[
+        { root:45, tones:[0,3,6,10] },   // A, tense (dim-ish)
+        { root:46, tones:[0,3,6,10] },   // Bb
+        { root:45, tones:[0,3,6,10] },   // A
+        { root:44, tones:[0,3,6,10] }    // G#  (a creeping chromatic step)
+      ]},
+      // Star Power: fast, triumphant, sparkling invincibility run — major and
+      // racing, in the spirit of a kart star (an original tune, not a sample).
+      star: { bpm:184, style:"sparkle", prog:[
+        { root:60, tones:[0,4,7,12] },   // C
+        { root:60, tones:[0,4,7,12] },   // C
+        { root:62, tones:[0,3,7,12] },   // Dm
+        { root:67, tones:[0,4,7,12] }    // G
+      ]}
+    };
+    let curName = "default", cur = THEMES.default, pendingName = "default";
     let playing = false, timer = null, step = 0, nextTime = 0, master = null;
+    function stepDur(){ return (60 / cur.bpm) / 2; }            // eighth-note grid for this theme
+    function totalSteps(){ return STEPS_PER_BAR * cur.prog.length; }
     function ensureMaster(){
       const ctx = getCtx();
       if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(getMaster()); }
@@ -695,24 +792,43 @@
       }catch(e){}
     }
     function scheduleStep(s, t){
-      const chord = PROG[Math.floor(s / STEPS_PER_BAR) % PROG.length];
+      const sd = stepDur();
+      const chord = cur.prog[Math.floor(s / STEPS_PER_BAR) % cur.prog.length];
       const within = s % STEPS_PER_BAR;
-      // Bouncy bass on every beat (every two eighth-notes).
-      if(within % 2 === 0) note(midiHz(chord.root - 12), STEP * 1.6, 0.16, "square", t);
-      // Arpeggio climbing through the chord tones, one per eighth-note.
       const tone = chord.tones[within % chord.tones.length];
-      note(midiHz(chord.root + tone + 12), STEP * 0.9, 0.09, "triangle", t);
-      // A sparkly high accent to give it that game-show lift.
-      if(within === 0 || within === 5){
-        note(midiHz(chord.root + tone + 24), STEP * 0.8, 0.05, "square", t);
+      if(cur.style === "chase"){
+        // Hungry chomp-chase: a punchy bass pulse plus an alternating two-pitch
+        // "wakka wakka" munch on the off-beats — fast, low and a bit menacing.
+        if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.1, 0.16, "square", t);
+        note(midiHz(chord.root + tone + 12), sd * 0.5, 0.10, "square", t);
+        const munch = (within % 2 === 0) ? 0 : 7;
+        note(midiHz(chord.root + munch + 12), sd * 0.42, 0.07, "triangle", t + sd * 0.5);
+      } else if(cur.style === "sparkle"){
+        // Racing star: a driving bass on every beat under a fast, shimmering
+        // arpeggio high up the scale, with twinkles between the eighths.
+        if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.4, 0.15, "square", t);
+        note(midiHz(chord.root + tone + 24), sd * 0.7, 0.075, "triangle", t);
+        note(midiHz(chord.root + tone + 12), sd * 0.5, 0.06, "square", t);
+        note(midiHz(chord.root + tone + 31), sd * 0.38, 0.045, "triangle", t + sd * 0.5);
+      } else {
+        // Default quiz-show bounce: bouncy bass on every beat, a climbing arpeggio,
+        // and a sparkly high accent for that game-show lift.
+        if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.6, 0.16, "square", t);
+        note(midiHz(chord.root + tone + 12), sd * 0.9, 0.09, "triangle", t);
+        if(within === 0 || within === 5) note(midiHz(chord.root + tone + 24), sd * 0.8, 0.05, "square", t);
       }
     }
     function tick(){
       const ctx = getCtx();
       while(nextTime < ctx.currentTime + 0.12){
+        // Apply a requested mode change only on a bar line, so the music swaps
+        // cleanly from one downbeat to the next instead of lurching mid-phrase.
+        if(pendingName !== curName && (step % STEPS_PER_BAR) === 0){
+          curName = pendingName; cur = THEMES[curName] || THEMES.default; step = 0;
+        }
         scheduleStep(step, nextTime);
-        nextTime += STEP;
-        step = (step + 1) % TOTAL_STEPS;
+        nextTime += stepDur();
+        step = (step + 1) % totalSteps();
       }
     }
     return {
@@ -738,6 +854,14 @@
           master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), ctx.currentTime);
           master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);  // fade-out
         }catch(e){}
+      },
+      // Pick the mood: "eat" (chomp-chase), "star" (sparkle run) or "default".
+      // While playing, the swap lands on the next bar; otherwise it takes effect
+      // the moment the music next starts.
+      setMode(name){
+        if(!THEMES[name]) name = "default";
+        pendingName = name;
+        if(!playing){ curName = name; cur = THEMES[name]; }
       },
       isPlaying(){ return playing; }
     };
@@ -1000,6 +1124,17 @@
     function startMusicIfEnabled(){
       if(musicEnabled && root && root.classList.contains("show")){ try{ music.start(); }catch(e){} }
     }
+    // Match the looping background music to the moment: a hungry chomp during Eating
+    // Mode, a racing sparkle during Star Power, and the normal bounce otherwise. The
+    // music swaps back as soon as the effect starts winding down (its `ending` grace).
+    function syncMusicMode(){
+      let mode = "default";
+      if(activeEffect && !activeEffect.ending){
+        if(activeEffect.type === "eat") mode = "eat";
+        else if(activeEffect.type === "star") mode = "star";
+      }
+      try{ music.setMode(mode); }catch(e){}
+    }
     function toggleMusic(){
       musicEnabled = !musicEnabled;
       LS.set("nazanDodgeMusic", musicEnabled);
@@ -1041,7 +1176,21 @@
       let pool = images;
       const mine = player ? player.img : null;
       if(mine && images.length > 1) pool = images.filter(im => im !== mine);
-      const img = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      // Space the VOICES out too: each Nazan is tied to one of a small set of clips,
+      // so without care three Nazans saying the same line could be on screen at once
+      // and all shout it together. Prefer images whose clip isn't already out there;
+      // fall back to the full pool once every available voice is in play. The clip
+      // index is cached on each Image so repeated spawns don't re-resolve it.
+      const imgSound = (im)=>{
+        if(im.__snd === undefined){ try{ im.__snd = sfx.soundIndexFor(im.src); }catch(e){ im.__snd = -1; } }
+        return im.__snd;
+      };
+      let voicePool = pool;
+      const live = new Set();
+      for(const e of enemies){ if(e.img){ const s = imgSound(e.img); if(s >= 0) live.add(s); } }
+      const fresh = pool.filter(im => { const s = imgSound(im); return s < 0 || !live.has(s); });
+      if(fresh.length) voicePool = fresh;
+      const img = voicePool.length ? voicePool[Math.floor(Math.random() * voicePool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
                      rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0 });
       // A new Nazan joining the fray gives a little goofy blip — keyed by its image
@@ -1052,6 +1201,7 @@
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
       blastFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
                  img: playerImage() };
@@ -1257,6 +1407,8 @@
           }
         }
       }
+      // Keep the background music in step with the active power-up (eat / star).
+      syncMusicMode();
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
       updatePickups(dt);
 
@@ -1551,6 +1703,7 @@
     function gameOver(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
+      try{ music.setMode("default"); }catch(e){}   // drop any eat/star theme back to normal
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
       showNazanQuote();
       const final = Math.floor(score);

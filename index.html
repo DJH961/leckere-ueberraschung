@@ -826,7 +826,34 @@ async function loadStickers(){
     }
     return arr;
   };
-  const shown = shuffle(files.slice()).slice(0, STICKER_LIMIT);
+  // Each Nazan is tied to one of a small set of voice clips, so a purely random
+  // eight could easily land three Nazans that all say the same line right next to
+  // each other — and they'd all shout it at once. So sample with the SOUNDS spaced
+  // out: greedily prefer stickers whose clip isn't on the page yet, and only allow
+  // a repeated voice once every distinct clip is already represented. (This runs
+  // long after the script body — via loadAudio().then(loadStickers) — so the sfx
+  // module is fully built by now; a failed lookup just disables the constraint.)
+  const soundOf = (f)=>{
+    try{ return sfx.soundIndexFor(encodeURI(f.path)); }catch(e){ return -1; }
+  };
+  const sampleSpaced = (arr, limit)=>{
+    const pool = shuffle(arr.slice());
+    const chosen = [], chosenSet = new Set(), usedSounds = new Set();
+    for(const f of pool){
+      if(chosen.length >= limit) break;
+      const s = soundOf(f);
+      if(s < 0 || !usedSounds.has(s)){ chosen.push(f); chosenSet.add(f); if(s >= 0) usedSounds.add(s); }
+    }
+    // If there are fewer distinct clips than slots, top up with whatever's left.
+    if(chosen.length < limit){
+      for(const f of pool){
+        if(chosen.length >= limit) break;
+        if(!chosenSet.has(f)){ chosen.push(f); chosenSet.add(f); }
+      }
+    }
+    return chosen;
+  };
+  const shown = sampleSpaced(files, STICKER_LIMIT);
 
   // Build side rails for desktop (siblings of .wrap so they sit in the gutters)
   const leftRail = document.createElement("div");  leftRail.className = "rail left";
@@ -934,6 +961,17 @@ loadFavicon();
       };
     }
     function rngFor(key){ return key ? mulberry32(hashStr(key)) : Math.random; }
+    // Keep every effect gentle and even: pull the whole lot down a touch through one
+    // shared bus, and play the voice clips at a single steady level (no impact-scaled
+    // blare) so a quiet blip and a loud "boing" sit at about the same volume.
+    const SFX_MASTER = 0.7;            // overall trim so nothing is jarring
+    const CLIP_VOL   = 0.32;           // one calm level for Nazan's voice clips
+    let _sfxBus = null;
+    function sfxOut(){
+      const ctx = getCtx();
+      if(!_sfxBus){ _sfxBus = ctx.createGain(); _sfxBus.gain.value = SFX_MASTER; _sfxBus.connect(ctx.destination); }
+      return _sfxBus;
+    }
     function tone(opts){
       // opts: type, f0, f1, dur, vol, wobble, wobbleRate, t0, glide
       try{
@@ -965,7 +1003,7 @@ loadFavicon();
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        osc.connect(g).connect(ctx.destination);
+        osc.connect(g).connect(sfxOut());
         osc.start(t); osc.stop(t + dur + 0.05);
       }catch(e){}
     }
@@ -989,7 +1027,7 @@ loadFavicon();
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        src.connect(bp).connect(g).connect(ctx.destination);
+        src.connect(bp).connect(g).connect(sfxOut());
         src.start(t); src.stop(t + dur + 0.02);
       }catch(e){}
     }
@@ -1010,6 +1048,61 @@ loadFavicon();
       "sound effects/PTT-20260618-WA0059.opus"
     ];
     const clipBuffers = new Map();     // url -> AudioBuffer (decoded, trimmed, ready to play)
+    // Every Nazan sticker is tied to ONE fixed voice clip — the SAME one here on the
+    // main page and in the game — so a given Nazan always says the same line wherever
+    // she turns up. The clips are dealt round-robin across the alphabetically-sorted
+    // sticker list, so the handful of lines spread as evenly as possible and as few
+    // stickers as possible share a line. Non-sticker keys (buttons, etc.) fall back to
+    // a stable hash so they stay consistent too; a missing key uses the shuffle bag.
+    let _clipIdxMap = null, _clipIdxLen = -1;
+    // A handful of stickers say, in writing or gesture, exactly what one of the
+    // voice clips says — so we pin those by hand instead of leaving them to the
+    // round-robin. The classic is the "YALLA" sticker, which now always speaks the
+    // "Yalla!" clip. Keys are the (decoded) sticker file names; values are indices
+    // into BOUNCE_CLIPS. Indices: 0 "Hä?" · 3 "Yes sir!" · 4 "That's crazy bro" ·
+    // 1 "Yalla!" · 6/7/8 the "Leckere Überraschung / delicious surprise" trio.
+    const CLIP_OVERRIDES = {
+      "STK-20240515-WA0033.webp": 1,   // "YALLA"               → "Yalla!"
+      "STK-20240425-WA0046.webp": 0,   // "Confusion"           → "Hä?"
+      "Official Logo.webp":       6,   // "Leckere Überraschung" → clip 6
+      "STK-20241103-WA0017.webp": 7,   // "delicious surprise"  → clip 7
+      "STK-20241202-WA0008.webp": 8,   // "Egyptian surprise"   → clip 8
+      "STK-20260616-WA0025.webp": 3,   // "YES, I'm a provider" → "Yes sir!"
+      "STK-20260616-WA0063.webp": 4    // "Why did you say that?"→ "That's crazy bro"
+    };
+    function clipBaseName(key){
+      let s = String(key == null ? "" : key);
+      s = s.split(/[?#]/)[0];                    // drop any query/hash
+      s = s.substring(s.lastIndexOf("/") + 1);   // keep the file name only
+      try{ s = decodeURIComponent(s); }catch(e){}
+      return s;
+    }
+    function buildClipIdxMap(){
+      const list = window.__stickerUrls || [];
+      if(_clipIdxMap && _clipIdxLen === list.length) return;
+      const names = list.map(clipBaseName).sort();
+      _clipIdxMap = new Map();
+      // Hand-matched stickers keep their pinned clip; everyone else is dealt the
+      // remaining lines round-robin so the handful of clips spread as evenly as
+      // possible and as few Nazans as possible share a line.
+      let i = 0;
+      for(const n of names){
+        if(Object.prototype.hasOwnProperty.call(CLIP_OVERRIDES, n)){
+          _clipIdxMap.set(n, CLIP_OVERRIDES[n] % BOUNCE_CLIPS.length);
+        } else {
+          _clipIdxMap.set(n, i % BOUNCE_CLIPS.length);
+          i++;
+        }
+      }
+      _clipIdxLen = list.length;
+    }
+    function clipIndexFor(key){
+      if(key == null) return -1;                 // no identity → caller deals from the bag
+      buildClipIdxMap();
+      const bn = clipBaseName(key);
+      if(_clipIdxMap && _clipIdxMap.has(bn)) return _clipIdxMap.get(bn);
+      return hashStr(bn) % BOUNCE_CLIPS.length;   // stable fallback for non-sticker keys
+    }
     // Several of Nazan's raw recordings start with a big chunk of dead air (up to
     // ~0.7s) and trail off into silence too. Played as-is that makes the bounce
     // "boing" fire whenever it feels like it (long after the sticker hit the wall)
@@ -1109,9 +1202,14 @@ loadFavicon();
       }
       return null;
     }
-    function playClip(intensity){
+    function playClip(intensity, key){
       preloadClips();
-      const buf = nextClipBuf();
+      // Prefer this Nazan's own fixed clip; if it hasn't decoded yet (or there's no
+      // identity), fall back to the shuffle bag so a bounce still speaks right away.
+      let buf = null;
+      const idx = clipIndexFor(key);
+      if(idx >= 0) buf = clipBuffers.get(BOUNCE_CLIPS[idx]) || null;
+      if(!buf) buf = nextClipBuf();
       if(!buf) return;                 // still decoding — it'll be ready for the next bounce
       if(activeClips >= 4) return;
       try{
@@ -1119,24 +1217,24 @@ loadFavicon();
         if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
         const src = ctx.createBufferSource(); src.buffer = buf;
         const g = ctx.createGain();
-        const vol = Math.min(1, 0.55 + (intensity||0)*0.03);
+        const vol = CLIP_VOL;          // one steady, gentle level for every clip
         const t = ctx.currentTime, dur = buf.duration;
         const fi = Math.min(0.005, dur*0.25), fo = Math.min(0.02, dur*0.25);
         g.gain.setValueAtTime(0.0001, t);
         g.gain.linearRampToValueAtTime(vol, t + fi);                 // tiny fade-in kills the click
         g.gain.setValueAtTime(vol, Math.max(t + fi, t + dur - fo));
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
-        src.connect(g).connect(ctx.destination);
+        src.connect(g).connect(sfxOut());
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
       }catch(e){}
     }
     return {
-      // Nazan's funny voice comment when a sticker bounces; volume scales with
-      // impact. Clips are dealt from a shuffle bag, so every comment is heard
-      // before any repeats — a crowd is a chorus of distinct lines, not the same
-      // one over and over. `key` still throttles each individual sticker.
+      // Nazan's funny voice comment when a sticker bounces. Each sticker (keyed by
+      // its image) is tied to one fixed clip — the SAME one in the game too — so a
+      // given Nazan always says the same line while different ones differ. `key`
+      // also throttles each individual sticker so it can't talk over itself.
       boing(intensity, key){
         const now = performance.now();
         // Clips are ~1s of speech, so throttle harder than the old synth boing to
@@ -1148,7 +1246,7 @@ loadFavicon();
           lastBoingKey.set(key, now);
         } else if(now - lastBoing < 200){ return; }
         lastBoing = now;
-        playClip(intensity);
+        playClip(intensity, key);
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
       // `key`) keeps a consistent goofy voice; different buttons sound different.
@@ -1182,7 +1280,11 @@ loadFavicon();
         tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
         tone({ type:"square", f0:523, dur:0.1, vol:0.1, t0:0.1 });
         tone({ type:"square", f0:784, f1:880, dur:0.22, vol:0.11, t0:0.2, wobble:22 });
-      }
+      },
+      // Which voice clip a sticker is tied to (an index into BOUNCE_CLIPS), so the
+      // page can space same-voiced Nazans apart when it samples which ones to show.
+      soundIndexFor(key){ return clipIndexFor(key); },
+      soundCount(){ return BOUNCE_CLIPS.length; }
     };
   })();
 
