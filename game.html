@@ -825,6 +825,8 @@
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.5;      // Star Power makes the player dash faster, like a Mario Kart star
+    const STAR_KNOCKBACK = 0.012;    // outward kick given to a Nazan ploughed through under Star Power, fraction of base()
+    const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
     const REPEL_STRENGTH = 0.02;     // Force Field outward push per frame, fraction of base()
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
@@ -1274,11 +1276,11 @@
           if(activeEffect && activeEffect.type === "star"){
             const d = Math.hypot(dx, dy) || 1;
             const nx = dx / d, ny = dy / d;
-            const kick = base() * 0.012;
+            const kick = base() * STAR_KNOCKBACK;
             e.x = Math.min(Math.max(e.x + nx * (e.r + player.r), e.r), W - e.r);
             e.y = Math.min(Math.max(e.y + ny * (e.r + player.r), e.r), H - e.r);
             e.vx = nx * kick; e.vy = ny * kick; e.age = Math.min(e.age, 1.5);
-            score += 5;
+            score += STAR_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
