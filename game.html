@@ -431,7 +431,7 @@
 
     function clean(list){
       return (Array.isArray(list) ? list : [])
-        .filter(e => e && typeof e.name === "string" && isFinite(e.score))
+        .filter(e => e && typeof e.name === "string" && Number.isFinite(e.score) && e.score >= 0)
         .map(e => ({ name: String(e.name).slice(0, 16), score: Math.floor(e.score), ts: e.ts || 0 }))
         .sort((a,b)=> b.score - a.score)
         .slice(0, MAX);
@@ -508,6 +508,7 @@
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
+    const REPEL_STRENGTH = 0.02;     // Force Field outward push per frame, fraction of base()
     const PU_TYPES = Object.keys(POWERUPS);
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
     let held = null;                 // power-up type currently carried (one at a time), or null
@@ -541,6 +542,7 @@
     }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
+    function naturalPlayerR(){ return Math.max(20, base() * 0.05); }   // player's full size
 
     function resize(){
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -549,7 +551,7 @@
       canvas.height = Math.floor(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if(player){
-        player.baseR = Math.max(20, base() * 0.05);
+        player.baseR = naturalPlayerR();
         player.r = player.baseR * (activeEffect && activeEffect.type === "shrink" ? SHRINK_MUL : 1);
         player.x = Math.min(Math.max(player.x, player.r), W - player.r);
         player.y = Math.min(Math.max(player.y, player.r), H - player.r);
@@ -583,8 +585,8 @@
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
       blastFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
-      player = { x: W / 2, y: H * 0.72, baseR: Math.max(20, base() * 0.05),
-                 r: Math.max(20, base() * 0.05), rot: 0,
+      player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
+                 r: naturalPlayerR(), rot: 0,
                  img: images.length ? images[0] : null };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
@@ -609,9 +611,9 @@
           const launch = base() * (0.35 + 0.6 * close);
           e.vx = nx * launch; e.vy = ny * launch;
           // Shove it clear of the blast radius and keep it inside the arena.
-          const clear = (R - d) + e.r;
-          e.x = Math.min(Math.max(e.x + nx * clear, e.r), W - e.r);
-          e.y = Math.min(Math.max(e.y + ny * clear, e.r), H - e.r);
+          const pushDistance = (R - d) + e.r;
+          e.x = Math.min(Math.max(e.x + nx * pushDistance, e.r), W - e.r);
+          e.y = Math.min(Math.max(e.y + ny * pushDistance, e.r), H - e.r);
           e.age = Math.max(0, e.age - 2.5);        // briefly defang its accumulated speed
         }
       }
@@ -781,7 +783,7 @@
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR){
             const nx = dx / d, ny = dy / d;
-            const push = base() * 0.02 * (1 - d / repelR);
+            const push = base() * REPEL_STRENGTH * (1 - d / repelR);
             e.x += nx * push; e.y += ny * push;
             const vn = e.vx * nx + e.vy * ny;       // cancel any inward drift
             if(vn < 0){ e.vx -= vn * nx; e.vy -= vn * ny; }
