@@ -830,23 +830,25 @@ async function loadStickers(){
   // eight could easily land three Nazans that all say the same line right next to
   // each other — and they'd all shout it at once. So sample with the SOUNDS spaced
   // out: greedily prefer stickers whose clip isn't on the page yet, and only allow
-  // a repeated voice once every distinct clip is already represented.
+  // a repeated voice once every distinct clip is already represented. (This runs
+  // long after the script body — via loadAudio().then(loadStickers) — so the sfx
+  // module is fully built by now; a failed lookup just disables the constraint.)
   const soundOf = (f)=>{
-    try{ return (window.sfx || sfx).soundIndexFor(encodeURI(f.path)); }catch(e){ return -1; }
+    try{ return sfx.soundIndexFor(encodeURI(f.path)); }catch(e){ return -1; }
   };
   const sampleSpaced = (arr, limit)=>{
     const pool = shuffle(arr.slice());
-    const chosen = [], usedSounds = new Set();
+    const chosen = [], chosenSet = new Set(), usedSounds = new Set();
     for(const f of pool){
       if(chosen.length >= limit) break;
       const s = soundOf(f);
-      if(s < 0 || !usedSounds.has(s)){ chosen.push(f); if(s >= 0) usedSounds.add(s); }
+      if(s < 0 || !usedSounds.has(s)){ chosen.push(f); chosenSet.add(f); if(s >= 0) usedSounds.add(s); }
     }
     // If there are fewer distinct clips than slots, top up with whatever's left.
     if(chosen.length < limit){
       for(const f of pool){
         if(chosen.length >= limit) break;
-        if(!chosen.includes(f)) chosen.push(f);
+        if(!chosenSet.has(f)){ chosen.push(f); chosenSet.add(f); }
       }
     }
     return chosen;
