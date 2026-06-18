@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nazan Dodge</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%AE%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#ffffff; --bg2:#dce9f6;
+    --card:#ffffff; --card-border:#dbe6f2;
+    --navy:#3d5076; --navy-dark:#2c3a57;
+    --wave:#c9dff0; --wave-deep:#6f93c0;
+    --accent:#3d5076; --accent2:#6f93c0;
+    --text:#313d41; --muted:#5f6f7a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; height:100%; overflow:hidden;}
+  body{font-family:"Hanken Grotesk","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+    color:var(--text); background:#cfe2f4;}
+  body.dark{
+    --bg:#0e1320; --bg2:#0a0f1a; --card:#161d2e; --card-border:#27314a;
+    --navy:#9fc0ec; --navy-dark:#c8defa; --wave:#27314a; --wave-deep:#5b7db0;
+    --accent:#9fc0ec; --accent2:#5b7db0; --text:#dfe7f2; --muted:#93a2bb;
+  }
+
+  /* ===== Minigame (its own page now, for performance) ===== */
+  #game{position:fixed; inset:0; z-index:1; display:none; touch-action:none;
+    background:radial-gradient(1200px 700px at 50% 30%, #ffffff, #cfe2f4);
+    overflow:hidden; user-select:none; -webkit-user-select:none;}
+  body.dark #game{background:radial-gradient(1200px 700px at 50% 30%, #161d2e, #0a0f1a);}
+  #game.show{display:block;}
+  #gameCanvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none;}
+  #gameHud{position:absolute; top:0; left:0; right:0; z-index:2; pointer-events:none;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:14px 16px;}
+  #gameHud .score{font-weight:800; color:var(--navy); font-size:clamp(1rem,4.5vw,1.5rem);
+    background:rgba(255,255,255,.65); border-radius:14px; padding:6px 14px; backdrop-filter:blur(4px);}
+  body.dark #gameHud .score{background:rgba(22,29,46,.6); color:var(--navy-dark);}
+  #gameExit{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700;
+    color:var(--navy); background:rgba(255,255,255,.8); border:1px solid var(--card-border);
+    border-radius:30px; padding:8px 16px; font-size:.92rem; box-shadow:0 4px 12px rgba(61,80,118,.18);}
+  #gameExit:hover{border-color:var(--navy);}
+  #gameExit:active{transform:scale(.96);}
+  /* Power-up prompt — a non-interactive floating hint at the bottom. */
+  #gamePrompt{position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
+    z-index:2; display:none; pointer-events:none; font:inherit; font-weight:800;
+    color:#fff; background:var(--navy); border-radius:40px; padding:12px 22px;
+    font-size:1.02rem; letter-spacing:.3px; box-shadow:0 10px 26px rgba(61,80,118,.35);
+    max-width:min(92vw,520px); text-align:center;}
+  #gamePrompt.show{display:inline-flex; align-items:center; gap:6px;}
+  #gamePrompt.ready{animation:promptPulse 1s ease-in-out infinite;}
+  #gamePrompt.active{background:rgba(61,80,118,.78);}
+  @keyframes promptPulse{0%,100%{transform:translateX(-50%) scale(1);}
+    50%{transform:translateX(-50%) scale(1.05);}}
+  .gamePanel{position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px;
+    pointer-events:none;}
+  .gamePanel.hidden{display:none;}
+  .gameCard{background:rgba(255,255,255,.92); border:1px solid var(--card-border);
+    border-radius:20px; padding:26px 28px; max-width:min(440px,90vw); pointer-events:auto;
+    box-shadow:0 18px 50px rgba(61,80,118,.30);}
+  body.dark .gameCard{background:rgba(22,29,46,.94);}
+  .gameCard h2{margin:0 0 8px; color:var(--navy); text-transform:uppercase; letter-spacing:.5px;
+    font-weight:800; font-size:clamp(1.3rem,5.5vw,2rem);}
+  .gameCard p{margin:6px 0; color:var(--muted); font-size:.98rem;}
+  .gameCard .big{font-size:clamp(1.6rem,7vw,2.4rem); font-weight:800; color:var(--navy); margin:6px 0;}
+  .gameCard .best{color:var(--muted); font-weight:700;}
+  .gameBtns{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:16px;}
+  .gameBtn{cursor:pointer; font:inherit; font-weight:700; border-radius:40px; padding:13px 26px;
+    font-size:1.02rem; border:0; color:#fff; background:var(--navy);
+    box-shadow:0 10px 26px rgba(61,80,118,.32);}
+  .gameBtn.secondary{background:#fff; color:var(--navy); border:1px solid var(--card-border);
+    box-shadow:0 6px 16px rgba(61,80,118,.16);}
+  body.dark .gameBtn.secondary{background:var(--card);}
+  .gameBtn:hover{filter:brightness(1.05);}
+  .gameBtn:active{transform:scale(.96);}
+  /* Minimal achievement toast */
+  #toasts{position:fixed; left:50%; bottom:88px; transform:translateX(-50%); z-index:10;
+    display:flex; flex-direction:column; gap:10px; align-items:center; pointer-events:none;}
+  .toast{display:flex; gap:10px; align-items:center; background:var(--card);
+    border:1px solid var(--card-border); border-radius:14px; padding:10px 16px;
+    box-shadow:0 12px 30px rgba(61,80,118,.28); opacity:0; transform:translateY(12px);
+    transition:opacity .35s ease, transform .35s ease; max-width:90vw;}
+  .toast.show{opacity:1; transform:translateY(0);}
+  .toast .ico{font-size:1.4rem;}
+  .toast b{color:var(--navy); display:block; font-size:.96rem;}
+  .toast .b{color:var(--muted); font-size:.86rem;}
+</style>
+</head>
+<body>
+  <!-- ===== MINIGAME (own page) ===== -->
+  <div id="game" aria-hidden="true">
+    <canvas id="gameCanvas"></canvas>
+    <div id="gameHud">
+      <div class="score">Score <span id="gameScore">0</span></div>
+      <button id="gameExit" type="button">✕ Back</button>
+    </div>
+    <!-- Power-up prompt — non-interactive hint shown when a power-up is loaded -->
+    <div id="gamePrompt" aria-live="polite"></div>
+    <!-- Start screen -->
+    <div class="gamePanel" id="gameStart">
+      <div class="gameCard">
+        <h2>Nazan Dodge</h2>
+        <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
+        <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
+        <p>Cornered? <strong>Grab a power-up</strong> when one pops up — then <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) to unleash it. Flavours include eating mode, shove, invisibility, freeze and snail mode. Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="best">Best: <span id="gameBestStart">0</span></p>
+        <div class="gameBtns">
+          <button class="gameBtn" id="gamePlay" type="button">▶ Play</button>
+          <button class="gameBtn secondary" id="gameStartBack" type="button">Back to site</button>
+        </div>
+      </div>
+    </div>
+    <!-- Game over screen -->
+    <div class="gamePanel hidden" id="gameOver">
+      <div class="gameCard">
+        <h2>Caught!</h2>
+        <div class="big" id="gameFinalScore">0</div>
+        <p class="best" id="gameBestLine">Best: 0</p>
+        <div class="gameBtns">
+          <button class="gameBtn" id="gameRetry" type="button">↻ Play again</button>
+          <button class="gameBtn secondary" id="gameOverBack" type="button">Back to site</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="toasts" aria-live="polite"></div>
+
+<script>
+/* =================================================================
+   Nazan Dodge — standalone page. Kept separate from the main site so
+   the page's audio playback and sticker physics don't run during play.
+   ================================================================= */
+(function(){
+  const REPO = "DJH961/leckere-ueberraschung";
+  const BRANCH = "main";
+  const STICKER_DIR = "stickers";
+  const $ = (s)=>document.querySelector(s);
+
+  const LS = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+
+  let _ctx = null;
+  function getCtx(){ _ctx = _ctx || new (window.AudioContext || window.webkitAudioContext)(); return _ctx; }
+
+  /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
+  const sfx = (function(){
+    let lastBoing = 0;                 // global throttle so we never overload the mixer
+    const lastBoingKey = new Map();    // per-sticker throttle so different stickers can sing at once
+    // Deterministic per-identity sound selection: the same key (e.g. a sticker
+    // image or a button) always yields the same flavour & pitches, while
+    // different keys sound different. Falls back to Math.random when no key.
+    function hashStr(s){
+      let h = 2166136261 >>> 0; s = String(s);
+      for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return h >>> 0;
+    }
+    function mulberry32(a){
+      return function(){
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+    function rngFor(key){ return key ? mulberry32(hashStr(key)) : Math.random; }
+    function tone(opts){
+      // opts: type, f0, f1, dur, vol, wobble, wobbleRate, t0, glide
+      try{
+        const ctx = getCtx();
+        if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
+        const t = ctx.currentTime + (opts.t0 || 0);
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = opts.type || "sine";
+        const f0 = opts.f0, f1 = opts.f1 == null ? opts.f0 : opts.f1, dur = opts.dur || 0.18;
+        osc.frequency.setValueAtTime(f0, t);
+        if(Array.isArray(opts.glide) && opts.glide.length){
+          // multi-point comedic pitch path (e.g. cartoon "doy-oy-oing")
+          let tt = t;
+          const seg = dur / opts.glide.length;
+          for(const f of opts.glide){ tt += seg; osc.frequency.exponentialRampToValueAtTime(Math.max(1, f), tt); }
+        } else {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+        }
+        // optional vibrato wobble for extra goofiness
+        let lfo, lfoG;
+        if(opts.wobble){
+          lfo = ctx.createOscillator(); lfoG = ctx.createGain();
+          lfo.type = "sine"; lfo.frequency.value = opts.wobbleRate || 17; lfoG.gain.value = opts.wobble;
+          lfo.connect(lfoG).connect(osc.frequency);
+          lfo.start(t); lfo.stop(t + dur + 0.05);
+        }
+        const vol = opts.vol || 0.14;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g).connect(ctx.destination);
+        osc.start(t); osc.stop(t + dur + 0.05);
+      }catch(e){}
+    }
+    // quick burst of filtered noise — great for raspberries & comedy splats
+    function noise(opts){
+      try{
+        const ctx = getCtx();
+        if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
+        const t = ctx.currentTime + (opts.t0 || 0);
+        const dur = opts.dur || 0.18;
+        const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate*dur)), ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1);
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const bp = ctx.createBiquadFilter(); bp.type = "bandpass";
+        bp.frequency.setValueAtTime(opts.f0 || 320, t);
+        bp.frequency.linearRampToValueAtTime(opts.f1 || opts.f0 || 320, t + dur);
+        bp.Q.value = opts.q || 6;
+        const g = ctx.createGain();
+        const vol = opts.vol || 0.12;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        src.connect(bp).connect(g).connect(ctx.destination);
+        src.start(t); src.stop(t + dur + 0.02);
+      }catch(e){}
+    }
+    return {
+      // comedic "boing" when a sticker bounces; volume scales with impact.
+      // Each sticker (keyed by `key`) keeps a consistent flavour, voice & pitch;
+      // different stickers sound wildly different so a crowd of them is a chorus
+      // of distinct silly noises rather than the same boing over and over.
+      boing(intensity, key){
+        const now = performance.now();
+        // Per-sticker throttle lets many different stickers chirp simultaneously,
+        // while a looser global throttle stops the whole thing turning to mush.
+        if(now - lastBoing < 28) return;
+        if(key != null){
+          const prev = lastBoingKey.get(key) || 0;
+          if(now - prev < 90) return;
+          lastBoingKey.set(key, now);
+        } else if(now - lastBoing < 70){ return; }
+        lastBoing = now;
+        const R = rngFor(key);
+        const rnd = (a,b)=> a + R()*(b-a);
+        const vol = Math.min(0.4, 0.07 + (intensity||0)*0.012);
+        // Per-sticker "voice": a fixed pitch transpose + timbre so even two
+        // stickers that land on the same flavour are clearly different beasts.
+        const tp = Math.pow(2, rnd(-1, 1.15));          // ~0.5x .. ~2.2x pitch
+        const P = (f)=> Math.max(40, f*tp);
+        const voices = ["sine","triangle","square","sawtooth"];
+        const voice = voices[Math.floor(R()*voices.length)];
+        const flavour = Math.floor(R()*10);
+        if(flavour === 0){
+          // classic springy boing with a wild wobble
+          tone({ type:"sine", f0:P(rnd(380,520)), dur:0.26, vol, wobble:70, wobbleRate:rnd(14,22),
+                 glide:[P(rnd(140,200)), P(rnd(260,340)), P(rnd(90,130))] });
+        } else if(flavour === 1){
+          // "doy-oy-oing" rubbery triangle bounce
+          tone({ type:"triangle", f0:P(rnd(300,420)), dur:0.3, vol, wobble:55,
+                 glide:[P(rnd(520,640)), P(rnd(150,210)), P(rnd(380,460)), P(rnd(80,120))] });
+        } else if(flavour === 2){
+          // cartoon slide-whistle "weeeooop"
+          tone({ type:"sine", f0:P(rnd(220,300)), f1:P(rnd(900,1200)), dur:0.18, vol });
+          tone({ type:"sine", f0:P(rnd(900,1200)), f1:P(rnd(160,220)), dur:0.2, vol, t0:0.16 });
+        } else if(flavour === 3){
+          // squishy splat: boing + a little raspberry of noise
+          tone({ type:"square", f0:P(rnd(360,460)), dur:0.2, vol:vol*0.8, wobble:40,
+                 glide:[P(rnd(120,170)), P(rnd(70,100))] });
+          noise({ f0:rnd(260,360), f1:rnd(120,180), dur:0.16, vol:Math.min(0.18, vol), q:5, t0:0.02 });
+        } else if(flavour === 4){
+          // honky cartoon car-horn "ah-ooo-gah"
+          tone({ type:"sawtooth", f0:P(rnd(300,380)), f1:P(rnd(300,380)), dur:0.1, vol, wobble:18 });
+          tone({ type:"sawtooth", f0:P(rnd(440,560)), f1:P(rnd(220,280)), dur:0.18, vol, t0:0.1, wobble:24 });
+        } else if(flavour === 5){
+          // boingy bouncing-ball "bo-bo-bo-boing" staircase
+          tone({ type:voice, f0:P(rnd(520,640)), dur:0.34, vol,
+                 glide:[P(rnd(420,500)), P(rnd(320,400)), P(rnd(240,300)), P(rnd(560,680))] });
+        } else if(flavour === 6){
+          // rubber-duck squeak: tiny high tone + a squeaky noise burst
+          tone({ type:"triangle", f0:P(rnd(900,1150)), f1:P(rnd(1500,1900)), dur:0.12, vol, wobble:60, wobbleRate:rnd(30,46) });
+          noise({ f0:rnd(1600,2200), f1:rnd(900,1300), dur:0.09, vol:Math.min(0.14, vol), q:10, t0:0.01 });
+        } else if(flavour === 7){
+          // sad trombone "wah-waaah" descending wobble
+          tone({ type:"sawtooth", f0:P(rnd(360,440)), dur:0.38, vol, wobble:28, wobbleRate:rnd(7,11),
+                 glide:[P(rnd(300,360)), P(rnd(230,280)), P(rnd(150,190))] });
+        } else if(flavour === 8){
+          // fat tuba "bwomp" — deep and dopey
+          tone({ type:"square", f0:P(rnd(150,210)), dur:0.24, vol:Math.min(0.42, vol*1.1), wobble:22,
+                 glide:[P(rnd(110,150)), P(rnd(80,110))] });
+        } else {
+          // excited spring "sproing!" rocketing upward
+          tone({ type:voice, f0:P(rnd(180,260)), f1:P(rnd(1100,1500)), dur:0.22, vol, wobble:35, wobbleRate:rnd(18,28) });
+        }
+      },
+      // funny "blip" for non play/pause button clicks — each button (keyed by
+      // `key`) keeps a consistent goofy voice; different buttons sound different.
+      blip(key){
+        const R = rngFor(key);
+        const rnd = (a,b)=> a + R()*(b-a);
+        const v = Math.floor(R()*4);
+        if(v === 0){
+          // bubbly "boop-beep"
+          tone({ type:"square", f0:rnd(520,680), f1:rnd(1100,1500), dur:0.07, vol:0.1 });
+          tone({ type:"square", f0:rnd(1200,1600), f1:rnd(700,900), dur:0.07, vol:0.09, t0:0.07 });
+        } else if(v === 1){
+          // cheeky upward "doot?"
+          tone({ type:"triangle", f0:rnd(420,560), f1:rnd(1300,1700), dur:0.13, vol:0.1, wobble:25 });
+        } else if(v === 2){
+          // tiny kazoo-ish raspberry
+          noise({ f0:rnd(700,950), f1:rnd(450,650), dur:0.1, vol:0.1, q:8 });
+        } else {
+          // wobbly "wibble-wobble"
+          tone({ type:"sine", f0:rnd(600,820), f1:rnd(560,760), dur:0.16, vol:0.1, wobble:90, wobbleRate:rnd(22,34) });
+        }
+      },
+      // perky "ba-ding!" reward chime — used for minigame score milestones so the
+      // celebratory beats sound the same goofy synth family as everything else.
+      point(){
+        tone({ type:"triangle", f0:660, f1:660, dur:0.09, vol:0.12 });
+        tone({ type:"triangle", f0:990, f1:990, dur:0.14, vol:0.12, t0:0.09, wobble:18 });
+      },
+      // cheery ascending "ta-da-daa!" fanfare to kick off a minigame round.
+      gameStart(){
+        tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
+        tone({ type:"square", f0:523, dur:0.1, vol:0.1, t0:0.1 });
+        tone({ type:"square", f0:784, f1:880, dur:0.22, vol:0.11, t0:0.2, wobble:22 });
+      }
+    };
+  })();
+
+  /* ---------- Minimal achievement toasts (shared localStorage with the main site) ---------- */
+  function toast(icon, title, body){
+    const box = $("#toasts"); if(!box) return;
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.innerHTML = `<span class="ico"></span><span class="txt"><b></b><span class="b"></span></span>`;
+    t.querySelector(".ico").textContent = icon;
+    t.querySelector("b").textContent = title;
+    t.querySelector(".b").textContent = body;
+    box.appendChild(t);
+    requestAnimationFrame(()=> t.classList.add("show"));
+    setTimeout(()=>{ t.classList.remove("show"); setTimeout(()=> t.remove(), 500); }, 4200);
+  }
+  function achieve(id, icon, title, body){
+    const done = LS.get("achievements", {});
+    if(done[id]) return false;
+    done[id] = Date.now(); LS.set("achievements", done);
+    toast(icon, title, body);
+    return true;
+  }
+
+  /* ---------- Sticker discovery (same source the main site uses) ---------- */
+  async function listRepoFiles(dir, exts){
+    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`,
+      { headers:{ "Accept":"application/vnd.github+json" }});
+    if(!res.ok) throw new Error("GitHub API "+res.status);
+    return (await res.json())
+      .filter(f => f.type==="file" && exts.some(e=>f.name.toLowerCase().endsWith(e)))
+      .sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
+  }
+  async function loadStickerUrls(){
+    try{
+      const files = await listRepoFiles(STICKER_DIR, [".png",".jpg",".jpeg",".webp",".gif"]);
+      window.__stickerUrls = files.map(f => encodeURI(f.path));
+    }catch(e){ window.__stickerUrls = window.__stickerUrls || []; }
+  }
+
+  /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
+  const Game = (function(){
+    const HS_KEY = "nazanDodgeHigh";
+    const root   = $("#game");
+    const canvas = $("#gameCanvas");
+    const ctx    = canvas ? canvas.getContext("2d") : null;
+    const scoreEl   = $("#gameScore");
+    const promptEl  = $("#gamePrompt");
+    const startPane = $("#gameStart");
+    const overPane  = $("#gameOver");
+    let promptClass = "", promptText = "";
+
+    let W = 0, H = 0, dpr = 1;
+    let images = [];               // preloaded Nazan sticker images
+    let running = false, raf = null;
+    let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
+    // Tracks the last 100-point milestone we celebrated, so the reward chime fires
+    // once per milestone instead of every frame.
+    let milestone = 0;
+    // Power-ups: instead of an always-available Shove, the player collects single-use
+    // power-ups that pop up on screen one at a time. You hold at most one, fire it like
+    // the old Shove (tap your Nazan / Space / button), and only THEN can the next one
+    // appear. Each has its own flavour of escape.
+    const POWERUPS = {
+      eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:5 },   // devour Nazans on contact
+      shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // blast nearby Nazans away (instant)
+      ghost:  { icon:"👻", name:"Invisible",   color:"#7e57c2", dur:5 },   // Nazans pass right through you
+      freeze: { icon:"🧊", name:"Freeze",      color:"#2e9bd6", dur:3 },   // every Nazan stops dead
+      snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 }    // Nazans crawl in slow motion
+    };
+    const PU_TYPES = Object.keys(POWERUPS);
+    let blastFx = 0;                 // lingering shockwave ring after a Shove fires
+    let held = null;                 // power-up type currently carried (one at a time), or null
+    let pickup = null;               // the lone uncollected pickup on screen, or null
+    let activeEffect = null;         // { type, time, max } while a timed power-up is running
+    let pickupTimer = 0;             // counts down to the next pickup appearing
+    const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
+    const PICKUP_FIRST   = 2.5;      // delay before the first pickup of a round
+    const PICKUP_AFTER_USE = 4;      // delay before a fresh pickup appears once one is spent
+    const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
+    const keys = Object.create(null);
+    const pointer = { active:false, x:0, y:0 };
+
+    function loadImages(){
+      if(images.length) return;
+      const urls = window.__stickerUrls || [];
+      images = urls.map(u=>{ const im = new Image(); im.src = u; return im; });
+    }
+    function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
+    function highScore(){ return LS.get(HS_KEY, 0); }
+
+    function resize(){
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width  = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if(player){
+        player.r = Math.max(20, base() * 0.05);
+        player.x = Math.min(Math.max(player.x, player.r), W - player.r);
+        player.y = Math.min(Math.max(player.y, player.r), H - player.r);
+      }
+    }
+
+    function spawnEnemy(){
+      const r = Math.max(22, base() * 0.055);
+      // Spawn at a random edge so nothing lands right on the player.
+      let x, y;
+      if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
+      else { x = Math.random() * W; y = Math.random() < 0.5 ? r : H - r; }
+      // New Nazans always arrive GENTLY — no more screaming in at full pace. The
+      // danger of each one builds from its own time on screen (see the per-enemy
+      // acceleration in step()), not from how late in the round it spawned.
+      const speed = base() * (0.004 + Math.random() * 0.0015);
+      const ang = Math.random() * Math.PI * 2;
+      // Never reuse the player's own sticker as an enemy — that's confusing. Pick
+      // from the remaining images when more than one is available.
+      let pool = images;
+      const mine = player ? player.img : null;
+      if(mine && images.length > 1) pool = images.filter(im => im !== mine);
+      const img = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
+                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0 });
+      // A new Nazan joining the fray gives a little goofy blip — keyed by its image
+      // so each one has its own consistent voice, matching the page's button blips.
+      if(running){ try{ sfx.blip(img ? img.src : "nazan-dodge-spawn"); }catch(err){} }
+    }
+
+    function reset(){
+      enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
+      blastFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      player = { x: W / 2, y: H * 0.72, r: Math.max(20, base() * 0.05), rot: 0,
+                 img: images.length ? images[0] : null };
+      pointer.active = false; pointer.x = player.x; pointer.y = player.y;
+      for(const k in keys) delete keys[k];
+      for(let i = 0; i < 2; i++) spawnEnemy();
+      if(scoreEl) scoreEl.textContent = "0";
+      updatePrompt();
+    }
+
+    // Push every Nazan within reach away from the player. This is the Shove power-up's
+    // instant effect: a clutch escape that buys space without ever speeding Nazans up.
+    function doShove(){
+      const R = base() * 0.46;
+      for(const e of enemies){
+        const dx = e.x - player.x, dy = e.y - player.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if(d < R){
+          const nx = dx / d, ny = dy / d;
+          // Aim each Nazan straight away from the player and EASE OFF its speed —
+          // closer ones slow the most. Shoving never makes them faster (which used
+          // to backfire by sending them rushing back); it always buys you space.
+          const close = 1 - d / R;                 // 0 at the edge → 1 right on top
+          const spd = Math.hypot(e.vx, e.vy);
+          const newSpd = spd * (0.85 - 0.45 * close);
+          e.vx = nx * newSpd; e.vy = ny * newSpd;
+        }
+      }
+      blastFx = 0.35;
+    }
+
+    // Fire whatever power-up is currently held. Works like the old Shove trigger
+    // (tap your own Nazan / Space / button). Spending the power-up clears your hand
+    // and starts the timer for the NEXT pickup to appear — never stacking. Returns
+    // true when something actually fired.
+    function activate(){
+      if(!running || !held) return false;
+      const type = held; held = null;
+      const def = POWERUPS[type];
+      if(type === "shove"){ doShove(); }
+      else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
+      pickup = null;
+      pickupTimer = PICKUP_AFTER_USE;          // a new one may appear only after this is spent
+      updatePrompt();
+      try{ sfx.boing(3, "powerup-" + type); }catch(e){}
+      return true;
+    }
+
+    // Drop a single, visually distinct power-up somewhere open on the field. Only ever
+    // one exists at a time, and never while the player is already holding one.
+    function spawnPickup(){
+      const r = Math.max(20, base() * 0.045);
+      let x, y, tries = 0;
+      do {
+        x = r * 2 + Math.random() * Math.max(1, W - r * 4);
+        y = r * 2 + Math.random() * Math.max(1, H - r * 4);
+        tries++;
+      } while(tries < 12 && Math.hypot(x - player.x, y - player.y) < base() * 0.25);
+      const type = PU_TYPES[Math.floor(Math.random() * PU_TYPES.length)];
+      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0 };
+      try{ sfx.point(); }catch(e){}
+    }
+
+    // Advance the pickup lifecycle each frame: let the player collect the on-screen
+    // pickup by touching it, expire it if ignored too long, and time the next spawn.
+    function updatePickups(dt){
+      if(pickup){
+        pickup.t += dt; pickup.life -= dt;
+        const dx = pickup.x - player.x, dy = pickup.y - player.y;
+        const rr = pickup.r + player.r;
+        if(dx * dx + dy * dy < rr * rr){       // collected!
+          held = pickup.type; pickup = null;
+          updatePrompt();
+          try{ sfx.blip("powerup-collect"); }catch(e){}
+        } else if(pickup.life <= 0){           // vanished uncollected
+          pickup = null; pickupTimer = PICKUP_RESPAWN;
+        }
+      } else if(!held && pickupTimer > 0){
+        pickupTimer -= dt;
+        if(pickupTimer <= 0) spawnPickup();
+      }
+    }
+
+    function updatePrompt(){
+      if(!promptEl) return;
+      let nextClass = "", nextText = "";
+      if(activeEffect){
+        // While an effect runs, only change the live region when whole seconds change.
+        const def = POWERUPS[activeEffect.type];
+        nextClass = "show active";
+        nextText = def.icon + " " + def.name + " · " + activeEffect.displaySeconds + "s";
+      } else if(held){
+        // Loaded and ready — make the controls obvious and draw the eye with a pulse.
+        const def = POWERUPS[held];
+        nextClass = "show ready";
+        nextText = "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
+      } else {
+        // Nothing to fire: hide the hint entirely so it can't mislead.
+        nextClass = "";
+        nextText = "";
+      }
+      if(nextClass === promptClass && nextText === promptText) return;
+      promptEl.className = promptClass = nextClass;
+      promptEl.textContent = promptText = nextText;
+    }
+
+    function updatePlayer(dt){
+      const sp = base() * 0.9 * dt;          // keyboard speed (per second, scaled)
+      let kx = 0, ky = 0;
+      if(keys.ArrowLeft || keys.a) kx -= 1;
+      if(keys.ArrowRight || keys.d) kx += 1;
+      if(keys.ArrowUp || keys.w) ky -= 1;
+      if(keys.ArrowDown || keys.s) ky += 1;
+      if(kx || ky){
+        const m = Math.hypot(kx, ky) || 1;
+        player.x += (kx / m) * sp; player.y += (ky / m) * sp;
+        pointer.active = false;              // keyboard takes over from pointer
+      } else if(pointer.active){
+        player.x += (pointer.x - player.x) * Math.min(1, dt * 12);
+        player.y += (pointer.y - player.y) * Math.min(1, dt * 12);
+      }
+      player.x = Math.min(Math.max(player.x, player.r), W - player.r);
+      player.y = Math.min(Math.max(player.y, player.r), H - player.r);
+    }
+
+    function step(now){
+      if(!running) return;
+      const dt = Math.min(0.05, (now - last) / 1000 || 0);
+      last = now; elapsed += dt;
+      score += dt * 10;
+      if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      // Reward chime every 100 points to make survival feel celebratory.
+      const m = Math.floor(score / 100);
+      if(m > milestone){ milestone = m; try{ sfx.point(); }catch(err){} }
+      if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
+      // Tick down the active timed power-up (freeze / snail / ghost / eating).
+      if(activeEffect){
+        activeEffect.time -= dt;
+        if(activeEffect.time <= 0){
+          activeEffect = null;
+          updatePrompt();
+        } else if(activeEffect.time <= activeEffect.displaySeconds - 1){
+          activeEffect.displaySeconds = Math.ceil(activeEffect.time);
+          updatePrompt();
+        }
+      }
+      // Power-up pickup lifecycle: collecting, expiry and timing the next one.
+      updatePickups(dt);
+
+      // Difficulty ramps mainly through SPEED now, not numbers: Nazans join slowly
+      // and the on-screen count stays low, so the faster bouncing pack stays
+      // readable instead of becoming a wall of stickers.
+      spawnAcc += dt;
+      const interval = Math.max(2.8, 5 - elapsed * 0.035);
+      if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
+
+      updatePlayer(dt);
+
+      // Move every Nazan and bounce it off the walls. A wall bounce makes the
+      // Nazan boing — the same comedic sticker bounce the rest of the page uses —
+      // keyed per image so a crowd is a chorus of distinct silly noises (and the
+      // sfx module's own throttle keeps it from turning to mush).
+      // Freeze stops them dead; Snail Mode crawls them in slow motion. While either
+      // is active their internal speed is preserved so they resume normally after.
+      const frozen = !!(activeEffect && activeEffect.type === "freeze");
+      const envMul = frozen ? 0 : (activeEffect && activeEffect.type === "snail" ? 0.12 : 1);
+      for(const e of enemies){
+        if(envMul > 0){
+          // Each Nazan speeds up the longer it has been on screen: it eases toward a
+          // target speed that climbs with its age (capped so it stays survivable).
+          // Fresh spawns are slow; long-lived ones get genuinely dangerous. A Shove
+          // still slows them, after which they patiently build their pace back up.
+          e.age += dt;
+          const target = base() * Math.min(0.020, 0.004 + e.age * 0.00035);
+          const cur = Math.hypot(e.vx, e.vy);
+          if(cur > 0){
+            const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
+            e.vx *= k; e.vy *= k;
+          }
+        }
+        e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
+        let bounced = false;
+        if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); bounced = true; }
+        if(e.x > W - e.r){ e.x = W - e.r; e.vx = -Math.abs(e.vx); bounced = true; }
+        if(e.y < e.r){ e.y = e.r; e.vy = Math.abs(e.vy); bounced = true; }
+        if(e.y > H - e.r){ e.y = H - e.r; e.vy = -Math.abs(e.vy); bounced = true; }
+        if(bounced){
+          const spd = Math.hypot(e.vx, e.vy);
+          try{ sfx.boing(spd / (base() * 0.004), e.img ? e.img.src : "nazan-dodge-wall"); }catch(err){}
+        }
+      }
+
+      // Bounce the Nazans off each other (equal-mass elastic — they swap momentum
+      // along the contact normal, so they stay lively without gaining extra speed).
+      for(let i = 0; i < enemies.length; i++){
+        const a = enemies[i];
+        for(let j = i + 1; j < enemies.length; j++){
+          const b = enemies[j];
+          let dx = b.x - a.x, dy = b.y - a.y;
+          let dist = Math.hypot(dx, dy);
+          const minDist = a.r + b.r;
+          if(dist >= minDist) continue;
+          if(dist === 0){ dx = Math.random() - 0.5 || 0.01; dy = Math.random() - 0.5 || 0.01; dist = Math.hypot(dx, dy); }
+          const nx = dx / dist, ny = dy / dist;
+          const overlap = (minDist - dist) / 2;   // push the pair apart so they never stack
+          a.x -= nx * overlap; a.y -= ny * overlap;
+          b.x += nx * overlap; b.y += ny * overlap;
+          const rvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if(rvn < 0){                              // only when they're approaching
+            a.vx += rvn * nx; a.vy += rvn * ny;
+            b.vx -= rvn * nx; b.vy -= rvn * ny;
+            // A solid Nazan-on-Nazan smack boings, just like the stickers colliding
+            // on the page. Soft grazes stay quiet so only real impacts speak up.
+            const impact = -rvn / (base() * 0.004);
+            if(impact > 1.6){
+              try{ sfx.boing(impact, a.img ? a.img.src : "nazan-dodge-a"); }catch(err){}
+              try{ sfx.boing(impact, b.img ? b.img.src : "nazan-dodge-b"); }catch(err){}
+            }
+          }
+        }
+      }
+
+      // Player ↔ Nazan contact. Normally fatal, but power-ups change the rules:
+      // Eating Mode devours the Nazan (for points!), Invisible lets them pass through.
+      for(let i = enemies.length - 1; i >= 0; i--){
+        const e = enemies[i];
+        const dx = e.x - player.x, dy = e.y - player.y;
+        const hit = (e.r + player.r) * 0.7;
+        if(dx * dx + dy * dy < hit * hit){
+          if(activeEffect && activeEffect.type === "eat"){
+            enemies.splice(i, 1); score += 25;
+            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+            try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
+            continue;
+          }
+          if(activeEffect && activeEffect.type === "ghost") continue;
+          gameOver(); return;
+        }
+      }
+
+      draw();
+      raf = requestAnimationFrame(step);
+    }
+
+    function drawSticker(o, ring, ringColor){
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.rotate(o.rot || 0);
+      const s = o.r * 2;
+      if(ring){
+        ctx.beginPath(); ctx.arc(0, 0, o.r + 4, 0, Math.PI * 2);
+        ctx.lineWidth = ringColor ? 5 : 3; ctx.strokeStyle = ringColor || "rgba(61,80,118,.85)"; ctx.stroke();
+      }
+      if(o.img && o.img.complete && o.img.naturalWidth){
+        const iw = o.img.naturalWidth, ih = o.img.naturalHeight;
+        const sc = Math.min(s / iw, s / ih);
+        ctx.drawImage(o.img, -iw * sc / 2, -ih * sc / 2, iw * sc, ih * sc);
+      } else {
+        ctx.beginPath(); ctx.arc(0, 0, o.r, 0, Math.PI * 2);
+        ctx.fillStyle = ring ? "#3d5076" : "#6f93c0"; ctx.fill();
+      }
+      ctx.restore();
+    }
+    // The lone power-up pickup: a bright pulsing badge that looks nothing like a
+    // Nazan sticker, so it reads instantly as "grab me". It pulses, glows in its
+    // own colour, and blinks as it nears the end of its life before vanishing.
+    function drawPickup(){
+      if(!pickup) return;
+      const def = POWERUPS[pickup.type];
+      const pulse = 1 + Math.sin(pickup.t * 6) * 0.08;
+      let alpha = 1;
+      if(pickup.life < 1.6) alpha = 0.35 + 0.65 * Math.abs(Math.sin(pickup.t * 12));  // blink out
+      const r = pickup.r * pulse;
+      ctx.save();
+      ctx.translate(pickup.x, pickup.y);
+      ctx.globalAlpha = alpha * 0.25;
+      ctx.beginPath(); ctx.arc(0, 0, r + 8, 0, Math.PI * 2);
+      ctx.fillStyle = def.color; ctx.fill();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.lineWidth = 4; ctx.strokeStyle = def.color; ctx.stroke();
+      ctx.font = (r * 1.1).toFixed(0) + "px system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(def.icon, 0, r * 0.06);
+      ctx.restore();
+    }
+    function draw(){
+      ctx.clearRect(0, 0, W, H);
+      // Full-screen colour wash while a timed power-up runs, so its effect is obvious.
+      if(activeEffect){
+        const def = POWERUPS[activeEffect.type];
+        ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = def.color; ctx.fillRect(0, 0, W, H); ctx.restore();
+      }
+      // Expanding shockwave ring when a Shove just fired.
+      if(blastFx > 0 && player){
+        const k = 1 - blastFx / 0.35;            // 0 → 1 over the effect's life
+        const R = base() * 0.46 * (0.3 + 0.7 * k);
+        ctx.save();
+        ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+        ctx.lineWidth = 4; ctx.strokeStyle = "rgba(61,80,118," + (0.6 * (1 - k)).toFixed(3) + ")";
+        ctx.stroke();
+        ctx.restore();
+      }
+      for(const e of enemies) drawSticker(e, false);
+      drawPickup();
+      if(player){
+        if(activeEffect && activeEffect.type === "ghost"){
+          ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
+        } else if(activeEffect && activeEffect.type === "eat"){
+          drawSticker(player, true, "#e8743b");   // hungry golden ring
+        } else {
+          drawSticker(player, true);
+        }
+      }
+    }
+
+    function start(){
+      loadImages(); resize(); reset();
+      startPane.classList.add("hidden");
+      overPane.classList.add("hidden");
+      updatePrompt();
+      running = true; last = performance.now();
+      try{ sfx.gameStart(); }catch(e){}
+      raf = requestAnimationFrame(step);
+    }
+    function gameOver(){
+      running = false;
+      if(raf){ cancelAnimationFrame(raf); raf = null; }
+      if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
+      const final = Math.floor(score);
+      const prev = highScore();
+      const isHigh = final > prev;
+      if(isHigh) LS.set(HS_KEY, final);
+      $("#gameFinalScore").textContent = String(final);
+      $("#gameBestLine").textContent = (isHigh ? "🏆 New best: " : "Best: ") + Math.max(final, prev);
+      overPane.classList.remove("hidden");
+      try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
+      if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
+    }
+    function open(){
+      loadImages();
+      $("#gameBestStart").textContent = String(highScore());
+      startPane.classList.remove("hidden");
+      overPane.classList.add("hidden");
+      root.classList.add("show");
+      root.setAttribute("aria-hidden", "false");
+      resize();
+      try{ draw(); }catch(e){}
+    }
+    function close(){
+      running = false;
+      if(raf){ cancelAnimationFrame(raf); raf = null; }
+      // This is a standalone page now: "Back" returns to the main site. The
+      // ?fromgame=1 flag tells it to skip the rickroll and keep the egg button up.
+      location.href = "index.html?fromgame=1";
+    }
+
+    function wire(){
+      if(!root || !ctx) return;
+      window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
+      // Pointer (mouse + touch) — track position over the canvas.
+      const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
+      // Firing a power-up is a DELIBERATE tap on your own Nazan: a quick press-and-release
+      // that barely moves. Dragging to steer (which keeps your finger on or near the
+      // Nazan on mobile) no longer fires by accident, because it moves too far / lasts
+      // too long to count as a tap. Space remains the unambiguous keyboard trigger.
+      let downX = 0, downY = 0, downT = 0, downOnPlayer = false;
+      canvas.addEventListener("pointerdown", (e)=>{
+        e.preventDefault();
+        downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnPlayer = false;
+        if(running && player && held){
+          const dx = e.clientX - player.x, dy = e.clientY - player.y;
+          const reach = Math.max(player.r, base() * 0.05);   // must land on the Nazan itself
+          downOnPlayer = (dx * dx + dy * dy <= reach * reach);
+        }
+        setP(e);
+      });
+      canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
+      const endTap = (e)=>{
+        if(running && downOnPlayer){
+          const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+          const quick = performance.now() - downT < 300;
+          if(quick && moved < Math.max(10, base() * 0.03)) activate();
+        }
+        downOnPlayer = false;
+      };
+      canvas.addEventListener("pointerup", endTap);
+      canvas.addEventListener("pointercancel", ()=>{ downOnPlayer = false; });
+      // Keyboard.
+      window.addEventListener("keydown", (e)=>{
+        if(!root.classList.contains("show")) return;
+        if(e.key === "Escape"){ close(); return; }
+        // On the game-over screen, Enter or Space restarts the round.
+        if(!running && overPane && !overPane.classList.contains("hidden")){
+          if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){ e.preventDefault(); start(); return; }
+        }
+        if(e.key === " " || e.key === "Spacebar"){ activate(); e.preventDefault(); return; }
+        const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","w","a","s","d"].includes(k)){ keys[k] = true; e.preventDefault(); }
+      });
+      window.addEventListener("keyup", (e)=>{
+        const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        delete keys[k];
+      });
+      $("#gamePlay").addEventListener("click", start);
+      $("#gameRetry").addEventListener("click", start);
+      $("#gameExit").addEventListener("click", close);
+      $("#gameStartBack").addEventListener("click", close);
+      $("#gameOverBack").addEventListener("click", close);
+    }
+    return { open, close, wire };
+  })();
+
+  /* ---------- Boot ---------- */
+  applyThemeFromLS();
+  Game.wire();
+  // Reveal the start screen once (whichever happens first: stickers loaded, or a
+  // short fallback so a slow/offline fetch never leaves a blank page). Guarded so a
+  // late sticker load can't yank the player out of an already-started round.
+  let opened = false;
+  function openOnce(){ if(opened) return; opened = true; Game.open(); }
+  loadStickerUrls().then(openOnce);
+  setTimeout(openOnce, 1500);
+
+  function applyThemeFromLS(){
+    if(LS.get("darkMode", false)) document.body.classList.add("dark");
+  }
+})();
+</script>
+</body>
+</html>
