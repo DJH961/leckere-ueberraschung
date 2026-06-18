@@ -249,7 +249,7 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a safe bubble and bounces Nazans off it (they stay in play — it's pure defence for riding out a swarm, not a way to clear them) or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. The <strong>Black Hole</strong> also fires the instant you grab it, swallowing the nearest half of every Nazan on screen for points. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>) — Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. Shove and Star push Nazans without destroying them, so guide them off the edge yourself; the Force Field only deflects, keeping them in play. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and shoves Nazans hard off its skin (drive the bubble so they sail off the edge), though you slow to a crawl while it's up, so it's an offensive push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. The <strong>Black Hole</strong> also fires the instant you grab it, swallowing the nearest half of every Nazan on screen for points. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>) — Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; if Shove or Boom is ready, tap your Nazan or press Space.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
@@ -1032,7 +1032,7 @@
       eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:5 },   // devour Nazans on contact (they flee, so chase them down)
       shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // banked: push nearby Nazans hard away (off-screen if driven onto an edge)
       ghost:  { icon:"👻", name:"Invisible",   color:"#7e57c2", dur:5 },   // Nazans pass right through you
-      repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:5 },   // a planted safe bubble: Nazans bounce off it and stay in play (pure defence, no points, never sends them off-screen)
+      repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:5 },   // a planted push bubble: it shoves Nazans hard off its skin (off-screen if driven onto an edge) but bogs you down to a crawl while it's up
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
@@ -1041,6 +1041,7 @@
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.7;      // Star Power makes the player dash noticeably faster, like a Mario Kart star
+    const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
     // Black Hole: an instant blast that fires AUTOMATICALLY the moment you grab it (it is
@@ -1050,15 +1051,16 @@
     // nothing to aim — banking it would add nothing. Like Boom it genuinely REMOVES Nazans.
     const VORTEX_POINTS = 7;         // points banked per Nazan swallowed by a Black Hole
     const VORTEX_FRACTION = 0.5;     // share of on-screen Nazans the Black Hole swallows (the nearest ones)
-    const REPEL_RADIUS = 0.30;       // Force Field reach (a roomy safe dome), as a fraction of base()
-    // The banishing (off-screen) power-ups (Shove, Star) don't destroy Nazans — they give
-    // them a hard outward PUSH and let normal physics take over. A pushed Nazan keeps
-    // rolling and bouncing around in play; it only leaves the arena if the push carries
+    const REPEL_RADIUS = 0.30;       // Force Field reach (a roomy push dome), as a fraction of base()
+    // The banishing (off-screen) power-ups (Shove, Star, Force Field) don't destroy Nazans
+    // — they give them a hard outward PUSH and let normal physics take over. A pushed Nazan
+    // keeps rolling and bouncing around in play; it only leaves the arena if the push carries
     // it right onto an edge, where it sails off fast, vanishes for a beat, then SLOWLY
     // drifts back in from off-screen. So you have to GUIDE a Nazan off the screen — it
     // never happens automatically. (Eating Mode, by contrast, removes them for good.)
-    // The Force Field is deliberately NOT one of these: it only DEFLECTS Nazans off its
-    // bubble and keeps them in play, so it stays a pure-defence power with its own feel.
+    // The Force Field is the slow, planted version: its bubble shoves any Nazan that touches
+    // it, but the price is that you can barely move while it's up (see REPEL_SPEED_MUL), so
+    // it stays distinct from the fast, free-roaming Star Power.
     const BANISH_EXIT_SPEED   = 0.03;   // fast outward launch when shoved off-screen, fraction of base()
     const BANISH_RETURN_SPEED = 0.0024; // slow drift back toward the arena once fully off-screen
     const BANISH_MARGIN       = 0.18;   // how far past the edge (fraction of base()) counts as "gone"
@@ -1431,7 +1433,13 @@
       // Tiny Mode shrinks the player's effective size (collisions and drawing both
       // use player.r); every other state restores it to its natural radius.
       if(player) player.r = player.baseR * (activeEffect && activeEffect.type === "shrink" ? SHRINK_MUL : 1);
-      const sp = base() * 0.9 * dt * (activeEffect && activeEffect.type === "star" ? STAR_SPEED_MUL : 1); // keyboard speed (per second, scaled; Star dashes faster)
+      // Player speed reacts to the active power-up: Star dashes faster, Force Field bogs you
+      // down to a crawl (you keep just enough nudge to aim your shoves). Everything else moves
+      // at the normal pace.
+      const speedMul = activeEffect && activeEffect.type === "star"  ? STAR_SPEED_MUL
+                     : activeEffect && activeEffect.type === "repel" ? REPEL_SPEED_MUL
+                     : 1;
+      const sp = base() * 0.9 * dt * speedMul; // keyboard speed (per second, scaled)
       let kx = 0, ky = 0;
       if(keys.ArrowLeft || keys.a) kx -= 1;
       if(keys.ArrowRight || keys.d) kx += 1;
@@ -1442,9 +1450,9 @@
         player.x += (kx / m) * sp; player.y += (ky / m) * sp;
         pointer.active = false;              // keyboard takes over from pointer
       } else if(pointer.active){
-        // Star Power snaps the finger-follow tighter too, so the dash feels faster even
-        // when steering by touch (where the raw speed cap doesn't apply).
-        const follow = Math.min(1, dt * (activeEffect && activeEffect.type === "star" ? 18 : 12));
+        // Star Power snaps the finger-follow tighter (the dash feels faster even by touch);
+        // the Force Field drags it to a crawl so you inch the bubble around instead of darting.
+        const follow = Math.min(1, dt * 12 * speedMul);
         player.x += (pointer.x - player.x) * follow;
         player.y += (pointer.y - player.y) * follow;
       }
@@ -1519,7 +1527,7 @@
       // sfx module's own throttle keeps it from turning to mush).
       // Snail Mode crawls every Nazan in slow motion; their internal speed is
       // preserved so they resume normally afterwards. Force Field doesn't slow them
-      // — it physically holds them out of a bubble around the player (see below).
+      // — it shoves them off a bubble around the player (see below).
       const envMul = (activeEffect && activeEffect.type === "snail") ? 0.12 : 1;
       const repelOn = !!(activeEffect && activeEffect.type === "repel");
       const repelR  = base() * REPEL_RADIUS;
@@ -1573,11 +1581,11 @@
           }
         }
         e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
-        // Force Field: a planted protective bubble. Any Nazan that touches the bubble is
-        // DEFLECTED — pinned to the bubble's skin and bounced straight back out — but it
-        // stays in play. Unlike Shove/Star this never carries a Nazan off the screen, so the
-        // Force Field is pure defence: a moving safe zone you ride out a swarm inside, rather
-        // than a tool for clearing Nazans. (That's what keeps it distinct from Star Power.)
+        // Force Field: a planted push bubble. Any Nazan that touches the bubble is pinned to
+        // its skin and SHOVED hard outward — exactly like a Shove, so a Nazan driven onto an
+        // edge sails clean off the screen (and drifts back in slowly later). The catch is that
+        // you crawl while the field is up (see REPEL_SPEED_MUL in updatePlayer), so it's a
+        // committal, offensive bubble you steer into the crowd rather than a free defence.
         if(repelOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
@@ -1585,9 +1593,7 @@
             const nx = dx / d, ny = dy / d;
             e.x = player.x + nx * (repelR + e.r);   // hold it on the bubble's surface
             e.y = player.y + ny * (repelR + e.r);
-            const sp = Math.hypot(e.vx, e.vy) || base() * 0.006;
-            e.vx = nx * sp; e.vy = ny * sp;         // ricochet outward, keeping it in play
-            e.vr = (Math.random() - 0.5) * 0.12;    // a little spin off the deflection
+            shove(e, nx, ny);                        // launch it outward — off-screen if it hits an edge
           }
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
@@ -1821,8 +1827,8 @@
         }
         ctx.restore();
       }
-      // Force Field: a clearly visible energy bubble around the player, so the safe
-      // zone keeping Nazans at arm's length is obvious at a glance.
+      // Force Field: a clearly visible energy bubble around the player, so the push
+      // dome shoving Nazans off its skin is obvious at a glance.
       if(activeEffect && activeEffect.type === "repel" && !activeEffect.ending && player){
         const R = base() * REPEL_RADIUS;
         const t = elapsed;
