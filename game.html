@@ -55,6 +55,10 @@
   #gamePrompt.active{background:rgba(61,80,118,.78);}
   @keyframes promptPulse{0%,100%{transform:translateX(-50%) scale(1);}
     50%{transform:translateX(-50%) scale(1.05);}}
+  @media (max-width:600px){
+    #gamePrompt{padding:7px 14px; font-size:.78rem; bottom:14px; border-radius:30px;
+      opacity:.82; max-width:min(86vw,340px);}
+  }
   .gamePanel{position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px; text-align:center; padding:24px;
     pointer-events:none;}
