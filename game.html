@@ -92,6 +92,27 @@
   .toast .ico{font-size:1.4rem;}
   .toast b{color:var(--navy); display:block; font-size:.96rem;}
   .toast .b{color:var(--muted); font-size:.86rem;}
+  /* ===== Global high-score leaderboard ===== */
+  .nameRow{display:flex; gap:8px; justify-content:center; margin:12px 0 4px; flex-wrap:wrap;}
+  .nameRow input{font:inherit; font-weight:700; padding:11px 14px; border-radius:30px;
+    border:1px solid var(--card-border); background:#fff; color:var(--navy);
+    width:min(220px,60vw); text-align:center;}
+  body.dark .nameRow input{background:var(--card); color:var(--navy-dark);}
+  .nameRow input:focus{outline:2px solid var(--accent2); outline-offset:1px;}
+  .nameHint{color:var(--muted); font-size:.82rem; margin:2px 0 0; min-height:1em;}
+  .nameHint.err{color:#d6553f; font-weight:700;}
+  .lbBox{margin:14px 0 2px; text-align:left;}
+  .lbBox h3{margin:0 0 8px; color:var(--navy); font-size:.96rem; text-align:center;
+    text-transform:uppercase; letter-spacing:.5px;}
+  .lbList{list-style:none; margin:0; padding:0; max-height:34vh; overflow:auto;}
+  .lbList li{display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:10px;
+    font-size:.92rem; color:var(--muted);}
+  .lbList li:nth-child(odd){background:rgba(127,127,127,.07);}
+  .lbList li.me{background:rgba(127,160,210,.18); color:var(--navy); font-weight:800;}
+  .lbList li .rank{flex:0 0 1.8em; font-weight:800; color:var(--navy);}
+  .lbList li .who{flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .lbList li .pts{flex:0 0 auto; font-weight:800; color:var(--navy);}
+  .lbEmpty{color:var(--muted); font-size:.88rem; text-align:center;}
 </style>
 </head>
 <body>
@@ -110,8 +131,12 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p>Cornered? <strong>Grab a power-up</strong> when one pops up — then <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) to unleash it. Flavours include eating mode, shove, invisibility, freeze and snail mode. Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p>Cornered? <strong>Grab a power-up</strong> when one pops up — then <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) to unleash it. Flavours include eating mode, a powerful shove, invisibility, a force field, tiny mode and snail mode. Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
+        <div class="lbBox" id="startLbBox">
+          <h3>🌍 Global Top Nazans</h3>
+          <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
+        </div>
         <div class="gameBtns">
           <button class="gameBtn" id="gamePlay" type="button">▶ Play</button>
           <button class="gameBtn secondary" id="gameStartBack" type="button">Back to site</button>
@@ -124,6 +149,16 @@
         <h2>Caught!</h2>
         <div class="big" id="gameFinalScore">0</div>
         <p class="best" id="gameBestLine">Best: 0</p>
+        <div class="nameRow">
+          <input id="gameName" type="text" maxlength="16" autocomplete="off"
+                 placeholder="Type your name" aria-label="Your name for the leaderboard" />
+          <button class="gameBtn" id="gameSubmit" type="button">🏅 Submit</button>
+        </div>
+        <p class="nameHint" id="gameNameHint">Enter your name to post your score to the global board.</p>
+        <div class="lbBox" id="overLbBox">
+          <h3>🌍 Global Top Nazans</h3>
+          <ol class="lbList" id="overLbList"><li class="lbEmpty">Loading…</li></ol>
+        </div>
         <div class="gameBtns">
           <button class="gameBtn" id="gameRetry" type="button">↻ Play again</button>
           <button class="gameBtn secondary" id="gameOverBack" type="button">Back to site</button>
@@ -142,6 +177,17 @@
   const REPO = "DJH961/leckere-ueberraschung";
   const BRANCH = "main";
   const STICKER_DIR = "stickers";
+  // ---------------------------------------------------------------------------
+  // GLOBAL HIGH-SCORE BOARD (optional, shared across all visitors)
+  // ---------------------------------------------------------------------------
+  // Set this to a Firebase Realtime Database URL (path included, WITHOUT the
+  // trailing ".json") to enable a real, world-wide leaderboard, e.g.:
+  //   "https://my-app-default-rtdb.europe-west1.firebasedatabase.app/nazanDodge"
+  // The page reads with a GET on `${URL}.json` and posts new scores with a POST
+  // to the same URL — exactly what an open Firebase RTDB node accepts, no SDK or
+  // API key needed in the client. Leave it as "" and the board still works, but
+  // only locally (per-device) as a graceful fallback.
+  const GLOBAL_SCORES_URL = "";
   const $ = (s)=>document.querySelector(s);
 
   const LS = {
@@ -373,6 +419,60 @@
     }catch(e){ window.__stickerUrls = window.__stickerUrls || []; }
   }
 
+  /* ---------- Global high-score leaderboard ----------
+     Talks to an open Firebase RTDB node when GLOBAL_SCORES_URL is set; otherwise
+     it keeps a local (per-device) board so the UI still works offline. Either way
+     the API the rest of the page uses is the same: Leaderboard.top() and
+     Leaderboard.submit(name, score). */
+  const Leaderboard = (function(){
+    const LOCAL_KEY = "nazanDodgeBoard";
+    const MAX = 10;
+    const enabled = !!GLOBAL_SCORES_URL;
+
+    function clean(list){
+      return (Array.isArray(list) ? list : [])
+        .filter(e => e && typeof e.name === "string" && isFinite(e.score))
+        .map(e => ({ name: String(e.name).slice(0, 16), score: Math.floor(e.score), ts: e.ts || 0 }))
+        .sort((a,b)=> b.score - a.score)
+        .slice(0, MAX);
+    }
+    function localList(){ return clean(LS.get(LOCAL_KEY, [])); }
+
+    async function top(){
+      if(!enabled) return localList();
+      try{
+        const res = await fetch(`${GLOBAL_SCORES_URL}.json`, { cache:"no-store" });
+        if(!res.ok) throw new Error("HTTP "+res.status);
+        const data = await res.json();
+        // Firebase POST stores entries under random keys → an object of records.
+        const arr = data && typeof data === "object" && !Array.isArray(data)
+          ? Object.values(data) : data;
+        return clean(arr);
+      }catch(e){
+        return localList();   // fall back so the panel is never empty/broken
+      }
+    }
+    async function submit(name, score){
+      name = String(name || "").trim().slice(0, 16);
+      score = Math.floor(score);
+      const entry = { name, score, ts: Date.now() };
+      // Always keep a local copy so the board shows the player even if the network
+      // (or the GLOBAL_SCORES_URL) is unavailable.
+      LS.set(LOCAL_KEY, clean(localList().concat(entry)));
+      if(enabled){
+        try{
+          await fetch(`${GLOBAL_SCORES_URL}.json`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify(entry)
+          });
+        }catch(e){ /* stays in the local board */ }
+      }
+      return top();
+    }
+    return { top, submit, enabled };
+  })();
+
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
@@ -389,6 +489,8 @@
     let images = [];               // preloaded Nazan sticker images
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
+    // Global-board state for the current game-over screen.
+    let pendingScore = 0, submitted = false, justSubmitted = false;
     // Tracks the last 100-point milestone we celebrated, so the reward chime fires
     // once per milestone instead of every frame.
     let milestone = 0;
@@ -397,12 +499,15 @@
     // the old Shove (tap your Nazan / Space / button), and only THEN can the next one
     // appear. Each has its own flavour of escape.
     const POWERUPS = {
-      eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:5 },   // devour Nazans on contact
-      shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // blast nearby Nazans away (instant)
+      eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:3 },   // devour Nazans on contact
+      shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // blast nearby Nazans far away (instant)
       ghost:  { icon:"👻", name:"Invisible",   color:"#7e57c2", dur:5 },   // Nazans pass right through you
-      freeze: { icon:"🧊", name:"Freeze",      color:"#2e9bd6", dur:3 },   // every Nazan stops dead
+      repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:4 },   // a bubble that keeps Nazans pushed away
+      shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 }    // Nazans crawl in slow motion
     };
+    const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
+    const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
     const PU_TYPES = Object.keys(POWERUPS);
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
     let held = null;                 // power-up type currently carried (one at a time), or null
@@ -444,7 +549,8 @@
       canvas.height = Math.floor(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if(player){
-        player.r = Math.max(20, base() * 0.05);
+        player.baseR = Math.max(20, base() * 0.05);
+        player.r = player.baseR * (activeEffect && activeEffect.type === "shrink" ? SHRINK_MUL : 1);
         player.x = Math.min(Math.max(player.x, player.r), W - player.r);
         player.y = Math.min(Math.max(player.y, player.r), H - player.r);
       }
@@ -477,7 +583,8 @@
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
       blastFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
-      player = { x: W / 2, y: H * 0.72, r: Math.max(20, base() * 0.05), rot: 0,
+      player = { x: W / 2, y: H * 0.72, baseR: Math.max(20, base() * 0.05),
+                 r: Math.max(20, base() * 0.05), rot: 0,
                  img: images.length ? images[0] : null };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
@@ -486,25 +593,29 @@
       updatePrompt();
     }
 
-    // Push every Nazan within reach away from the player. This is the Shove power-up's
-    // instant effect: a clutch escape that buys space without ever speeding Nazans up.
+    // Blast every Nazan within reach far away from the player. This is the Shove
+    // power-up's instant effect: a genuine panic button. It launches Nazans hard
+    // outward (closest ones hardest), physically clears them past the blast edge so
+    // they can't immediately re-touch you, and knocks their built-up speed down so
+    // they take a moment to wind back up.
     function doShove(){
-      const R = base() * 0.46;
+      const R = base() * 0.62;
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
         if(d < R){
           const nx = dx / d, ny = dy / d;
-          // Aim each Nazan straight away from the player and EASE OFF its speed —
-          // closer ones slow the most. Shoving never makes them faster (which used
-          // to backfire by sending them rushing back); it always buys you space.
           const close = 1 - d / R;                 // 0 at the edge → 1 right on top
-          const spd = Math.hypot(e.vx, e.vy);
-          const newSpd = spd * (0.85 - 0.45 * close);
-          e.vx = nx * newSpd; e.vy = ny * newSpd;
+          const launch = base() * (0.35 + 0.6 * close);
+          e.vx = nx * launch; e.vy = ny * launch;
+          // Shove it clear of the blast radius and keep it inside the arena.
+          const clear = (R - d) + e.r;
+          e.x = Math.min(Math.max(e.x + nx * clear, e.r), W - e.r);
+          e.y = Math.min(Math.max(e.y + ny * clear, e.r), H - e.r);
+          e.age = Math.max(0, e.age - 2.5);        // briefly defang its accumulated speed
         }
       }
-      blastFx = 0.35;
+      blastFx = 0.45;
     }
 
     // Fire whatever power-up is currently held. Works like the old Shove trigger
@@ -583,6 +694,9 @@
     }
 
     function updatePlayer(dt){
+      // Tiny Mode shrinks the player's effective size (collisions and drawing both
+      // use player.r); every other state restores it to its natural radius.
+      if(player) player.r = player.baseR * (activeEffect && activeEffect.type === "shrink" ? SHRINK_MUL : 1);
       const sp = base() * 0.9 * dt;          // keyboard speed (per second, scaled)
       let kx = 0, ky = 0;
       if(keys.ArrowLeft || keys.a) kx -= 1;
@@ -611,7 +725,7 @@
       const m = Math.floor(score / 100);
       if(m > milestone){ milestone = m; try{ sfx.point(); }catch(err){} }
       if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
-      // Tick down the active timed power-up (freeze / snail / ghost / eating).
+      // Tick down the active timed power-up (repel / shrink / snail / ghost / eating).
       if(activeEffect){
         activeEffect.time -= dt;
         if(activeEffect.time <= 0){
@@ -638,10 +752,12 @@
       // Nazan boing — the same comedic sticker bounce the rest of the page uses —
       // keyed per image so a crowd is a chorus of distinct silly noises (and the
       // sfx module's own throttle keeps it from turning to mush).
-      // Freeze stops them dead; Snail Mode crawls them in slow motion. While either
-      // is active their internal speed is preserved so they resume normally after.
-      const frozen = !!(activeEffect && activeEffect.type === "freeze");
-      const envMul = frozen ? 0 : (activeEffect && activeEffect.type === "snail" ? 0.12 : 1);
+      // Snail Mode crawls every Nazan in slow motion; their internal speed is
+      // preserved so they resume normally afterwards. Force Field doesn't slow them
+      // — it physically holds them out of a bubble around the player (see below).
+      const envMul = (activeEffect && activeEffect.type === "snail") ? 0.12 : 1;
+      const repelOn = !!(activeEffect && activeEffect.type === "repel");
+      const repelR  = base() * REPEL_RADIUS;
       for(const e of enemies){
         if(envMul > 0){
           // Each Nazan speeds up the longer it has been on screen: it eases toward a
@@ -657,6 +773,20 @@
           }
         }
         e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
+        // Force Field: keep Nazans pushed out of a bubble around the player. Unlike a
+        // one-off Shove, this holds for the whole duration, so you can wade through a
+        // crowd unharmed and you always know they're being kept at arm's length.
+        if(repelOn && player){
+          const dx = e.x - player.x, dy = e.y - player.y;
+          const d = Math.hypot(dx, dy) || 1;
+          if(d < repelR){
+            const nx = dx / d, ny = dy / d;
+            const push = base() * 0.02 * (1 - d / repelR);
+            e.x += nx * push; e.y += ny * push;
+            const vn = e.vx * nx + e.vy * ny;       // cancel any inward drift
+            if(vn < 0){ e.vx -= vn * nx; e.vy -= vn * ny; }
+          }
+        }
         let bounced = false;
         if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); bounced = true; }
         if(e.x > W - e.r){ e.x = W - e.r; e.vx = -Math.abs(e.vx); bounced = true; }
@@ -706,7 +836,7 @@
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
           if(activeEffect && activeEffect.type === "eat"){
-            enemies.splice(i, 1); score += 25;
+            enemies.splice(i, 1); score += 10;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
@@ -772,8 +902,8 @@
       }
       // Expanding shockwave ring when a Shove just fired.
       if(blastFx > 0 && player){
-        const k = 1 - blastFx / 0.35;            // 0 → 1 over the effect's life
-        const R = base() * 0.46 * (0.3 + 0.7 * k);
+        const k = 1 - blastFx / 0.45;            // 0 → 1 over the effect's life
+        const R = base() * 0.62 * (0.3 + 0.7 * k);
         ctx.save();
         ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
         ctx.lineWidth = 4; ctx.strokeStyle = "rgba(61,80,118," + (0.6 * (1 - k)).toFixed(3) + ")";
@@ -815,6 +945,64 @@
       overPane.classList.remove("hidden");
       try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
       if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
+      // Prepare the name-entry + global board for this score.
+      pendingScore = final;
+      submitted = false;
+      const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
+      if(nameEl){ nameEl.value = LS.get("playerName", ""); nameEl.disabled = (final <= 0); }
+      if(btnEl){ btnEl.disabled = (final <= 0); btnEl.textContent = "🏅 Submit"; }
+      if(hintEl){
+        hintEl.className = "nameHint";
+        hintEl.textContent = final <= 0
+          ? "Score a point or two first, then you can claim a spot."
+          : "Enter your name to post your score to the global board.";
+      }
+      renderBoard("#overLbList");
+    }
+    // Render the global top scores into the given <ol>. Highlights the current
+    // player's freshly-submitted entry when we know it.
+    async function renderBoard(sel){
+      const ol = $(sel); if(!ol) return;
+      const myName = (LS.get("playerName", "") || "").toLowerCase();
+      try{
+        const list = await Leaderboard.top();
+        if(!list.length){
+          ol.innerHTML = `<li class="lbEmpty">No scores yet — be the first Nazan on the board!</li>`;
+          return;
+        }
+        ol.innerHTML = "";
+        list.forEach((e, i)=>{
+          const li = document.createElement("li");
+          if(justSubmitted && myName && e.name.toLowerCase() === myName && e.score === pendingScore) li.className = "me";
+          li.innerHTML = `<span class="rank"></span><span class="who"></span><span class="pts"></span>`;
+          li.querySelector(".rank").textContent = "#" + (i + 1);
+          li.querySelector(".who").textContent = e.name;
+          li.querySelector(".pts").textContent = e.score;
+          ol.appendChild(li);
+        });
+      }catch(err){
+        ol.innerHTML = `<li class="lbEmpty">Couldn't load the board right now.</li>`;
+      }
+    }
+    async function submitScore(){
+      const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
+      const name = (nameEl ? nameEl.value : "").trim();
+      if(!name){
+        if(hintEl){ hintEl.className = "nameHint err"; hintEl.textContent = "Please type your name first."; }
+        if(nameEl) nameEl.focus();
+        return;
+      }
+      if(submitted || pendingScore <= 0) return;
+      submitted = true;
+      LS.set("playerName", name);
+      if(btnEl){ btnEl.disabled = true; btnEl.textContent = "✓ Submitted"; }
+      if(nameEl) nameEl.disabled = true;
+      if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Nice — your score is on the board!"; }
+      justSubmitted = true;
+      try{ await Leaderboard.submit(name, pendingScore); }catch(e){}
+      achieve("globalist", "🌐", "On the Board", "You put your name on the global high-score board.");
+      await renderBoard("#overLbList");
+      justSubmitted = false;
     }
     function open(){
       loadImages();
@@ -824,6 +1012,7 @@
       root.classList.add("show");
       root.setAttribute("aria-hidden", "false");
       resize();
+      renderBoard("#startLbList");
       try{ draw(); }catch(e){}
     }
     function close(){
@@ -868,6 +1057,12 @@
       // Keyboard.
       window.addEventListener("keydown", (e)=>{
         if(!root.classList.contains("show")) return;
+        // Don't hijack typing in the name field: let it behave like a normal input
+        // (Enter submits the score instead of restarting the round).
+        if(e.target && e.target.id === "gameName"){
+          if(e.key === "Enter"){ e.preventDefault(); submitScore(); }
+          return;
+        }
         if(e.key === "Escape"){ close(); return; }
         // On the game-over screen, Enter or Space restarts the round.
         if(!running && overPane && !overPane.classList.contains("hidden")){
@@ -886,6 +1081,7 @@
       $("#gameExit").addEventListener("click", close);
       $("#gameStartBack").addEventListener("click", close);
       $("#gameOverBack").addEventListener("click", close);
+      const sub = $("#gameSubmit"); if(sub) sub.addEventListener("click", submitScore);
     }
     return { open, close, wire };
   })();
