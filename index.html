@@ -654,7 +654,8 @@ function langInfo(filename){
    Bavaria, which have no emoji); those render as an <img> as-is. */
 function flagHTML(emoji){
   if(typeof emoji === "string" && (/^https?:\/\//.test(emoji) || /\.(svg|png|jpe?g|webp)$/i.test(emoji))){
-    return `<img class="flag-img" src="${emoji}" alt="flag" loading="lazy">`;
+    const src = emoji.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return `<img class="flag-img" src="${src}" alt="flag" loading="lazy">`;
   }
   const cps = Array.from(emoji).map(c => c.codePointAt(0));
   const RI = 0x1F1E6;                                   // regional indicator 'A'
