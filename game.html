@@ -1011,9 +1011,9 @@
     function syncName(value){
       const name = String(value || "").slice(0, 16);
       LS.set("playerName", name);
-      const a = $("#gameNameStart"), b = $("#gameName");
-      if(a && a.value !== name) a.value = name;
-      if(b && b.value !== name) b.value = name;
+      const startInput = $("#gameNameStart"), overInput = $("#gameName");
+      if(startInput && startInput.value !== name) startInput.value = name;
+      if(overInput && overInput.value !== name) overInput.value = name;
     }
     async function submitScore(){
       const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
