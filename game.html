@@ -73,6 +73,16 @@
   .gameCard p{margin:6px 0; color:var(--muted); font-size:.98rem;}
   .gameCard .big{font-size:clamp(1.6rem,7vw,2.4rem); font-weight:800; color:var(--navy); margin:6px 0;}
   .gameCard .best{color:var(--muted); font-weight:700;}
+  /* Nazan's random taunt on game over — deliberately loud so it stands out. */
+  .gameCard .nazanQuote{display:inline-block; margin:4px auto 10px; padding:9px 18px;
+    font-weight:800; font-size:clamp(1rem,4.6vw,1.4rem); line-height:1.2; color:#fff;
+    background:linear-gradient(135deg,#ff7a59,#e8743b); border-radius:30px;
+    box-shadow:0 8px 22px rgba(232,116,59,.45); transform:rotate(-2deg);
+    text-shadow:0 1px 2px rgba(0,0,0,.18); animation:nazanQuotePop .42s cubic-bezier(.18,1.5,.4,1) both;}
+  .gameCard .nazanQuote::before{content:"💬 ";}
+  body.dark .gameCard .nazanQuote{background:linear-gradient(135deg,#ff8c6b,#d6602b);}
+  @keyframes nazanQuotePop{0%{transform:rotate(-2deg) scale(.4); opacity:0;}
+    60%{transform:rotate(-2deg) scale(1.12);} 100%{transform:rotate(-2deg) scale(1); opacity:1;}}
   .gameBtns{display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:16px;}
   .gameBtn{cursor:pointer; font:inherit; font-weight:700; border-radius:40px; padding:13px 26px;
     font-size:1.02rem; border:0; color:#fff; background:var(--navy);
@@ -170,6 +180,7 @@
     <div class="gamePanel hidden" id="gameOver">
       <div class="gameCard">
         <h2>Caught!</h2>
+        <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
         <div class="big" id="gameFinalScore">0</div>
         <p class="best" id="gameBestLine">Best: 0</p>
         <div class="nameRow">
@@ -513,6 +524,19 @@
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
+    // Random things Nazan says when you get caught — shown big and loud on game over.
+    const NAZAN_QUOTES = [
+      "You need to blow not suck",
+      "Yalla",
+      "Academically Aroused",
+      "Damn bro that's crazy",
+      "Wird schon passen",
+      "Sending love",
+      "That's crazy bro",
+      "Kevin",
+      "leckere Überraschung",
+      "sorpresa deliciosa"
+    ];
     const root   = $("#game");
     const canvas = $("#gameCanvas");
     const ctx    = canvas ? canvas.getContext("2d") : null;
@@ -1072,10 +1096,20 @@
         hint.textContent = "Enter your name to play — your scores land on the global board.";
       }
     }
+    // Pick a random Nazan taunt and pop it in, restarting the entry animation each
+    // time so a fresh line still draws the eye even on repeated deaths.
+    function showNazanQuote(){
+      const el = $("#gameNazanQuote"); if(!el) return;
+      el.textContent = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      el.style.animation = "none";
+      void el.offsetWidth;          // force reflow so the pop animation replays
+      el.style.animation = "";
+    }
     function gameOver(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
+      showNazanQuote();
       const final = Math.floor(score);
       const prev = highScore();
       const isHigh = final > prev;
