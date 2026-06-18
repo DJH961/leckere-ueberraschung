@@ -105,6 +105,7 @@
   .gameBtn:disabled{opacity:.45; cursor:not-allowed; filter:grayscale(.3); box-shadow:none;}
   .gameBtn:disabled:hover{filter:grayscale(.3);}
   .gameBtn:disabled:active{transform:none;}
+  .mobileHow{display:none;}
   /* Minimal achievement toast */
   #toasts{position:fixed; left:50%; bottom:88px; transform:translateX(-50%); z-index:10;
     display:flex; flex-direction:column; gap:10px; align-items:center; pointer-events:none;}
@@ -150,6 +151,45 @@
   .lbList li .who{flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .lbList li .pts{flex:0 0 auto; font-weight:800; color:var(--navy);}
   .lbEmpty{color:var(--muted); font-size:.88rem; text-align:center;}
+  @media (max-width:600px){
+    #gameHud{padding:calc(10px + env(safe-area-inset-top)) 10px 10px;}
+    #gameHud .score{font-size:1rem; padding:6px 11px; border-radius:12px;}
+    #gameExit{font-size:.86rem; padding:7px 13px;}
+    .gamePanel{align-items:stretch; justify-content:flex-start; gap:0;
+      padding:calc(58px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));}
+    .gameCard{width:min(100%,430px); max-width:none;
+      height:calc(100vh - 78px); height:calc(100dvh - 78px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+      max-height:none; margin:0 auto; padding:16px 14px 14px; border-radius:22px;
+      gap:0; box-shadow:0 14px 36px rgba(61,80,118,.28);}
+    .gameCard h2{font-size:clamp(1.35rem,7vw,1.8rem); margin-bottom:5px;}
+    .gameCard p{font-size:.9rem; line-height:1.28; margin:4px 0;}
+    .gameCard .big{font-size:clamp(1.7rem,10vw,2.25rem); margin:2px 0;}
+    .gameCard .best{font-size:.9rem;}
+    .desktopHow{display:none;}
+    .mobileHow{display:block;}
+    .nameField{margin:10px 0 5px; padding:10px; border-radius:16px;}
+    .nameField label{font-size:.78rem;}
+    .nameRow{width:100%; gap:8px; margin:9px 0 3px;}
+    .nameRow input{width:100%; min-width:0; padding:10px 12px;}
+    #gameOver .nameRow{display:grid; grid-template-columns:1fr; align-items:stretch;}
+    .nameHint{font-size:.78rem; line-height:1.25; min-height:auto;}
+    .lbBox{margin:10px 0 8px; padding:10px; border:1px solid var(--card-border);
+      border-radius:16px; background:rgba(255,255,255,.66);
+      box-shadow:inset 0 0 0 1px rgba(111,147,192,.06);
+      flex:1 1 210px; min-height:180px;}
+    body.dark .lbBox{background:rgba(22,29,46,.66);}
+    .lbBox h3{font-size:.9rem; margin-bottom:7px;}
+    .lbList li{font-size:.88rem; padding:8px 9px; gap:7px; border-radius:11px;}
+    .lbList li .rank{flex-basis:2.45em;}
+    .gameBtns{display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; margin-top:auto;
+      padding-top:6px; flex:0 0 auto;}
+    .gameBtn{width:100%; padding:11px 12px; font-size:.94rem;}
+    .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 6px; padding:8px 13px;}
+  }
+  @media (max-width:360px){
+    .gameBtns{grid-template-columns:1fr;}
+    .lbBox{min-height:155px;}
+  }
 </style>
 </head>
 <body>
@@ -167,8 +207,9 @@
       <div class="gameCard">
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
-        <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p>Cornered? <strong>Grab a power-up</strong> when one pops up. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode or snail mode. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one pops up. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode or snail mode. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="mobileHow">Move with your <strong>finger</strong>. Grab power-ups to survive; if Shove is ready, tap your Nazan to fire it.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
         <div class="nameField">
           <label for="gameNameStart">Your name <span class="req">*</span></label>
