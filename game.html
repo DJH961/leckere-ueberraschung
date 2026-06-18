@@ -478,6 +478,21 @@
     // Nazans as possible share a line. Non-sticker keys (walls, power-ups, death) fall
     // back to a stable hash so they stay consistent too; a missing key uses the bag.
     let _clipIdxMap = null, _clipIdxLen = -1;
+    // A handful of stickers say, in writing or gesture, exactly what one of the
+    // voice clips says — so we pin those by hand instead of leaving them to the
+    // round-robin. The classic is the "YALLA" sticker, which now always speaks the
+    // "Yalla!" clip. Keys are the (decoded) sticker file names; values are indices
+    // into BOUNCE_CLIPS. Indices: 0 "Hä?" · 3 "Yes sir!" · 4 "That's crazy bro" ·
+    // 1 "Yalla!" · 6/7/8 the "Leckere Überraschung / delicious surprise" trio.
+    const CLIP_OVERRIDES = {
+      "STK-20240515-WA0033.webp": 1,   // "YALLA"               → "Yalla!"
+      "STK-20240425-WA0046.webp": 0,   // "Confusion"           → "Hä?"
+      "Official Logo.webp":       6,   // "Leckere Überraschung" → clip 6
+      "STK-20241103-WA0017.webp": 7,   // "delicious surprise"  → clip 7
+      "STK-20241202-WA0008.webp": 8,   // "Egyptian surprise"   → clip 8
+      "STK-20260616-WA0025.webp": 3,   // "YES, I'm a provider" → "Yes sir!"
+      "STK-20260616-WA0063.webp": 4    // "Why did you say that?"→ "That's crazy bro"
+    };
     function clipBaseName(key){
       let s = String(key == null ? "" : key);
       s = s.split(/[?#]/)[0];                    // drop any query/hash
@@ -490,7 +505,18 @@
       if(_clipIdxMap && _clipIdxLen === list.length) return;
       const names = list.map(clipBaseName).sort();
       _clipIdxMap = new Map();
-      names.forEach((n, i) => _clipIdxMap.set(n, i % BOUNCE_CLIPS.length));
+      // Hand-matched stickers keep their pinned clip; everyone else is dealt the
+      // remaining lines round-robin so the handful of clips spread as evenly as
+      // possible and as few Nazans as possible share a line.
+      let i = 0;
+      for(const n of names){
+        if(Object.prototype.hasOwnProperty.call(CLIP_OVERRIDES, n)){
+          _clipIdxMap.set(n, CLIP_OVERRIDES[n] % BOUNCE_CLIPS.length);
+        } else {
+          _clipIdxMap.set(n, i % BOUNCE_CLIPS.length);
+          i++;
+        }
+      }
       _clipIdxLen = list.length;
     }
     function clipIndexFor(key){
@@ -697,7 +723,11 @@
             t += step;
           }
         }
-      }
+      },
+      // Which voice clip a Nazan is tied to (an index into BOUNCE_CLIPS), so spawns
+      // can space same-voiced Nazans apart instead of three shouting the same line.
+      soundIndexFor(key){ return clipIndexFor(key); },
+      soundCount(){ return BOUNCE_CLIPS.length; }
     };
   })();
 
@@ -1146,7 +1176,18 @@
       let pool = images;
       const mine = player ? player.img : null;
       if(mine && images.length > 1) pool = images.filter(im => im !== mine);
-      const img = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      // Space the VOICES out too: each Nazan is tied to one of a small set of clips,
+      // so without care three Nazans saying the same line could be on screen at once
+      // and all shout it together. Prefer images whose clip isn't already out there;
+      // fall back to the full pool once every available voice is in play.
+      let voicePool = pool;
+      try{
+        const live = new Set();
+        for(const e of enemies){ if(e.img){ const s = sfx.soundIndexFor(e.img.src); if(s >= 0) live.add(s); } }
+        const fresh = pool.filter(im => { const s = sfx.soundIndexFor(im.src); return s < 0 || !live.has(s); });
+        if(fresh.length) voicePool = fresh;
+      }catch(err){}
+      const img = voicePool.length ? voicePool[Math.floor(Math.random() * voicePool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
                      rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0 });
       // A new Nazan joining the fray gives a little goofy blip — keyed by its image

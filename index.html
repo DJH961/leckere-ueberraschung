@@ -826,7 +826,32 @@ async function loadStickers(){
     }
     return arr;
   };
-  const shown = shuffle(files.slice()).slice(0, STICKER_LIMIT);
+  // Each Nazan is tied to one of a small set of voice clips, so a purely random
+  // eight could easily land three Nazans that all say the same line right next to
+  // each other — and they'd all shout it at once. So sample with the SOUNDS spaced
+  // out: greedily prefer stickers whose clip isn't on the page yet, and only allow
+  // a repeated voice once every distinct clip is already represented.
+  const soundOf = (f)=>{
+    try{ return (window.sfx || sfx).soundIndexFor(encodeURI(f.path)); }catch(e){ return -1; }
+  };
+  const sampleSpaced = (arr, limit)=>{
+    const pool = shuffle(arr.slice());
+    const chosen = [], usedSounds = new Set();
+    for(const f of pool){
+      if(chosen.length >= limit) break;
+      const s = soundOf(f);
+      if(s < 0 || !usedSounds.has(s)){ chosen.push(f); if(s >= 0) usedSounds.add(s); }
+    }
+    // If there are fewer distinct clips than slots, top up with whatever's left.
+    if(chosen.length < limit){
+      for(const f of pool){
+        if(chosen.length >= limit) break;
+        if(!chosen.includes(f)) chosen.push(f);
+      }
+    }
+    return chosen;
+  };
+  const shown = sampleSpaced(files, STICKER_LIMIT);
 
   // Build side rails for desktop (siblings of .wrap so they sit in the gutters)
   const leftRail = document.createElement("div");  leftRail.className = "rail left";
@@ -1028,6 +1053,21 @@ loadFavicon();
     // stickers as possible share a line. Non-sticker keys (buttons, etc.) fall back to
     // a stable hash so they stay consistent too; a missing key uses the shuffle bag.
     let _clipIdxMap = null, _clipIdxLen = -1;
+    // A handful of stickers say, in writing or gesture, exactly what one of the
+    // voice clips says — so we pin those by hand instead of leaving them to the
+    // round-robin. The classic is the "YALLA" sticker, which now always speaks the
+    // "Yalla!" clip. Keys are the (decoded) sticker file names; values are indices
+    // into BOUNCE_CLIPS. Indices: 0 "Hä?" · 3 "Yes sir!" · 4 "That's crazy bro" ·
+    // 1 "Yalla!" · 6/7/8 the "Leckere Überraschung / delicious surprise" trio.
+    const CLIP_OVERRIDES = {
+      "STK-20240515-WA0033.webp": 1,   // "YALLA"               → "Yalla!"
+      "STK-20240425-WA0046.webp": 0,   // "Confusion"           → "Hä?"
+      "Official Logo.webp":       6,   // "Leckere Überraschung" → clip 6
+      "STK-20241103-WA0017.webp": 7,   // "delicious surprise"  → clip 7
+      "STK-20241202-WA0008.webp": 8,   // "Egyptian surprise"   → clip 8
+      "STK-20260616-WA0025.webp": 3,   // "YES, I'm a provider" → "Yes sir!"
+      "STK-20260616-WA0063.webp": 4    // "Why did you say that?"→ "That's crazy bro"
+    };
     function clipBaseName(key){
       let s = String(key == null ? "" : key);
       s = s.split(/[?#]/)[0];                    // drop any query/hash
@@ -1040,7 +1080,18 @@ loadFavicon();
       if(_clipIdxMap && _clipIdxLen === list.length) return;
       const names = list.map(clipBaseName).sort();
       _clipIdxMap = new Map();
-      names.forEach((n, i) => _clipIdxMap.set(n, i % BOUNCE_CLIPS.length));
+      // Hand-matched stickers keep their pinned clip; everyone else is dealt the
+      // remaining lines round-robin so the handful of clips spread as evenly as
+      // possible and as few Nazans as possible share a line.
+      let i = 0;
+      for(const n of names){
+        if(Object.prototype.hasOwnProperty.call(CLIP_OVERRIDES, n)){
+          _clipIdxMap.set(n, CLIP_OVERRIDES[n] % BOUNCE_CLIPS.length);
+        } else {
+          _clipIdxMap.set(n, i % BOUNCE_CLIPS.length);
+          i++;
+        }
+      }
       _clipIdxLen = list.length;
     }
     function clipIndexFor(key){
@@ -1227,7 +1278,11 @@ loadFavicon();
         tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
         tone({ type:"square", f0:523, dur:0.1, vol:0.1, t0:0.1 });
         tone({ type:"square", f0:784, f1:880, dur:0.22, vol:0.11, t0:0.2, wobble:22 });
-      }
+      },
+      // Which voice clip a sticker is tied to (an index into BOUNCE_CLIPS), so the
+      // page can space same-voiced Nazans apart when it samples which ones to show.
+      soundIndexFor(key){ return clipIndexFor(key); },
+      soundCount(){ return BOUNCE_CLIPS.length; }
     };
   })();
 
