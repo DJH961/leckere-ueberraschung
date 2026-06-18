@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- WebAssembly Opus decoder → lets the .opus bounce sound effects play on Safari/iOS and everywhere else -->
+<script src="https://cdn.jsdelivr.net/npm/ogg-opus-decoder@1.7.3/dist/ogg-opus-decoder.min.js"></script>
 <style>
   :root{
     --bg:#ffffff; --bg2:#dce9f6;
@@ -420,73 +422,95 @@
         src.start(t); src.stop(t + dur + 0.02);
       }catch(e){}
     }
+    // ---- Nazan's real voice comments, used as the bounce "boing" ----
+    // Short opus clips (recorded by Nazan, silence trimmed) that replace the old
+    // synthesized boing. Each Nazan (keyed by `key`) maps to a consistent clip,
+    // so a given one always says the same thing while different ones differ.
+    const BOUNCE_CLIPS = [
+      "sound effects/PTT-20260618-WA0048.opus",
+      "sound effects/PTT-20260618-WA0049.opus",
+      "sound effects/PTT-20260618-WA0050.opus",
+      "sound effects/PTT-20260618-WA0051.opus",
+      "sound effects/PTT-20260618-WA0054.opus",
+      "sound effects/PTT-20260618-WA0055.opus",
+      "sound effects/PTT-20260618-WA0056.opus",
+      "sound effects/PTT-20260618-WA0057.opus",
+      "sound effects/PTT-20260618-WA0058.opus",
+      "sound effects/PTT-20260618-WA0059.opus"
+    ];
+    const clipBuffers = new Map();     // url -> AudioBuffer (decoded, ready to play)
+    // Decode the short .opus clips with the bundled WASM decoder so they play on
+    // Safari/iOS too (browsers there can't decode Ogg Opus natively). A complete
+    // standalone file must use decodeFile() — the streaming decode() buffers the
+    // tail and returns nothing for clips this short.
+    let _clipDec = null;
+    function clipDecoder(){
+      if(!_clipDec){
+        const ns = window["ogg-opus-decoder"];
+        const Dec = (ns && ns.OggOpusDecoder) || window.OggOpusDecoder;
+        if(!Dec) return null;
+        _clipDec = new Dec();
+      }
+      return _clipDec;
+    }
+    let _clipChain = Promise.resolve();   // serialize decoder use (one stream at a time)
+    function loadClip(url){
+      _clipChain = _clipChain.then(async ()=>{
+        if(clipBuffers.has(url)) return;
+        const dec = clipDecoder(); if(!dec) return;
+        await dec.ready;
+        const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+        const { channelData, samplesDecoded, sampleRate } = await dec.decodeFile(bytes);
+        try{ await dec.reset(); }catch(e){}
+        if(samplesDecoded > 0){
+          const ctx = getCtx();
+          const buf = ctx.createBuffer(Math.max(channelData.length,1), samplesDecoded, sampleRate || 48000);
+          for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c], c);
+          clipBuffers.set(url, buf);
+        }
+      }).catch(()=>{});
+      return _clipChain;
+    }
+    let clipsPreloaded = false;
+    function preloadClips(){
+      if(clipsPreloaded) return; clipsPreloaded = true;
+      for(const url of BOUNCE_CLIPS) loadClip(url);
+    }
+    let activeClips = 0;               // cap simultaneous voices so it stays funny, not mush
+    function playClip(intensity, key){
+      preloadClips();
+      const idx = key != null ? (hashStr(key) % BOUNCE_CLIPS.length) : Math.floor(Math.random()*BOUNCE_CLIPS.length);
+      const buf = clipBuffers.get(BOUNCE_CLIPS[idx]);
+      if(!buf) return;                 // still decoding — it'll be ready for the next bounce
+      if(activeClips >= 4) return;
+      try{
+        const ctx = getCtx();
+        if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
+        const src = ctx.createBufferSource(); src.buffer = buf;
+        const g = ctx.createGain();
+        g.gain.value = Math.min(1, 0.55 + (intensity||0)*0.03);
+        src.connect(g).connect(ctx.destination);
+        activeClips++;
+        src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
+        src.start();
+      }catch(e){}
+    }
     return {
-      // comedic "boing" when a sticker bounces; volume scales with impact.
-      // Each sticker (keyed by `key`) keeps a consistent flavour, voice & pitch;
-      // different stickers sound wildly different so a crowd of them is a chorus
-      // of distinct silly noises rather than the same boing over and over.
+      // Nazan's funny voice comment when a Nazan bounces; volume scales with
+      // impact. Each one (keyed by `key`) keeps the same clip, so a crowd of them
+      // is a chorus of distinct comments rather than the same one over and over.
       boing(intensity, key){
         const now = performance.now();
-        // Per-sticker throttle lets many different stickers chirp simultaneously,
-        // while a looser global throttle stops the whole thing turning to mush.
-        if(now - lastBoing < 28) return;
+        // Clips are ~1s of speech, so throttle harder than the old synth boing to
+        // stop Nazan talking over herself into mush.
+        if(now - lastBoing < 60) return;
         if(key != null){
           const prev = lastBoingKey.get(key) || 0;
-          if(now - prev < 90) return;
+          if(now - prev < 800) return;   // same Nazan won't re-trigger mid-sentence
           lastBoingKey.set(key, now);
-        } else if(now - lastBoing < 70){ return; }
+        } else if(now - lastBoing < 200){ return; }
         lastBoing = now;
-        const R = rngFor(key);
-        const rnd = (a,b)=> a + R()*(b-a);
-        const vol = Math.min(0.4, 0.07 + (intensity||0)*0.012);
-        // Per-sticker "voice": a fixed pitch transpose + timbre so even two
-        // stickers that land on the same flavour are clearly different beasts.
-        const tp = Math.pow(2, rnd(-1, 1.15));          // ~0.5x .. ~2.2x pitch
-        const P = (f)=> Math.max(40, f*tp);
-        const voices = ["sine","triangle","square","sawtooth"];
-        const voice = voices[Math.floor(R()*voices.length)];
-        const flavour = Math.floor(R()*10);
-        if(flavour === 0){
-          // classic springy boing with a wild wobble
-          tone({ type:"sine", f0:P(rnd(380,520)), dur:0.26, vol, wobble:70, wobbleRate:rnd(14,22),
-                 glide:[P(rnd(140,200)), P(rnd(260,340)), P(rnd(90,130))] });
-        } else if(flavour === 1){
-          // "doy-oy-oing" rubbery triangle bounce
-          tone({ type:"triangle", f0:P(rnd(300,420)), dur:0.3, vol, wobble:55,
-                 glide:[P(rnd(520,640)), P(rnd(150,210)), P(rnd(380,460)), P(rnd(80,120))] });
-        } else if(flavour === 2){
-          // cartoon slide-whistle "weeeooop"
-          tone({ type:"sine", f0:P(rnd(220,300)), f1:P(rnd(900,1200)), dur:0.18, vol });
-          tone({ type:"sine", f0:P(rnd(900,1200)), f1:P(rnd(160,220)), dur:0.2, vol, t0:0.16 });
-        } else if(flavour === 3){
-          // squishy splat: boing + a little raspberry of noise
-          tone({ type:"square", f0:P(rnd(360,460)), dur:0.2, vol:vol*0.8, wobble:40,
-                 glide:[P(rnd(120,170)), P(rnd(70,100))] });
-          noise({ f0:rnd(260,360), f1:rnd(120,180), dur:0.16, vol:Math.min(0.18, vol), q:5, t0:0.02 });
-        } else if(flavour === 4){
-          // honky cartoon car-horn "ah-ooo-gah"
-          tone({ type:"sawtooth", f0:P(rnd(300,380)), f1:P(rnd(300,380)), dur:0.1, vol, wobble:18 });
-          tone({ type:"sawtooth", f0:P(rnd(440,560)), f1:P(rnd(220,280)), dur:0.18, vol, t0:0.1, wobble:24 });
-        } else if(flavour === 5){
-          // boingy bouncing-ball "bo-bo-bo-boing" staircase
-          tone({ type:voice, f0:P(rnd(520,640)), dur:0.34, vol,
-                 glide:[P(rnd(420,500)), P(rnd(320,400)), P(rnd(240,300)), P(rnd(560,680))] });
-        } else if(flavour === 6){
-          // rubber-duck squeak: tiny high tone + a squeaky noise burst
-          tone({ type:"triangle", f0:P(rnd(900,1150)), f1:P(rnd(1500,1900)), dur:0.12, vol, wobble:60, wobbleRate:rnd(30,46) });
-          noise({ f0:rnd(1600,2200), f1:rnd(900,1300), dur:0.09, vol:Math.min(0.14, vol), q:10, t0:0.01 });
-        } else if(flavour === 7){
-          // sad trombone "wah-waaah" descending wobble
-          tone({ type:"sawtooth", f0:P(rnd(360,440)), dur:0.38, vol, wobble:28, wobbleRate:rnd(7,11),
-                 glide:[P(rnd(300,360)), P(rnd(230,280)), P(rnd(150,190))] });
-        } else if(flavour === 8){
-          // fat tuba "bwomp" — deep and dopey
-          tone({ type:"square", f0:P(rnd(150,210)), dur:0.24, vol:Math.min(0.42, vol*1.1), wobble:22,
-                 glide:[P(rnd(110,150)), P(rnd(80,110))] });
-        } else {
-          // excited spring "sproing!" rocketing upward
-          tone({ type:voice, f0:P(rnd(180,260)), f1:P(rnd(1100,1500)), dur:0.22, vol, wobble:35, wobbleRate:rnd(18,28) });
-        }
+        playClip(intensity, key);
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
       // `key`) keeps a consistent goofy voice; different buttons sound different.
