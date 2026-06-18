@@ -596,28 +596,47 @@
     }
 
     // Blast every Nazan within reach far away from the player. This is the Shove
-    // power-up's instant effect: a genuine panic button. It launches Nazans hard
-    // outward (closest ones hardest), physically clears them past the blast edge so
-    // they can't immediately re-touch you, and knocks their built-up speed down so
-    // they take a moment to wind back up.
+    // power-up's instant effect: a genuine panic button. It physically relocates every
+    // nearby Nazan out past the blast edge, slows it right down, and — crucially — sends
+    // it MOVING AWAY from the player so it can never immediately come back. It must only
+    // ever help the player, never make things worse.
     function doShove(){
       const R = base() * 0.62;
+      const slow = base() * 0.006;                 // gentle drift speed after the blast
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
         if(d < R){
           const nx = dx / d, ny = dy / d;
-          const close = 1 - d / R;                 // 0 at the edge → 1 right on top
-          // A gentle outward nudge — the repositioning below does the real clearing.
-          // (An over-large velocity here used to send Nazans ricocheting off the walls
-          // straight back onto the player, turning the panic button into instant death.)
-          const launch = base() * (0.006 + 0.01 * close);
-          e.vx = nx * launch; e.vy = ny * launch;
-          // Shove it clear of the blast radius and keep it inside the arena.
+          // Relocate it clear of the blast radius and keep it inside the arena. This is
+          // what actually buys the player space.
           const pushDistance = (R - d) + e.r;
           e.x = Math.min(Math.max(e.x + nx * pushDistance, e.r), W - e.r);
           e.y = Math.min(Math.max(e.y + ny * pushDistance, e.r), H - e.r);
-          e.age = Math.max(0, e.age - 2.5);        // briefly defang its accumulated speed
+          // Now aim its drift so it keeps moving AWAY from the player. If it got pinned
+          // against a wall (player was near the edge), driving it straight outward would
+          // just bounce it off the wall back into the player — instant death. So when an
+          // axis is clamped against a wall we send it SLIDING ALONG that wall, away from
+          // the player, instead of into it.
+          const atWallX = (e.x <= e.r + 0.5) || (e.x >= W - e.r - 0.5);
+          const atWallY = (e.y <= e.r + 0.5) || (e.y >= H - e.r - 0.5);
+          let vx, vy;
+          if(atWallY && !atWallX){                 // pinned top/bottom → slide sideways
+            vx = ((e.x >= player.x) ? 1 : -1) * slow; vy = 0;
+          } else if(atWallX && !atWallY){          // pinned left/right → slide vertically
+            vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * slow;
+          } else if(atWallX && atWallY){           // jammed in a corner → slide along the wall
+            vx = ((e.x >= player.x) ? 1 : -1) * slow; vy = 0;
+          } else {                                  // open space → just drift outward
+            vx = nx * slow; vy = ny * slow;
+          }
+          e.vx = vx; e.vy = vy;
+          // Properly defang it: a Nazan's danger comes from its accumulated age (the
+          // older it is, the faster it eases toward). Trimming only a couple of seconds
+          // left long-lived Nazans at full pace, so they'd rush straight back. Reset the
+          // age right down so every shoved Nazan crawls like a fresh spawn for a while —
+          // that's what makes the Shove a real, reliable advantage.
+          e.age = Math.min(e.age, 1.5);
         }
       }
       blastFx = 0.45;
