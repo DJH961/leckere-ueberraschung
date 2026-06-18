@@ -37,14 +37,15 @@
   body.dark #game{background:radial-gradient(1200px 700px at 50% 30%, #161d2e, #0a0f1a);}
   #game.show{display:block;}
   #gameCanvas{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none;}
-  #gameHud{position:absolute; top:0; left:0; right:0; z-index:4; pointer-events:none;
+  #gameHud{position:absolute; top:0; left:0; right:0; z-index:6; pointer-events:none;
     display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:14px 16px;}
   #gameHud .score{font-weight:800; color:var(--navy); font-size:clamp(1rem,4.5vw,1.5rem);
-    background:rgba(255,255,255,.65); border-radius:14px; padding:6px 14px; backdrop-filter:blur(4px);}
-  body.dark #gameHud .score{background:rgba(22,29,46,.6); color:var(--navy-dark);}
-  #gameExit{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700;
-    color:var(--navy); background:rgba(255,255,255,.8); border:1px solid var(--card-border);
-    border-radius:30px; padding:8px 16px; font-size:.92rem; box-shadow:0 4px 12px rgba(61,80,118,.18);}
+    background:rgba(255,255,255,.82); border-radius:14px; padding:6px 14px; backdrop-filter:blur(4px);}
+  body.dark #gameHud .score{background:rgba(22,29,46,.72); color:var(--navy-dark);}
+  #gameExit{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
+    color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
+    border-radius:30px; padding:8px 16px; font-size:.92rem; box-shadow:0 4px 12px rgba(61,80,118,.18);
+    backdrop-filter:blur(4px);}
   #gameExit:hover{border-color:var(--navy);}
   #gameExit:active{transform:scale(.96);}
   /* Power-up prompt — a non-interactive floating hint at the bottom. */
@@ -65,15 +66,16 @@
   }
   .gamePanel{position:absolute; inset:0; z-index:3; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px; text-align:center;
-    /* Extra top padding keeps the card (and its text) clear of the fixed top-right
+    /* Extra top padding keeps the card (and its text) clear of the fixed top
        "✕ Back" button in the HUD, so the back button is never covered. */
-    padding:64px 24px 24px;
+    padding:76px 20px 20px;
     pointer-events:none; overflow-y:auto; touch-action:pan-y;}
   .gamePanel.hidden{display:none;}
   .gameCard{background:rgba(255,255,255,.92); border:1px solid var(--card-border);
     border-radius:20px; padding:26px 28px; max-width:min(440px,90vw); pointer-events:auto;
     box-shadow:0 18px 50px rgba(61,80,118,.30); margin:auto; touch-action:pan-y;
-    max-height:calc(100vh - 88px); max-height:calc(100dvh - 88px); overflow-y:auto;
+    display:flex; flex-direction:column;
+    max-height:calc(100vh - 100px); max-height:calc(100dvh - 100px); overflow-y:auto;
     -webkit-overflow-scrolling:touch;}
   body.dark .gameCard{background:rgba(22,29,46,.94);}
   .gameCard h2{margin:0 0 8px; color:var(--navy); text-transform:uppercase; letter-spacing:.5px;
@@ -134,10 +136,12 @@
   .nameRow input:focus{outline:2px solid var(--accent2); outline-offset:1px;}
   .nameHint{color:var(--muted); font-size:.82rem; margin:2px 0 0; min-height:1em;}
   .nameHint.err{color:#d6553f; font-weight:700;}
-  .lbBox{margin:14px 0 2px; text-align:left;}
+  .lbBox{margin:14px 0 2px; text-align:left; flex:1 1 auto; min-height:0;
+    display:flex; flex-direction:column;}
   .lbBox h3{margin:0 0 8px; color:var(--navy); font-size:.96rem; text-align:center;
     text-transform:uppercase; letter-spacing:.5px;}
-  .lbList{list-style:none; margin:0; padding:0;}
+  .lbList{list-style:none; margin:0; padding:0; flex:1 1 auto; min-height:0;
+    overflow-y:auto; -webkit-overflow-scrolling:touch;}
   .lbList li{display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:10px;
     font-size:.92rem; color:var(--muted);}
   .lbList li:nth-child(odd){background:rgba(127,127,127,.07);}
