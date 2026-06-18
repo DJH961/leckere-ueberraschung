@@ -438,7 +438,31 @@
       "sound effects/PTT-20260618-WA0058.opus",
       "sound effects/PTT-20260618-WA0059.opus"
     ];
-    const clipBuffers = new Map();     // url -> AudioBuffer (decoded, ready to play)
+    const clipBuffers = new Map();     // url -> AudioBuffer (decoded, trimmed, ready to play)
+    // Several of Nazan's raw recordings start with a big chunk of dead air (up to
+    // ~0.7s) and trail off into silence too. Played as-is that makes the bounce
+    // "boing" fire whenever it feels like it (long after the Nazan hit the wall)
+    // and wastes a voice slot droning silence. So we top-and-tail every clip on
+    // decode: find the first/last sample that actually carries Nazan's voice and
+    // keep only that span (plus a hair of lead-in so the first consonant survives).
+    const SILENCE = 0.02;              // amplitude floor that counts as "white space"
+    function trimClip(ctx, channelData, samplesDecoded, sampleRate){
+      const chans = Math.max(channelData.length, 1);
+      const sr = sampleRate || 48000;
+      let start = samplesDecoded, end = -1;
+      for(let c=0;c<channelData.length;c++){
+        const d = channelData[c];
+        for(let i=0;i<samplesDecoded;i++){ if(Math.abs(d[i]) > SILENCE){ if(i < start) start = i; break; } }
+        for(let i=samplesDecoded-1;i>=0;i--){ if(Math.abs(d[i]) > SILENCE){ if(i > end) end = i; break; } }
+      }
+      if(end < start){ start = 0; end = samplesDecoded - 1; }   // all-quiet safety net
+      const pad = Math.floor(sr * 0.004);                       // ~4ms lead-in, keeps it punchy
+      start = Math.max(0, start - pad);
+      const len = Math.max(1, end - start + 1);
+      const buf = ctx.createBuffer(chans, len, sr);
+      for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c].subarray(start, start + len), c);
+      return buf;
+    }
     // Decode the short .opus clips with the bundled WASM decoder so they play on
     // Safari/iOS too (browsers there can't decode Ogg Opus natively). A complete
     // standalone file must use decodeFile() — the streaming decode() buffers the
@@ -454,33 +478,70 @@
       return _clipDec;
     }
     let _clipChain = Promise.resolve();   // serialize decoder use (one stream at a time)
+    // The big loading cost is the network, so kick every clip's download off in
+    // parallel and cache the bytes; the single WASM decoder still chews through
+    // them one at a time, but it never waits on the network mid-chain anymore.
+    const clipBytes = new Map();          // url -> Promise<Uint8Array|null>
+    function fetchClipBytes(url){
+      if(!clipBytes.has(url)){
+        clipBytes.set(url, fetch(url).then(r=>r.arrayBuffer()).then(b=>new Uint8Array(b)).catch(()=>null));
+      }
+      return clipBytes.get(url);
+    }
     function loadClip(url){
+      const bytesP = fetchClipBytes(url);   // start the download now, before the decode queue
       _clipChain = _clipChain.then(async ()=>{
         if(clipBuffers.has(url)) return;
         const dec = clipDecoder(); if(!dec) return;
+        const bytes = await bytesP; if(!bytes) return;
         await dec.ready;
-        const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
         const { channelData, samplesDecoded, sampleRate } = await dec.decodeFile(bytes);
         try{ await dec.reset(); }catch(e){}
         if(samplesDecoded > 0){
           const ctx = getCtx();
-          const buf = ctx.createBuffer(Math.max(channelData.length,1), samplesDecoded, sampleRate || 48000);
-          for(let c=0;c<channelData.length;c++) buf.copyToChannel(channelData[c], c);
-          clipBuffers.set(url, buf);
+          clipBuffers.set(url, trimClip(ctx, channelData, samplesDecoded, sampleRate));
         }
       }).catch(()=>{});
       return _clipChain;
     }
+    // Warm the downloads during idle time so the very first bounce doesn't pay the
+    // network cost right when the user is interacting.
+    (window.requestIdleCallback || ((cb)=>setTimeout(cb,200)))(()=>{ for(const url of BOUNCE_CLIPS) fetchClipBytes(url); });
     let clipsPreloaded = false;
     function preloadClips(){
       if(clipsPreloaded) return; clipsPreloaded = true;
       for(const url of BOUNCE_CLIPS) loadClip(url);
     }
     let activeClips = 0;               // cap simultaneous voices so it stays funny, not mush
-    function playClip(intensity, key){
+    // Shuffle "bag" so we cycle through every clip before any repeats: we deal out
+    // a shuffled deck of clip indices and only reshuffle once it's empty (never
+    // repeating the previous clip back-to-back across the shuffle seam).
+    let clipBag = [];
+    let lastClipIdx = -1;
+    function refillBag(){
+      clipBag = BOUNCE_CLIPS.map((_, i) => i);
+      for(let i=clipBag.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); const t = clipBag[i]; clipBag[i] = clipBag[j]; clipBag[j] = t; }
+      // we pop from the end, so make sure the next pop isn't the one we just played
+      if(clipBag.length > 1 && clipBag[clipBag.length-1] === lastClipIdx){
+        const t = clipBag[clipBag.length-1]; clipBag[clipBag.length-1] = clipBag[0]; clipBag[0] = t;
+      }
+    }
+    // Next decoded clip from the bag (skips any still decoding, keeps the rest queued).
+    function nextClipBuf(){
+      for(let guard=0; guard<2; guard++){
+        if(clipBag.length === 0) refillBag();
+        for(let k=clipBag.length-1;k>=0;k--){
+          const idx = clipBag[k];
+          const buf = clipBuffers.get(BOUNCE_CLIPS[idx]);
+          if(buf){ clipBag.splice(k, 1); lastClipIdx = idx; return buf; }
+        }
+        clipBag = [];                  // nothing in this bag is ready yet — try a fresh one
+      }
+      return null;
+    }
+    function playClip(intensity){
       preloadClips();
-      const idx = key != null ? (hashStr(key) % BOUNCE_CLIPS.length) : Math.floor(Math.random()*BOUNCE_CLIPS.length);
-      const buf = clipBuffers.get(BOUNCE_CLIPS[idx]);
+      const buf = nextClipBuf();
       if(!buf) return;                 // still decoding — it'll be ready for the next bounce
       if(activeClips >= 4) return;
       try{
@@ -488,17 +549,24 @@
         if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
         const src = ctx.createBufferSource(); src.buffer = buf;
         const g = ctx.createGain();
-        g.gain.value = Math.min(1, 0.55 + (intensity||0)*0.03);
+        const vol = Math.min(1, 0.55 + (intensity||0)*0.03);
+        const t = ctx.currentTime, dur = buf.duration;
+        const fi = Math.min(0.005, dur*0.25), fo = Math.min(0.02, dur*0.25);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(vol, t + fi);                 // tiny fade-in kills the click
+        g.gain.setValueAtTime(vol, Math.max(t + fi, t + dur - fo));
+        g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
         src.connect(g).connect(ctx.destination);
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
-        src.start();
+        src.start(t);
       }catch(e){}
     }
     return {
       // Nazan's funny voice comment when a Nazan bounces; volume scales with
-      // impact. Each one (keyed by `key`) keeps the same clip, so a crowd of them
-      // is a chorus of distinct comments rather than the same one over and over.
+      // impact. Clips are dealt from a shuffle bag, so every comment is heard
+      // before any repeats — a crowd is a chorus of distinct lines, not the same
+      // one over and over. `key` still throttles each individual Nazan.
       boing(intensity, key){
         const now = performance.now();
         // Clips are ~1s of speech, so throttle harder than the old synth boing to
@@ -510,7 +578,7 @@
           lastBoingKey.set(key, now);
         } else if(now - lastBoing < 200){ return; }
         lastBoing = now;
-        playClip(intensity, key);
+        playClip(intensity);
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
       // `key`) keeps a consistent goofy voice; different buttons sound different.
