@@ -28,7 +28,10 @@
   }
 
   /* ===== Minigame (its own page now, for performance) ===== */
-  #game{position:fixed; inset:0; z-index:1; display:none; touch-action:none;
+  /* NOTE: no touch-action here. A parent touch-action:none would intersect with
+     descendants and block the start/game-over cards from scrolling on mobile.
+     The canvas sets its own touch-action:none to stop scroll while steering. */
+  #game{position:fixed; inset:0; z-index:1; display:none;
     background:radial-gradient(1200px 700px at 50% 30%, #ffffff, #cfe2f4);
     overflow:hidden; user-select:none; -webkit-user-select:none;}
   body.dark #game{background:radial-gradient(1200px 700px at 50% 30%, #161d2e, #0a0f1a);}
