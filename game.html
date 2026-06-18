@@ -1077,6 +1077,8 @@
     const EFFECT_GRACE = 0.4;        // seconds of "winding down" at the end of an effect
     const PU_TYPES = Object.keys(POWERUPS);
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
+    let boomFx = 0;                  // lingering fiery blast ring after a Boom fires
+    let boomPuffs = [];              // smoke-and-fire puffs marking each Nazan a Boom destroyed
     let vortexFx = 0;                // lingering collapsing-spiral effect after a Black Hole fires
     let held = null;                 // power-up type currently carried (one at a time), or null
     let pickup = null;               // the lone uncollected pickup on screen, or null
@@ -1228,7 +1230,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; vortexFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; vortexFx = 0; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
@@ -1295,12 +1297,16 @@
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
         if(dx * dx + dy * dy < R * R){
+          // Mark exactly where this Nazan was vaporised so a puff of smoke-and-fire
+          // bursts there — making it unmistakable that the blast DESTROYED them, not
+          // merely shoved them aside.
+          boomPuffs.push({ x: e.x, y: e.y, r0: (e.r || base() * 0.5), t: 0, dur: 0.5 });
           enemies.splice(i, 1); score += BOMB_POINTS;
           try{ sfx.boing(4, "powerup-bomb-" + (e.img ? e.img.src : i)); }catch(err){}
         }
       }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-      blastFx = 0.6;
+      boomFx = 0.6;
     }
 
     // The Black Hole power-up's banked blast: swallow the nearest HALF of every Nazan on
@@ -1450,6 +1456,13 @@
       const m = Math.floor(score / 100);
       if(m > milestone){ milestone = m; try{ sfx.point(); }catch(err){} }
       if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
+      if(boomFx > 0){ boomFx = Math.max(0, boomFx - dt); }
+      if(boomPuffs.length){
+        for(let i = boomPuffs.length - 1; i >= 0; i--){
+          boomPuffs[i].t += dt;
+          if(boomPuffs[i].t >= boomPuffs[i].dur) boomPuffs.splice(i, 1);
+        }
+      }
       if(vortexFx > 0){ vortexFx = Math.max(0, vortexFx - dt); }
       // Tick down the active timed power-up (repel / shrink / snail / ghost / eating).
       if(activeEffect){
@@ -1712,6 +1725,40 @@
         ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
         ctx.lineWidth = 4; ctx.strokeStyle = "rgba(61,80,118," + (0.6 * (1 - k)).toFixed(3) + ")";
         ctx.stroke();
+        ctx.restore();
+      }
+      // Boom: a fiery blast that clearly DESTROYS Nazans. A fast orange-red shockwave
+      // tears outward while a smoke-and-fire puff bursts at every Nazan it vaporised,
+      // so it reads as an explosion that wiped them out — not a Shove that pushed them.
+      if(boomFx > 0 && player){
+        const k = 1 - boomFx / 0.6;             // 0 → 1 over the effect's life
+        const R = base() * 0.85 * (0.25 + 0.85 * k);
+        ctx.save();
+        const grad = ctx.createRadialGradient(player.x, player.y, R * 0.4, player.x, player.y, R);
+        grad.addColorStop(0, "rgba(255,210,90," + (0.45 * (1 - k)).toFixed(3) + ")");
+        grad.addColorStop(0.6, "rgba(214,64,46," + (0.35 * (1 - k)).toFixed(3) + ")");
+        grad.addColorStop(1, "rgba(214,64,46,0)");
+        ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+        ctx.fillStyle = grad; ctx.fill();
+        ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+        ctx.lineWidth = 5; ctx.strokeStyle = "rgba(255,150,40," + (0.85 * (1 - k)).toFixed(3) + ")";
+        ctx.stroke();
+        ctx.restore();
+      }
+      // Smoke-and-fire puffs where each Nazan was vaporised by a Boom.
+      if(boomPuffs.length){
+        ctx.save();
+        for(const p of boomPuffs){
+          const pk = p.t / p.dur;               // 0 → 1 over the puff's life
+          const rr = p.r0 * (0.5 + 1.4 * pk);    // expands as it dissipates
+          const a = 0.8 * (1 - pk);
+          const pg = ctx.createRadialGradient(p.x, p.y, rr * 0.2, p.x, p.y, rr);
+          pg.addColorStop(0, "rgba(255,230,140," + a.toFixed(3) + ")");
+          pg.addColorStop(0.5, "rgba(240,110,40," + (a * 0.8).toFixed(3) + ")");
+          pg.addColorStop(1, "rgba(90,70,70,0)");
+          ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
+          ctx.fillStyle = pg; ctx.fill();
+        }
         ctx.restore();
       }
       // Collapsing spiral when a Black Hole just fired: arms whirl inward as it swallows.
