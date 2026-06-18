@@ -249,7 +249,7 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode, snail mode or a golden <strong>Star</strong> that makes you invincible and lets you barge straight through Nazans. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode, snail mode, a screen-clearing <strong>Boom</strong> or a golden <strong>Star</strong> that makes you invincible and lets you barge Nazans clean off the screen. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; if Shove is ready, tap your Nazan or press Space.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
@@ -1029,20 +1029,29 @@
     // the old Shove (tap your Nazan / Space / button), and only THEN can the next one
     // appear. Each has its own flavour of escape.
     const POWERUPS = {
-      eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:3 },   // devour Nazans on contact
-      shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // blast nearby Nazans far away (instant)
+      eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:5 },   // devour Nazans on contact (they flee, so chase them down)
+      shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // blast nearby Nazans clear off the screen (instant)
       ghost:  { icon:"👻", name:"Invisible",   color:"#7e57c2", dur:5 },   // Nazans pass right through you
-      repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:4 },   // a bubble that keeps Nazans pushed away
+      repel:  { icon:"🛡️", name:"Force Field",  color:"#2e9bd6", dur:4 },   // a bubble that flings Nazans off the screen
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
-      star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 }    // Mario-Kart star: invincible, faster, plough through Nazans
+      star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, plough Nazans off-screen
+      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 }    // pop every Nazan in a big blast radius for points (instant)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.5;      // Star Power makes the player dash faster, like a Mario Kart star
-    const STAR_KNOCKBACK = 0.012;    // outward kick given to a Nazan ploughed through under Star Power, fraction of base()
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
-    const REPEL_STRENGTH = 0.02;     // Force Field outward push per frame, fraction of base()
+    // Shove-type power-ups (Shove, Star, Force Field) don't destroy Nazans — they fling
+    // them clean off the edge of the screen. A banished Nazan sails out fast, vanishes for
+    // a beat, then SLOWLY drifts back in from off-screen to rejoin the fray. That's the key
+    // difference from Eating Mode, which removes them for good.
+    const BANISH_EXIT_SPEED   = 0.03;   // fast outward launch when shoved off-screen, fraction of base()
+    const BANISH_RETURN_SPEED = 0.0035; // slow drift back toward the arena once fully off-screen
+    const BANISH_MARGIN       = 0.18;   // how far past the edge (fraction of base()) counts as "gone"
+    // Eating Mode: Nazans nervously edge AWAY from the hungry player, so clearing the whole
+    // board takes real chasing. Gentle enough that cornered Nazans can still be caught.
+    const EAT_FLEE_SPEED = 0.005;    // per-frame drift away from the player while Eating, fraction of base()
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
     // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
     // last sliver of time. That tiny grace period is a clear heads-up that the power
@@ -1212,60 +1221,54 @@
       updatePrompt();
     }
 
-    // Blast every Nazan within reach far away from the player. This is the Shove
-    // power-up's instant effect: a genuine panic button. It physically relocates every
-    // nearby Nazan out past the blast edge, slows it right down, and — crucially — sends
-    // it MOVING AWAY from the player so it can never immediately come back. It must only
-    // ever help the player, never make things worse.
+    // Fling a single Nazan clean off the screen along the (nx, ny) outward direction.
+    // It launches fast, sails past the edge, and is flagged so the main loop lets it
+    // leave (no wall bounce, harmless to touch) and then SLOWLY drifts it back on later.
+    // This is the shared move behind every "shove"-type power-up (Shove, Star, Force
+    // Field): Nazans are pushed away, never destroyed — they always come back eventually.
+    function banish(e, nx, ny){
+      if(!(nx || ny)){                      // degenerate direction (right on top of us): pick one
+        const a = Math.random() * Math.PI * 2; nx = Math.cos(a); ny = Math.sin(a);
+      }
+      const exit = base() * BANISH_EXIT_SPEED;
+      e.vx = nx * exit; e.vy = ny * exit;
+      e.banished = true; e.returning = false;
+      e.age = 0;                            // comes back as gentle as a fresh spawn
+    }
+
+    // Blast every Nazan within reach clean off the screen. This is the Shove power-up's
+    // instant effect: a genuine panic button. Each nearby Nazan is launched off the edge
+    // (not destroyed — Eating Mode does that); they drift back in slowly a few seconds on.
     function doShove(){
       const R = base() * 0.62;
-      const driftSpeed = base() * 0.006;                 // gentle drift speed after the blast
-      const WALL_TOLERANCE = 0.5;                         // px tolerance for "touching a wall"
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
         if(d < R){
-          const nx = dx / d, ny = dy / d;
-          // Relocate it clear of the blast radius and keep it inside the arena. This is
-          // what actually buys the player space.
-          const pushDistance = (R - d) + e.r;
-          e.x = Math.min(Math.max(e.x + nx * pushDistance, e.r), W - e.r);
-          e.y = Math.min(Math.max(e.y + ny * pushDistance, e.r), H - e.r);
-          // Now aim its drift so it keeps moving AWAY from the player. If it got pinned
-          // against a wall (player was near the edge), driving it straight outward would
-          // just bounce it off the wall back into the player — instant death. So when an
-          // axis is clamped against a wall we send it SLIDING ALONG that wall, away from
-          // the player, instead of into it.
-          const atWallX = (e.x <= e.r + WALL_TOLERANCE) || (e.x >= W - e.r - WALL_TOLERANCE);
-          const atWallY = (e.y <= e.r + WALL_TOLERANCE) || (e.y >= H - e.r - WALL_TOLERANCE);
-          let vx, vy;
-          if(atWallY && !atWallX){                 // pinned top/bottom → slide sideways
-            vx = ((e.x >= player.x) ? 1 : -1) * driftSpeed; vy = 0;
-          } else if(atWallX && !atWallY){          // pinned left/right → slide vertically
-            vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * driftSpeed;
-          } else if(atWallX && atWallY){           // jammed in a corner: slide along the wall
-            // that runs PERPENDICULAR to the player, since sliding toward the player's own
-            // row/column only closes the gap. If the player is mostly to the side, slide
-            // vertically; if mostly above/below, slide horizontally.
-            if(Math.abs(dx) >= Math.abs(dy)){
-              vx = 0; vy = ((e.y >= player.y) ? 1 : -1) * driftSpeed;
-            } else {
-              vx = ((e.x >= player.x) ? 1 : -1) * driftSpeed; vy = 0;
-            }
-          } else {                                  // open space → just drift outward
-            vx = nx * driftSpeed; vy = ny * driftSpeed;
-          }
-          e.vx = vx; e.vy = vy;
-          // Properly defang it: a Nazan's danger comes from its accumulated age (the
-          // older it is, the faster it eases toward). Trimming only a couple of seconds
-          // left long-lived Nazans at full pace, so they'd rush straight back. Reset the
-          // age right down so every shoved Nazan crawls like a fresh spawn for a while —
-          // that's what makes the Shove a real, reliable advantage.
-          e.age = Math.min(e.age, 1.5);
+          banish(e, dx / d, dy / d);
         }
       }
       blastFx = 0.45;
     }
+
+    // The Boom power-up's instant effect: pop every Nazan caught in a big blast radius,
+    // banking points for each. Unlike a Shove (which only flings Nazans off-screen for a
+    // while) this genuinely REMOVES them, like an area-of-effect Eating Mode you don't
+    // have to chase. Position near the thickest crowd to clear the most.
+    function doBomb(){
+      const R = base() * 0.85;
+      for(let i = enemies.length - 1; i >= 0; i--){
+        const e = enemies[i];
+        const dx = e.x - player.x, dy = e.y - player.y;
+        if(dx * dx + dy * dy < R * R){
+          enemies.splice(i, 1); score += 10;
+          try{ sfx.boing(4, "powerup-bomb-" + (e.img ? e.img.src : i)); }catch(err){}
+        }
+      }
+      if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      blastFx = 0.6;
+    }
+
 
     // Fire whatever power-up is currently held. Works like the old Shove trigger
     // (tap your own Nazan / Space / button). Spending the power-up clears your hand
@@ -1276,6 +1279,7 @@
       const type = held; held = null;
       const def = POWERUPS[type];
       if(type === "shove"){ doShove(); }
+      else if(type === "bomb"){ doBomb(); }
       else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
       pickup = null;
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
@@ -1431,7 +1435,33 @@
       const envMul = (activeEffect && activeEffect.type === "snail") ? 0.12 : 1;
       const repelOn = !!(activeEffect && activeEffect.type === "repel");
       const repelR  = base() * REPEL_RADIUS;
+      // While Eating Mode is running, Nazans skitter away from the player so hoovering up
+      // the whole board takes a proper chase (it also stops during the wind-down grace).
+      const eatOn = !!(activeEffect && activeEffect.type === "eat" && !activeEffect.ending);
+      const fleeSpeed = base() * EAT_FLEE_SPEED;
+      const banishMargin = base() * BANISH_MARGIN;
+      const banishReturn = base() * BANISH_RETURN_SPEED;
       for(const e of enemies){
+        // A banished Nazan (flung off-screen by Shove / Star / Force Field) is in its own
+        // little world: it coasts out past the edge untouched by walls, the player or the
+        // pack, then once fully gone it turns around and drifts back in slowly. Only when
+        // it has fully re-entered the arena does it rejoin normal play.
+        if(e.banished){
+          e.x += e.vx; e.y += e.vy; e.rot += e.vr;
+          if(!e.returning){
+            const fullyOut = e.x < -banishMargin || e.x > W + banishMargin ||
+                             e.y < -banishMargin || e.y > H + banishMargin;
+            if(fullyOut){
+              const dx = W / 2 - e.x, dy = H / 2 - e.y;
+              const d = Math.hypot(dx, dy) || 1;
+              e.vx = dx / d * banishReturn; e.vy = dy / d * banishReturn;
+              e.returning = true;
+            }
+          } else if(e.x > e.r && e.x < W - e.r && e.y > e.r && e.y < H - e.r){
+            e.banished = false; e.returning = false; e.age = 0;
+          }
+          continue;
+        }
         if(envMul > 0){
           // Each Nazan speeds up the longer it has been on screen: it eases toward a
           // target speed that climbs with its age (capped so it stays survivable).
@@ -1446,19 +1476,22 @@
           }
         }
         e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
-        // Force Field: keep Nazans pushed out of a bubble around the player. Unlike a
-        // one-off Shove, this holds for the whole duration, so you can wade through a
-        // crowd unharmed and you always know they're being kept at arm's length.
+        // Force Field: any Nazan that strays into the bubble is flung clean off the screen
+        // (and slowly drifts back later, like a Shove). Held for the whole duration, it
+        // sweeps a moving safe zone through the crowd instead of just nudging them aside.
         if(repelOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR){
-            const nx = dx / d, ny = dy / d;
-            const push = base() * REPEL_STRENGTH * (1 - d / repelR);
-            e.x += nx * push; e.y += ny * push;
-            const vn = e.vx * nx + e.vy * ny;       // cancel any inward drift
-            if(vn < 0){ e.vx -= vn * nx; e.vy -= vn * ny; }
+            banish(e, dx / d, dy / d);
+            continue;
           }
+        }
+        // Eating Mode: edge gently away from the player so the chase has some bite.
+        if(eatOn && player){
+          const dx = e.x - player.x, dy = e.y - player.y;
+          const d = Math.hypot(dx, dy) || 1;
+          e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
         }
         let bounced = false;
         if(e.x < e.r){ e.x = e.r; e.vx = Math.abs(e.vx); bounced = true; }
@@ -1477,6 +1510,7 @@
         const a = enemies[i];
         for(let j = i + 1; j < enemies.length; j++){
           const b = enemies[j];
+          if(a.banished || b.banished) continue;   // a Nazan in mid-flight ignores the pack
           let dx = b.x - a.x, dy = b.y - a.y;
           let dist = Math.hypot(dx, dy);
           const minDist = a.r + b.r;
@@ -1505,6 +1539,7 @@
       // Eating Mode devours the Nazan (for points!), Invisible lets them pass through.
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
+        if(e.banished) continue;                  // already flung off-screen, harmless in transit
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
@@ -1515,14 +1550,11 @@
             continue;
           }
           // Star Power: invincible like Mario Kart's star — barge straight through any
-          // Nazan you touch, flinging it away (and banking a few points) instead of dying.
+          // Nazan you touch, flinging it clean off the screen (and banking a few points)
+          // instead of dying. It drifts back in slowly afterwards, just like a Shove.
           if(activeEffect && activeEffect.type === "star"){
             const d = Math.hypot(dx, dy) || 1;
-            const nx = dx / d, ny = dy / d;
-            const kick = base() * STAR_KNOCKBACK;
-            e.x = Math.min(Math.max(e.x + nx * (e.r + player.r), e.r), W - e.r);
-            e.y = Math.min(Math.max(e.y + ny * (e.r + player.r), e.r), H - e.r);
-            e.vx = nx * kick; e.vy = ny * kick; e.age = Math.min(e.age, 1.5);
+            banish(e, dx / d, dy / d);
             score += STAR_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
