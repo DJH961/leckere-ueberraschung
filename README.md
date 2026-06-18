@@ -36,6 +36,23 @@ A single-page static site:
    - or `www`: a `CNAME` → `USER.github.io`
 3. Wait for DNS, then tick **Enforce HTTPS**.
 
+## Global high-score board (optional)
+
+The Nazan Dodge minigame (`game.html`) keeps a high-score board. Players are asked
+to type their name before their score is posted. By default the board is
+**per-device** (saved in the browser). To make it a real **global** board shared
+across everyone, point it at an open Firebase Realtime Database node:
+
+1. Create a free Firebase project and a Realtime Database.
+2. In `game.html`, set `GLOBAL_SCORES_URL` (near the top of the `<script>`) to your
+   database path **without** the trailing `.json`, e.g.
+   `"https://my-app-default-rtdb.europe-west1.firebasedatabase.app/nazanDodge"`.
+3. Allow public read/write on that node in your database rules (the client reads
+   with a `GET` and posts scores with a `POST`; no API key is embedded).
+
+Leave `GLOBAL_SCORES_URL` empty to keep the local-only fallback — the board still
+works, it just isn't shared between visitors.
+
 ## Notes
 - **Opus plays on every platform**, including Safari/iOS, because the page decodes
   `.opus` in-browser with the `ogg-opus-decoder` WebAssembly module and plays it via
