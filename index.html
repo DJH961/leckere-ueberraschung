@@ -66,14 +66,7 @@
   /* On phones the fixed ℹ️ info button (top-left) would otherwise overlap the
      centred hero title, so give the page enough top room to clear it. */
   @media (max-width:600px){
-    .wrap{padding-top:74px; padding-bottom:44px;}
-    header.hero{margin-bottom:26px;}
-    .hero h1{font-size:clamp(1.5rem,6vw,3.2rem);}
-    .hero p{margin-top:8px; font-size:.97rem;}
-    h2.section{margin:22px 0 12px;}
-    #funBar{margin-bottom:18px;}
-    .sticker-row{margin:10px 0;}
-    footer{margin-top:44px; padding-top:18px;}
+    .wrap{padding-top:74px;}
   }
   h2.section{font-size:1.4rem; margin:40px 0 18px; display:flex; align-items:center; gap:10px;
     color:var(--navy); text-transform:uppercase; letter-spacing:.5px; font-weight:700;}
@@ -304,7 +297,7 @@
   <div class="wrap">
     <header class="hero">
       <h1>The legendary story of<br>Leckere Überraschung</h1>
-      <p id="heroSub">An audio saga starring the one and only <strong>Nazan</strong>.</p>
+      <p id="heroSub">A saga in audio, starring the one and only <strong>Nazan</strong>.</p>
     </header>
 
     <div id="funBar">
@@ -1216,7 +1209,7 @@ loadFavicon();
 
   /* ---------- Random hero subtitle ---------- */
   const SUBS = [
-    'An audio saga starring the one and only <strong>Nazan</strong>.',
+    'A saga in audio, starring the one and only <strong>Nazan</strong>.',
     'Now in many languages, none of them necessary.',
     'A masterpiece. A crime against silence. Both.',
     'Legally distinct from a good idea, starring <strong>Nazan</strong>.',
