@@ -1174,8 +1174,8 @@ loadFavicon();
   // time-based, the heap calms down after roughly the same delay whether two
   // Nazans are loose or twenty — no more "settles instantly" vs. "never settles".
   let   chaos          = 0;            // 0 = calm, 1 = full pandemonium
-  const CHAOS_DECAY    = 0.99;         // chaos kept per frame while you leave them be
-  const CHAOS_LIVELY   = 0.12;         // above this, contacts energise (boost on)
+  const CHAOS_DECAY    = 0.993;        // chaos kept per frame while you leave them be
+  const CHAOS_LIVELY   = 0.10;         // above this, contacts energise (boost on)
   let   stickersFrozen = false;        // hard stop once the secret game is found
 
   const COLLIDE_BOOST  = 1.18;         // lively contact during pandemonium (>1 = boost)
@@ -1189,6 +1189,16 @@ loadFavicon();
   const FLOOR_FRICTION = 0.5;          // sideways friction so a settled sticker stops
   const VEL_DEADZONE   = 0.3;          // speeds below this are snapped to zero
   const SLEEP_SPEED    = 0.4;          // mean speed below which the calm world sleeps
+  // Per-sticker sleep: gravity keeps nudging a sticker into the floor every frame, so
+  // a resting heap never truly hits zero — it micro-jitters forever and the loop never
+  // stops. So once a supported, calm sticker has stayed put for REST_FRAMES frames we
+  // treat those leftover sub-pixel twitches as noise: park it (vx=vy=0, asleep) and
+  // skip integrating it until something actually disturbs it again. A real bounce keeps
+  // it moving fast enough / off its support, which resets the counter, so only genuine
+  // stillness sleeps. This both kills the bottom-of-screen jitter and lets the shared
+  // loop halt completely (a perf win — no frames once everything is asleep).
+  const REST_SPEED     = 0.7;          // total speed below which a supported sticker is "resting"
+  const REST_FRAMES    = 14;           // consecutive resting frames before it sleeps for good
 
   let   activeDrags    = 0;            // how many stickers are being held right now
   let   worldRaf       = null;         // the single shared animation frame
@@ -1253,6 +1263,8 @@ loadFavicon();
       if(a.dragging){ b.vx += j*nx*2; b.vy += j*ny*2; }
       else if(b.dragging){ a.vx -= j*nx*2; a.vy -= j*ny*2; }
       else { a.vx -= j*nx; a.vy -= j*ny; b.vx += j*nx; b.vy += j*ny; }
+      // A real knock wakes a parked sticker so it can react to the hit.
+      a.asleep = false; a.rest = 0; b.asleep = false; b.rest = 0;
       clampSpeed(a); clampSpeed(b);
       return Math.abs(rvn);
     }
@@ -1283,6 +1295,7 @@ loadFavicon();
     // 1) Integrate gravity + friction, bounce off the four walls.
     for(const st of flungStickers){
       if(st.dragging || !st.fixed) continue;
+      if(st.asleep && !lively) continue;   // parked & undisturbed → no gravity, no jitter
       const img = st.img, w = img.offsetWidth, h = img.offsetHeight;
       st.vy += gravity; st.vx *= friction;
       st.px += st.vx; st.py += st.vy;
@@ -1330,6 +1343,14 @@ loadFavicon();
         if(Math.abs(st.vx) < VEL_DEADZONE) st.vx = 0;
         if(Math.abs(st.vy) < VEL_DEADZONE) st.vy = 0;
       }
+      // A supported sticker that has crept along this slowly for long enough is just
+      // gravity-twitching against its support — disregard those mini touches, park it
+      // for good and let it sleep so the bottom of the screen goes truly still.
+      if(!lively && st.supported && Math.hypot(st.vx, st.vy) < REST_SPEED){
+        if(++st.rest >= REST_FRAMES){ st.vx = 0; st.vy = 0; st.asleep = true; }
+      } else {
+        st.rest = 0; st.asleep = false;
+      }
       img.style.left = st.px+"px"; img.style.top = st.py+"px";
     }
 
@@ -1348,7 +1369,7 @@ loadFavicon();
   }
 
   function makeDraggable(img){
-    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, supported:false };
+    const st = { img, px:0, py:0, vx:0, vy:0, fixed:false, dragging:false, supported:false, rest:0, asleep:false };
     img._phys = st;
     let lastT = 0;
     function lift(clientX, clientY){
@@ -1364,7 +1385,7 @@ loadFavicon();
       e.preventDefault();
       const p = e.touches ? e.touches[0] : e;
       if(!st.fixed) lift(p.clientX, p.clientY);
-      st.dragging = true; st.vx = st.vy = 0; lastT = performance.now();
+      st.dragging = true; st.vx = st.vy = 0; st.asleep = false; st.rest = 0; lastT = performance.now();
       activeDrags++;
       bumpChaos();                       // unsticking / grabbing stirs up pandemonium
       img.dragOX = p.clientX - st.px; img.dragOY = p.clientY - st.py;
