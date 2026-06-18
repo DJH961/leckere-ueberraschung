@@ -411,7 +411,15 @@
     let pickupTimer = 0;             // counts down to the next pickup appearing
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
     const PICKUP_FIRST   = 2.5;      // delay before the first pickup of a round
-    const PICKUP_AFTER_USE = 4;      // delay before a fresh pickup appears once one is spent
+    // The gap before a fresh pickup appears once one is spent is deliberately RANDOM,
+    // so it never lands at the exact same moment every time (e.g. always right as Snail
+    // Mode runs out). It can come as soon as 2s — handy after an instant Shove — or wait
+    // as long as 7s, sometimes mid-effect, sometimes right at the end, sometimes later.
+    const PICKUP_AFTER_MIN = 2;      // soonest a fresh pickup may reappear after one is spent
+    const PICKUP_AFTER_MAX = 7;      // latest it may wait after one is spent
+    function nextPickupGap(){
+      return PICKUP_AFTER_MIN + Math.random() * (PICKUP_AFTER_MAX - PICKUP_AFTER_MIN);
+    }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
@@ -505,7 +513,7 @@
       if(type === "shove"){ doShove(); }
       else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
       pickup = null;
-      pickupTimer = PICKUP_AFTER_USE;          // a new one may appear only after this is spent
+      pickupTimer = nextPickupGap();          // a new one may appear only after this is spent
       updatePrompt();
       try{ sfx.boing(3, "powerup-" + type); }catch(e){}
       return true;
