@@ -1050,12 +1050,18 @@
     // drifts back in from off-screen. So you have to GUIDE a Nazan off the screen — it
     // never happens automatically. (Eating Mode, by contrast, removes them for good.)
     const BANISH_EXIT_SPEED   = 0.03;   // fast outward launch when shoved off-screen, fraction of base()
-    const BANISH_RETURN_SPEED = 0.0035; // slow drift back toward the arena once fully off-screen
+    const BANISH_RETURN_SPEED = 0.0024; // slow drift back toward the arena once fully off-screen
     const BANISH_MARGIN       = 0.18;   // how far past the edge (fraction of base()) counts as "gone"
     const SHOVE_WINDOW        = 0.25;   // seconds a freshly-pushed Nazan can still be carried off an edge
+    // A Nazan that drifts back in from a banish doesn't reset all the way to a fresh
+    // spawn's crawl — it resumes with a little "maturity" so it picks the pace back up
+    // sooner. Faster than a brand-new Nazan, but still well short of a seasoned one.
+    const BANISH_RETURN_AGE   = 10;     // seconds of age a returning Nazan resumes with
     // Eating Mode: Nazans nervously edge AWAY from the hungry player, so clearing the whole
-    // board takes real chasing. Gentle enough that cornered Nazans can still be caught.
-    const EAT_FLEE_SPEED = 0.005;    // per-frame drift away from the player while Eating, fraction of base()
+    // board takes real chasing — but only while there's room to run. Once the player is
+    // bearing right down on one it holds its ground, so cornered prey can still be caught.
+    const EAT_FLEE_SPEED   = 0.005;  // per-frame drift away from the player while Eating, fraction of base()
+    const EAT_FLEE_MIN_GAP = 2.2;    // stop fleeing once within this many combined radii of the player
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
     // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
     // last sliver of time. That tiny grace period is a clear heads-up that the power
@@ -1477,7 +1483,9 @@
               e.returning = true;
             }
           } else if(e.x > e.r && e.x < W - e.r && e.y > e.r && e.y < H - e.r){
-            e.banished = false; e.returning = false; e.age = 0;
+            // Re-entered the arena: rejoin play with a touch of maturity rather than a
+            // fresh spawn's full crawl, so it works its pace back up a bit quicker.
+            e.banished = false; e.returning = false; e.age = BANISH_RETURN_AGE;
           }
           continue;
         }
@@ -1513,11 +1521,15 @@
             shove(e, dx / d, dy / d);
           }
         }
-        // Eating Mode: edge gently away from the player so the chase has some bite.
+        // Eating Mode: edge gently away from the player so the chase has some bite —
+        // but only while there's room to run. Once the player is bearing right down on a
+        // Nazan it stops fleeing, so cornered prey can actually be caught.
         if(eatOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
-          e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
+          if(d > (e.r + player.r) * EAT_FLEE_MIN_GAP){
+            e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
+          }
         }
         // A Nazan still carrying a fresh shove that's been pushed onto an edge sails
         // clean off the screen (drifting back later) instead of bouncing — that's how a
