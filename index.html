@@ -63,6 +63,11 @@
   .hero h1{font-size:clamp(1.8rem,6vw,3.2rem); line-height:1.12; margin:0; color:var(--navy);
     text-transform:uppercase; letter-spacing:.5px; font-weight:800;}
   .hero p{color:var(--muted); margin-top:14px; font-size:1.05rem;}
+  /* On phones the fixed ℹ️ info button (top-left) would otherwise overlap the
+     centred hero title, so give the page enough top room to clear it. */
+  @media (max-width:600px){
+    .wrap{padding-top:74px;}
+  }
   h2.section{font-size:1.4rem; margin:40px 0 18px; display:flex; align-items:center; gap:10px;
     color:var(--navy); text-transform:uppercase; letter-spacing:.5px; font-weight:700;}
   h2.section::before{content:"🎧";}
