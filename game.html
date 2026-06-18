@@ -1041,6 +1041,7 @@
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.5;      // Star Power makes the player dash faster, like a Mario Kart star
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
+    const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
     const REPEL_RADIUS = 0.34;       // Force Field reach, as a fraction of base()
     // Shove-type power-ups (Shove, Star, Force Field) don't destroy Nazans — they fling
     // them clean off the edge of the screen. A banished Nazan sails out fast, vanishes for
@@ -1261,7 +1262,7 @@
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
         if(dx * dx + dy * dy < R * R){
-          enemies.splice(i, 1); score += 10;
+          enemies.splice(i, 1); score += BOMB_POINTS;
           try{ sfx.boing(4, "powerup-bomb-" + (e.img ? e.img.src : i)); }catch(err){}
         }
       }
