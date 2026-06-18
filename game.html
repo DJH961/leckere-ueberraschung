@@ -1789,12 +1789,17 @@
         }
         ctx.restore();
       }
-      // Collapsing spiral when a Black Hole just fired: arms whirl inward as it swallows.
-      if(vortexFx > 0 && player){
+      // Collapsing spiral when a Black Hole just fired. The swallow itself is location-
+      // independent (it always takes the nearest HALF, wherever you stand), so the whirl is
+      // centred on the whole ARENA and spans clear out to the corners — a screen-wide collapse
+      // rather than a little blast pinned to the player.
+      if(vortexFx > 0){
         const k = 1 - vortexFx / 0.7;          // 0 → 1 over the effect's life
-        const R = base() * 0.85 * (0.25 + 0.75 * k);
+        const cx = W / 2, cy = H / 2;
+        const Rmax = Math.hypot(W, H) / 2;     // half-diagonal: reaches every corner of the screen
+        const R = Rmax * (0.85 + 0.15 * k);    // already screen-spanning, sweeping the last gap as it collapses
         ctx.save();
-        ctx.translate(player.x, player.y);
+        ctx.translate(cx, cy);
         ctx.rotate(k * Math.PI * 3);           // spin faster as it collapses
         ctx.globalAlpha = 0.85 * (1 - k);
         for(let a = 0; a < 3; a++){
@@ -1807,7 +1812,7 @@
           }
           ctx.lineWidth = 4; ctx.strokeStyle = "rgba(91,58,140,.9)"; ctx.stroke();
         }
-        ctx.beginPath(); ctx.arc(0, 0, R * 0.12, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(0, 0, base() * 0.14, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(20,8,38,.9)"; ctx.fill();
         ctx.restore();
       }
