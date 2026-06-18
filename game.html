@@ -237,7 +237,7 @@
     <div id="gameHud">
       <div class="score">Score <span id="gameScore">0</span></div>
       <div class="hudBtns">
-        <button id="gameMusic" type="button" aria-label="Mute music">🔊</button>
+        <button id="gameMusic" type="button" aria-label="Mute sound">🔊</button>
         <button id="gameExit" type="button">✕ Back</button>
       </div>
     </div>
@@ -342,6 +342,27 @@
   let _ctx = null;
   function getCtx(){ _ctx = _ctx || new (window.AudioContext || window.webkitAudioContext)(); return _ctx; }
 
+  // Single master mixer node that EVERY sound — effects, voice clips and the
+  // background music — connects to instead of the raw destination. Muting this
+  // one node therefore silences the whole game, not just the music.
+  let _master = null, _audioMuted = false;
+  function getMaster(){
+    const ctx = getCtx();
+    if(!_master){
+      _master = ctx.createGain();
+      _master.gain.value = _audioMuted ? 0 : 1;
+      _master.connect(ctx.destination);
+    }
+    return _master;
+  }
+  function setAudioMuted(m){
+    _audioMuted = !!m;
+    // Only adjust the live node if it already exists; otherwise the saved state
+    // is honoured when getMaster() lazily builds it (avoids creating an
+    // AudioContext before the first user gesture).
+    if(_master){ try{ _master.gain.value = _audioMuted ? 0 : 1; }catch(e){} }
+  }
+
   /* ---------- Silly synthesized sound effects (Web Audio, no files) ---------- */
   const sfx = (function(){
     let lastBoing = 0;                 // global throttle so we never overload the mixer
@@ -394,7 +415,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        osc.connect(g).connect(ctx.destination);
+        osc.connect(g).connect(getMaster());
         osc.start(t); osc.stop(t + dur + 0.05);
       }catch(e){}
     }
@@ -418,7 +439,7 @@
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        src.connect(bp).connect(g).connect(ctx.destination);
+        src.connect(bp).connect(g).connect(getMaster());
         src.start(t); src.stop(t + dur + 0.02);
       }catch(e){}
     }
@@ -489,7 +510,7 @@
         const src = ctx.createBufferSource(); src.buffer = buf;
         const g = ctx.createGain();
         g.gain.value = Math.min(1, 0.55 + (intensity||0)*0.03);
-        src.connect(g).connect(ctx.destination);
+        src.connect(g).connect(getMaster());
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
         src.start();
@@ -589,7 +610,7 @@
     let playing = false, timer = null, step = 0, nextTime = 0, master = null;
     function ensureMaster(){
       const ctx = getCtx();
-      if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(ctx.destination); }
+      if(!master){ master = ctx.createGain(); master.gain.value = 0.0001; master.connect(getMaster()); }
       return master;
     }
     // A single soft note routed through the music master gain.
@@ -803,6 +824,7 @@
     let pickIndex = 0;
     // Background-music preference (on by default), persisted across visits.
     let musicEnabled = LS.get("nazanDodgeMusic", true);
+    setAudioMuted(!musicEnabled);   // honour the saved choice for ALL game audio
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
     // Global-board state for the current game-over screen.
@@ -905,7 +927,7 @@
     function syncMusicBtn(){
       const b = $("#gameMusic"); if(!b) return;
       b.textContent = musicEnabled ? "🔊" : "🔇";
-      b.setAttribute("aria-label", musicEnabled ? "Mute music" : "Play music");
+      b.setAttribute("aria-label", musicEnabled ? "Mute sound" : "Unmute sound");
     }
     function startMusicIfEnabled(){
       if(musicEnabled && root && root.classList.contains("show")){ try{ music.start(); }catch(e){} }
@@ -913,6 +935,7 @@
     function toggleMusic(){
       musicEnabled = !musicEnabled;
       LS.set("nazanDodgeMusic", musicEnabled);
+      setAudioMuted(!musicEnabled);   // mute/unmute EVERYTHING (sfx, voices and music)
       syncMusicBtn();
       if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
     }
