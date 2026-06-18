@@ -608,7 +608,10 @@
         if(d < R){
           const nx = dx / d, ny = dy / d;
           const close = 1 - d / R;                 // 0 at the edge → 1 right on top
-          const launch = base() * (0.35 + 0.6 * close);
+          // A gentle outward nudge — the repositioning below does the real clearing.
+          // (An over-large velocity here used to send Nazans ricocheting off the walls
+          // straight back onto the player, turning the panic button into instant death.)
+          const launch = base() * (0.006 + 0.01 * close);
           e.vx = nx * launch; e.vy = ny * launch;
           // Shove it clear of the blast radius and keep it inside the arena.
           const pushDistance = (R - d) + e.r;
