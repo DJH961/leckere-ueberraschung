@@ -81,6 +81,9 @@
   body.dark .gameBtn.secondary{background:var(--card);}
   .gameBtn:hover{filter:brightness(1.05);}
   .gameBtn:active{transform:scale(.96);}
+  .gameBtn:disabled{opacity:.45; cursor:not-allowed; filter:grayscale(.3); box-shadow:none;}
+  .gameBtn:disabled:hover{filter:grayscale(.3);}
+  .gameBtn:disabled:active{transform:none;}
   /* Minimal achievement toast */
   #toasts{position:fixed; left:50%; bottom:88px; transform:translateX(-50%); z-index:10;
     display:flex; flex-direction:column; gap:10px; align-items:center; pointer-events:none;}
@@ -93,10 +96,21 @@
   .toast b{color:var(--navy); display:block; font-size:.96rem;}
   .toast .b{color:var(--muted); font-size:.86rem;}
   /* ===== Global high-score leaderboard ===== */
+  /* Prominent, clearly-required name entry on the start screen. */
+  .nameField{display:flex; flex-direction:column; align-items:center; gap:7px;
+    margin:18px 0 6px; padding:14px 14px 12px; border-radius:18px;
+    background:linear-gradient(180deg, rgba(111,147,192,.16), rgba(111,147,192,.06));
+    border:1px solid var(--card-border);}
+  body.dark .nameField{background:linear-gradient(180deg, rgba(91,125,176,.22), rgba(91,125,176,.08));}
+  .nameField label{font-weight:800; color:var(--navy); font-size:.82rem;
+    text-transform:uppercase; letter-spacing:.6px;}
+  .nameField .req{color:#d6553f;}
   .nameRow{display:flex; gap:8px; justify-content:center; margin:12px 0 4px; flex-wrap:wrap;}
+  .nameField .nameRow{margin:0;}
   .nameRow input{font:inherit; font-weight:700; padding:11px 14px; border-radius:30px;
     border:1px solid var(--card-border); background:#fff; color:var(--navy);
     width:min(220px,60vw); text-align:center;}
+  .nameRow input[readonly]{background:rgba(127,127,127,.08); cursor:default;}
   body.dark .nameRow input{background:var(--card); color:var(--navy-dark);}
   .nameRow input:focus{outline:2px solid var(--accent2); outline-offset:1px;}
   .nameHint{color:var(--muted); font-size:.82rem; margin:2px 0 0; min-height:1em;}
@@ -131,13 +145,16 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p>Cornered? <strong>Grab a power-up</strong> when one pops up — then <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) to unleash it. Flavours include eating mode, a powerful shove, invisibility, a force field, tiny mode and snail mode. Only one appears at a time, and the next won't show up until you've spent the last.</p>
+        <p>Cornered? <strong>Grab a power-up</strong> when one pops up. Most kick in the <strong>instant you grab them</strong> — eating mode, invisibility, a force field, tiny mode or snail mode. The <strong>shove is special</strong>: you bank it and unleash it when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>). Only one appears at a time, and the next won't show up until you've spent the last.</p>
         <p class="best">Best: <span id="gameBestStart">0</span></p>
-        <div class="nameRow">
-          <input id="gameNameStart" type="text" maxlength="16" autocomplete="off"
-                 placeholder="Type your name" aria-label="Your name for the leaderboard" />
+        <div class="nameField">
+          <label for="gameNameStart">Your name <span class="req">*</span></label>
+          <div class="nameRow">
+            <input id="gameNameStart" type="text" maxlength="16" autocomplete="off" required
+                   placeholder="Type your name" aria-label="Your name for the leaderboard" />
+          </div>
         </div>
-        <p class="nameHint" id="gameStartNameHint">Type your name so your scores land on the global board.</p>
+        <p class="nameHint" id="gameStartNameHint">Enter your name to play — your scores land on the global board.</p>
         <div class="lbBox" id="startLbBox">
           <h3>🌍 Global Top Nazans</h3>
           <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
@@ -155,11 +172,11 @@
         <div class="big" id="gameFinalScore">0</div>
         <p class="best" id="gameBestLine">Best: 0</p>
         <div class="nameRow">
-          <input id="gameName" type="text" maxlength="16" autocomplete="off"
+          <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
                  placeholder="Type your name" aria-label="Your name for the leaderboard" />
-          <button class="gameBtn" id="gameSubmit" type="button">🏅 Submit</button>
+          <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
         </div>
-        <p class="nameHint" id="gameNameHint">Enter your name to post your score to the global board.</p>
+        <p class="nameHint" id="gameNameHint">Posting your score to the global board…</p>
         <div class="lbBox" id="overLbBox">
           <h3>🌍 Global Top Nazans</h3>
           <ol class="lbList" id="overLbList"><li class="lbEmpty">Loading…</li></ol>
@@ -509,7 +526,7 @@
     let running = false, raf = null;
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
     // Global-board state for the current game-over screen.
-    let pendingScore = 0, submitted = false, justSubmitted = false;
+    let pendingScore = 0, submitted = false, justSubmitted = false, editingName = false;
     // Tracks the last 100-point milestone we celebrated, so the reward chime fires
     // once per milestone instead of every frame.
     let milestone = 0;
@@ -709,9 +726,14 @@
         const dx = pickup.x - player.x, dy = pickup.y - player.y;
         const rr = pickup.r + player.r;
         if(dx * dx + dy * dy < rr * rr){       // collected!
-          held = pickup.type; pickup = null;
+          const type = pickup.type;
+          held = type; pickup = null;
           try{ sfx.blip("powerup-collect"); }catch(e){}
-          activate();                          // fire it instantly — no holding, no timing it
+          // The shove is the one power-up you BANK: hold it and unleash it at the
+          // perfect, locally-dependent moment (tap your Nazan / Space). Every other
+          // power-up fires the instant you grab it.
+          if(type === "shove"){ updatePrompt(); }
+          else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
         }
@@ -963,6 +985,28 @@
       }
       for(const e of enemies) drawSticker(e, false);
       drawPickup();
+      // Force Field: a clearly visible energy bubble around the player, so the safe
+      // zone keeping Nazans at arm's length is obvious at a glance.
+      if(activeEffect && activeEffect.type === "repel" && player){
+        const R = base() * REPEL_RADIUS;
+        const t = elapsed;
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        const grad = ctx.createRadialGradient(0, 0, R * 0.5, 0, 0, R);
+        grad.addColorStop(0, "rgba(46,155,214,0)");
+        grad.addColorStop(0.78, "rgba(46,155,214,.12)");
+        grad.addColorStop(1, "rgba(46,155,214,.32)");
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+        const pulse = 1 + Math.sin(t * 4) * 0.02;
+        ctx.lineWidth = 4; ctx.strokeStyle = "rgba(46,155,214,.9)";
+        ctx.beginPath(); ctx.arc(0, 0, R * pulse, 0, Math.PI * 2); ctx.stroke();
+        ctx.rotate(t * 0.8);
+        ctx.setLineDash([14, 10]);
+        ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
       if(player){
         if(activeEffect && activeEffect.type === "ghost"){
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
@@ -975,6 +1019,17 @@
     }
 
     function start(){
+      // A name is mandatory to play — it's how scores land on the global board.
+      const nameInput = $("#gameNameStart");
+      const name = (nameInput ? nameInput.value : LS.get("playerName", "")).trim();
+      if(!name){
+        const hint = $("#gameStartNameHint");
+        if(hint){ hint.className = "nameHint err"; hint.textContent = "Please enter your name to play."; }
+        if(nameInput){ nameInput.focus(); }
+        updateStartValidity();
+        return;
+      }
+      syncName(name);
       loadImages(); resize(); reset();
       startPane.classList.add("hidden");
       overPane.classList.add("hidden");
@@ -982,6 +1037,16 @@
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
       raf = requestAnimationFrame(step);
+    }
+    // Enable/disable the Play button so the round can only begin with a name.
+    function updateStartValidity(){
+      const input = $("#gameNameStart"), btn = $("#gamePlay"), hint = $("#gameStartNameHint");
+      const ok = !!(input && input.value.trim());
+      if(btn) btn.disabled = !ok;
+      if(ok && hint && hint.classList.contains("err")){
+        hint.className = "nameHint";
+        hint.textContent = "Enter your name to play — your scores land on the global board.";
+      }
     }
     function gameOver(){
       running = false;
@@ -996,19 +1061,23 @@
       overPane.classList.remove("hidden");
       try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
       if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
-      // Prepare the name-entry + global board for this score.
+      // Auto-submit: the name is already known (it's mandatory to start), so the
+      // score goes straight onto the global board. The only manual control left is
+      // editing the name (see toggleEditName / gameEditName button).
       pendingScore = final;
       submitted = false;
-      const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
-      if(nameEl){ nameEl.value = LS.get("playerName", ""); nameEl.disabled = (final <= 0); }
-      if(btnEl){ btnEl.disabled = (final <= 0); btnEl.textContent = "🏅 Submit"; }
-      if(hintEl){
-        hintEl.className = "nameHint";
-        hintEl.textContent = final <= 0
-          ? "Score a point or two first, then you can claim a spot."
-          : "Enter your name to post your score to the global board.";
+      editingName = false;
+      const nameEl = $("#gameName"), editBtn = $("#gameEditName"), hintEl = $("#gameNameHint");
+      const storedName = (LS.get("playerName", "") || "").trim();
+      if(nameEl){ nameEl.value = storedName; nameEl.readOnly = true; }
+      if(editBtn){ editBtn.textContent = "✏️ Edit name"; editBtn.disabled = (final <= 0); }
+      if(final <= 0){
+        if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Score a point or two first, then you can claim a spot."; }
+        renderBoard("#overLbList");
+      } else {
+        if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Posting your score to the global board…"; }
+        postScore();
       }
-      renderBoard("#overLbList");
     }
     // Render the global top scores into the given <ol>. Highlights the current
     // player's freshly-submitted entry when we know it.
@@ -1045,25 +1114,48 @@
       if(startInput && startInput.value !== name) startInput.value = name;
       if(overInput && overInput.value !== name) overInput.value = name;
     }
-    async function submitScore(){
-      const nameEl = $("#gameName"), btnEl = $("#gameSubmit"), hintEl = $("#gameNameHint");
-      const name = (nameEl ? nameEl.value : "").trim();
-      if(!name){
-        if(hintEl){ hintEl.className = "nameHint err"; hintEl.textContent = "Please type your name first."; }
-        if(nameEl) nameEl.focus();
-        return;
-      }
+    // Post the current score to the global board under the stored name. Called
+    // automatically on game over, and again whenever the player edits their name.
+    async function postScore(){
       if(submitted || pendingScore <= 0) return;
+      const name = (LS.get("playerName", "") || "").trim();
+      if(!name) return;
       submitted = true;
-      syncName(name);
-      if(btnEl){ btnEl.disabled = true; btnEl.textContent = "✓ Submitted"; }
-      if(nameEl) nameEl.disabled = true;
-      if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Nice — your score is on the board!"; }
+      const hintEl = $("#gameNameHint");
       justSubmitted = true;
       try{ await Leaderboard.submit(name, pendingScore); }catch(e){}
       achieve("globalist", "🌐", "On the Board", "You put your name on the global high-score board.");
+      if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Nice — your score is on the board as " + name + "!"; }
       await renderBoard("#overLbList");
       justSubmitted = false;
+    }
+    // The only manual control on the game-over screen: change the name your score is
+    // posted under. Toggles the name field between read-only and editable; saving a
+    // new name re-posts the score under it.
+    function toggleEditName(){
+      const nameEl = $("#gameName"), editBtn = $("#gameEditName"), hintEl = $("#gameNameHint");
+      if(!nameEl || pendingScore <= 0) return;
+      if(!editingName){
+        editingName = true;
+        nameEl.readOnly = false;
+        nameEl.focus();
+        try{ nameEl.select(); }catch(e){}
+        if(editBtn) editBtn.textContent = "✓ Save name";
+        if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Edit your name, then save to update the board."; }
+      } else {
+        const newName = nameEl.value.trim();
+        if(!newName){
+          if(hintEl){ hintEl.className = "nameHint err"; hintEl.textContent = "Please type a name."; }
+          nameEl.focus();
+          return;
+        }
+        editingName = false;
+        nameEl.readOnly = true;
+        if(editBtn) editBtn.textContent = "✏️ Edit name";
+        syncName(newName);
+        submitted = false;          // allow the score to re-post under the new name
+        postScore();
+      }
     }
     function open(){
       loadImages();
@@ -1074,6 +1166,7 @@
       root.setAttribute("aria-hidden", "false");
       const startName = $("#gameNameStart");
       if(startName) startName.value = LS.get("playerName", "");
+      updateStartValidity();
       resize();
       renderBoard("#startLbList");
       try{ draw(); }catch(e){}
@@ -1125,7 +1218,7 @@
         if(e.target && (e.target.id === "gameName" || e.target.id === "gameNameStart")){
           if(e.key === "Enter"){
             e.preventDefault();
-            if(e.target.id === "gameName") submitScore();
+            if(e.target.id === "gameName"){ if(editingName) toggleEditName(); }
             else if(!running) start();
           }
           return;
@@ -1148,9 +1241,9 @@
       $("#gameExit").addEventListener("click", close);
       $("#gameStartBack").addEventListener("click", close);
       $("#gameOverBack").addEventListener("click", close);
-      const sub = $("#gameSubmit"); if(sub) sub.addEventListener("click", submitScore);
+      const editName = $("#gameEditName"); if(editName) editName.addEventListener("click", toggleEditName);
       // Persist + mirror the player's name as they type it, on either screen.
-      const nameStart = $("#gameNameStart"); if(nameStart) nameStart.addEventListener("input", (e)=> syncName(e.target.value));
+      const nameStart = $("#gameNameStart"); if(nameStart) nameStart.addEventListener("input", (e)=>{ syncName(e.target.value); updateStartValidity(); });
       const nameOver  = $("#gameName");      if(nameOver)  nameOver.addEventListener("input",  (e)=> syncName(e.target.value));
     }
     return { open, close, wire };
