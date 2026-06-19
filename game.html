@@ -626,7 +626,7 @@
       for(const url of BOUNCE_CLIPS) loadClip(url);
     }
     let activeClips = 0;               // cap simultaneous voices so it stays funny, not mush
-    const liveClips = new Set();       // currently-playing voice sources, so they can be cut on demand (e.g. at death)
+    const liveClips = new Set();       // currently-playing voice clip entries {src,g,buf,t0,rate}, so they can be cut or re-tuned on demand (e.g. at death / on a mode flip)
     // Shuffle "bag" so we cycle through every clip before any repeats: we deal out
     // a shuffled deck of clip indices and only reshuffle once it's empty (never
     // repeating the previous clip back-to-back across the shuffle seam).
@@ -683,12 +683,48 @@
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
         src.connect(g).connect(voiceOut());
         activeClips++;
-        liveClips.add(src);
+        // Track everything needed to RE-tune this clip live if the power-up mode flips
+        // mid-sentence: `t0` is its (rate-adjusted virtual) start so elapsed → buffer
+        // position stays exact across repeated retunes.
+        const entry = { src, g, buf, t0: t, rate };
+        liveClips.add(entry);
         // Decrement only when THIS source is still tracked: stopVoices() may have already
         // removed it (and zeroed the count), so a late onended mustn't drop a newer clip's tally.
-        src.onended = ()=>{ if(liveClips.delete(src)) activeClips = Math.max(0, activeClips - 1); };
+        src.onended = ()=>{ if(liveClips.delete(entry)) activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
       }catch(e){}
+    }
+    // Re-flavour every Nazan voice clip that's STILL ringing out the instant the power-up
+    // mode flips, so a line started a beat before the mode engaged doesn't keep talking in
+    // the old style. We shift each live clip's speed/pitch to the new mode and rebuild its
+    // tail fade from where it currently sits in the buffer.
+    function retuneVoices(){
+      if(!liveClips.size) return;
+      let ctx; try{ ctx = getCtx(); }catch(e){ return; }
+      const now = ctx.currentTime;
+      const mode = VOICE_MODES[voiceMode] || null;
+      const newRate = mode ? mode.rate : 1;
+      const newVol  = CLIP_VOL * (mode ? mode.vol : 1);
+      liveClips.forEach(entry => {
+        try{
+          // How far into the (unstretched) buffer this clip has already played.
+          const consumed = Math.max(0, (now - entry.t0) * entry.rate);
+          if(consumed >= entry.buf.duration) return;   // basically finished — leave it be
+          const remaining = entry.buf.duration - consumed;
+          const end = now + remaining / newRate;
+          entry.src.playbackRate.setValueAtTime(newRate, now);
+          // Re-anchor the virtual start so elapsed→buffer-position stays exact next time.
+          entry.t0 = now - consumed / newRate;
+          entry.rate = newRate;
+          const fo = Math.min(0.02, (end - now) * 0.25);
+          const g = entry.g.gain;
+          g.cancelScheduledValues(now);
+          g.setValueAtTime(g.value, now);
+          g.linearRampToValueAtTime(newVol, now + 0.01);            // glide to the new level (no click)
+          g.setValueAtTime(newVol, Math.max(now + 0.01, end - fo));
+          g.linearRampToValueAtTime(0.0001, end);                   // tail fade lands at the new end
+        }catch(e){}
+      });
     }
     return {
       // Nazan's funny voice comment when a Nazan bounces. Each Nazan (keyed by its
@@ -891,13 +927,18 @@
       // Tint Nazan's voice clips to match the active power-up mode (e.g. "snail",
       // "shrink", "star", "ghost", "repel", "eat"). Pass null/"default" for normal.
       // Kept in lock-step with the music via syncMusicMode().
-      setVoiceMode(mode){ voiceMode = (mode && mode !== "default") ? mode : null; },
+      setVoiceMode(mode){
+        const next = (mode && mode !== "default") ? mode : null;
+        if(next === voiceMode) return;   // nothing changed
+        voiceMode = next;
+        retuneVoices();                  // flip any in-flight chatter to the new style at once
+      },
       // Immediately silence any Nazan voice clips still ringing out. Clips are ~1s of
       // speech, so without this a line triggered a beat before death (or before a new
       // round) keeps playing into the game-over screen or the next run — landing late and
       // in the wrong moment. Cutting them here keeps her chatter tied to what's happening.
       stopVoices(){
-        liveClips.forEach(s => { try{ s.stop(); }catch(e){} });
+        liveClips.forEach(e => { try{ e.src.stop(); }catch(err){} });
         liveClips.clear();
         activeClips = 0;
       },
