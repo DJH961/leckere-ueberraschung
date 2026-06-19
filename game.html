@@ -249,8 +249,8 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (a touch keeps them in play; only by driving the bubble against an edge do you pin them out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong>, <strong>Boom</strong> and the <strong>Laser Beam</strong> are special: you bank them and unleash them when the moment's right. Shove and Boom go off when you <strong>tap your own Nazan</strong> (or press <strong>Space</strong>) — Shove blasts nearby Nazans away, Boom pops the whole crowd around you for points. The Laser Beam is <strong>aimed</strong>: <strong>tap where you want to fire</strong> (or press Space to shoot along your heading) and a straight bolt streaks out — a dashed guide tracks your aim — vaporising the Nazans it passes through, so line them up for the kill. A handful of Nazans can be wiped out clean, but a packed board only thins by about three-quarters per beam. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
-        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire Shove or Boom, and for the Laser Beam just <strong>tap where you want to shoot</strong>.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong>, <strong>Boom</strong> and the <strong>Chain Zap</strong> are special: you bank them and unleash them when the moment's right — all three go off when you <strong>tap your own Nazan</strong> (or press <strong>Space</strong>), no aiming needed. Shove blasts nearby Nazans away, Boom pops the whole crowd around you for points, and the <strong>Chain Zap</strong> forks lightning to the <strong>nearest</strong> Nazans and vaporises them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong>, <strong>Boom</strong> or the <strong>Chain Zap</strong> — none need aiming.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
           <div class="spRow">
@@ -1037,42 +1037,39 @@
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
       bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a big blast radius for points
-      laser:  { icon:"⚡", name:"Laser Beam",  color:"#c01ad6", dur:0 }    // banked: tap where to fire a straight beam, deleting the Nazans it passes through (kill chance eases on a packed board)
+      zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // banked: tap your Nazan to fork lightning to the nearest Nazans and vaporise them (count scales with the crowd)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.7;      // Star Power makes the player dash noticeably faster, like a Mario Kart star
     const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
-    // Laser Beam: a banked blast you AIM. Like Shove and Boom you hold it and fire it on
-    // your own cue, but the catch is you must AIM it. On touch / mouse you simply TAP WHERE
-    // YOU WANT TO FIRE and the beam shoots from the player straight toward that point; with
-    // Space it fires along your current heading (your last steering direction). It destroys
-    // only the Nazans that beam actually passes through, so line the crowd up along your shot
-    // before you fire to delete the most; a careless shot hits nothing. Like Boom it genuinely
-    // REMOVES Nazans.
-    const LASER_POINTS = 7;          // points banked per Nazan deleted by a Laser Beam
-    const LASER_HALF_WIDTH = 0.10;   // half-thickness of the beam corridor, as a fraction of base()
-    // Keep the Laser Beam from becoming a board-wipe. Each Nazan the beam clips is deleted
-    // with this crowd-scaled CHANCE: at or below LASER_FEW Nazans the chance is a full 1 (a
-    // clean shot can clear them all), then it eases linearly down to LASER_KILL_MIN once the
-    // board is LASER_MANY-strong, so a packed crowd loses ~75% per beam on average — a soft
-    // per-Nazan roll, not a hard cap.
-    const LASER_FEW = 4;             // at/below this crowd size a clipped Nazan always dies
-    const LASER_MANY = 12;           // at/above this crowd size the kill chance bottoms out
-    const LASER_KILL_MIN = 0.75;     // floor kill chance on a packed board (~75% on average)
-    function laserKillChance(n){
-      if(n <= LASER_FEW) return 1;
-      const t = Math.min(1, (n - LASER_FEW) / (LASER_MANY - LASER_FEW));
-      return 1 - (1 - LASER_KILL_MIN) * t;
+    // Chain Zap: a banked, AUTO-TARGETING lightning strike (see doZap). The old Laser Beam had
+    // to be AIMED — you tapped a spot to fire — which on mobile forced you to lift your steering
+    // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming: tap your
+    // own Nazan (or press Space, exactly like Shove and Boom) and a fork of lightning leaps from
+    // the player to the NEAREST Nazans and vaporises them. Like Boom it genuinely REMOVES Nazans.
+    const ZAP_POINTS = 7;            // points banked per Nazan zapped
+    // How many it kills scales with the crowd: always at least ZAP_MIN (when that many are
+    // present), about ZAP_FRACTION of the board ("just over half"), capped at ZAP_MAX — so a
+    // light board is cleared decisively while a packed one still loses a strong chunk, never all.
+    const ZAP_MIN = 2;              // always zap at least this many when the board holds them
+    const ZAP_MAX = 8;              // never zap more than this in a single strike
+    const ZAP_FRACTION = 0.55;      // aim to clear just over half the crowd
+    function zapCount(n){
+      return Math.min(n, Math.min(ZAP_MAX, Math.max(ZAP_MIN, Math.ceil(n * ZAP_FRACTION))));
     }
     const REPEL_RADIUS = 0.30;       // Force Field reach (a roomy push dome), as a fraction of base()
-    // The Force Field is a DEFENSIVE bubble first: a Nazan that merely touches its skin gets
-    // firmly bumped away but stays in play and bounces off the walls normally — it must not be
-    // flung off-screen just for brushing the field. The only way a Nazan leaves the arena is if
-    // you DRIVE the bubble against an edge and pin it there (handled in the repel block), so
-    // shoving Nazans out of bounds stays a deliberate move, not an accident of a single touch.
+    // The Force Field is a DEFENSIVE bubble first: a Nazan that merely touches its skin out in
+    // the open gets firmly bumped away but stays in play and bounces off the walls normally — it
+    // must not be flung off-screen just for brushing the field mid-arena. But when you steer the
+    // bubble so it shoves a Nazan TOWARD a nearby wall, it should sail out of bounds without
+    // ping-ponging bubble→wall→bubble forever: the moment the bump would drive it within
+    // REPEL_BANISH_MARGIN of an edge, it's banished (handled in the repel block). So pushing
+    // Nazans out is easy when you corner them against a wall, yet a Nazan shoved into open space
+    // still stays in play — the direction and position of the shove decide it, not luck.
     const REPEL_PUSH_SPEED = 0.013;  // outward bump given to a Nazan off the bubble skin (in-play, bounces off walls)
+    const REPEL_BANISH_MARGIN = 0.22; // how close to a wall (fraction of base()) a bubble-shoved Nazan must be driven to sail out of bounds
     // The banishing (off-screen) power-ups (Shove, Star, Force Field) don't destroy Nazans
     // — they give them a hard outward PUSH and let normal physics take over. A pushed Nazan
     // keeps rolling and bouncing around in play; it only leaves the arena if the push carries
@@ -1102,9 +1099,9 @@
     const EFFECT_GRACE = 0.4;        // seconds of "winding down" at the end of an effect
     const PU_TYPES = Object.keys(POWERUPS);
     // The three power-ups that genuinely REMOVE Nazans for good (Eating Mode devours them,
-    // Boom blasts them, the Laser Beam vaporises them) — everything else only shoves or buffs.
+    // Boom blasts them, the Chain Zap vaporises them) — everything else only shoves or buffs.
     // We never want a whole run to slip by without one of these clearing the board.
-    const DELETE_TYPES = ["eat", "bomb", "laser"];
+    const DELETE_TYPES = ["eat", "bomb", "zap"];
     // Every pickup that ISN'T one of the three deleting power-ups nudges their odds up by
     // this tiny amount (added to each deleter's base weight of 1), so a delete-free streak
     // grows steadily less likely. Grabbing any deleter resets the bias back to zero.
@@ -1150,8 +1147,8 @@
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
     let boomFx = 0;                  // lingering fiery blast ring after a Boom fires
     let boomPuffs = [];              // smoke-and-fire puffs marking each Nazan a Boom destroyed
-    let laserBeam = null;            // the bright beam drawn for a beat after a Laser Beam fires
-    let laserSparks = [];            // quick electric sparks marking each Nazan the beam vaporised
+    let zapArcs = null;              // jagged lightning path drawn for a beat after a Chain Zap fires
+    let zapSparks = [];              // quick electric sparks marking each Nazan a Chain Zap vaporised
     let starTrail = [];              // fading after-images streaking behind a Star Power dash
     let held = null;                 // power-up type currently carried (one at a time), or null
     let pickup = null;               // the lone uncollected pickup on screen, or null
@@ -1303,13 +1300,12 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; laserBeam = null; laserSparks = []; starTrail = []; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       deleteBias = 0; lastPickupType = null;   // fresh run: equal odds, no carried-over delete bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
-                 aimX: 0, aimY: -1,        // facing direction for the aimed Laser Beam (defaults to "up")
                  img: playerImage() };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
@@ -1399,37 +1395,52 @@
       boomFx = 0.6;
     }
 
-    // The Laser Beam power-up's banked, AIMED blast: fire a straight beam from the player
-    // along their current facing direction (player.aimX/aimY, set by however they last
-    // steered) and vaporise the Nazans whose body the beam passes through, banking points
-    // for each. Unlike the old auto-firing Black Hole, WHERE you point decides what dies —
-    // line the crowd up along your heading to delete the most, or whiff and hit nobody.
+    // The Chain Zap power-up's banked blast: a one-tap, AUTO-TARGETING lightning strike. Unlike
+    // the old aimed Laser Beam (which forced you to release your steering finger and tap a spot —
+    // deadly on mobile), Chain Zap needs NO aiming. You fire it like Shove and Boom (tap your own
+    // Nazan / Space) and a fork of lightning leaps from the player to the NEAREST Nazans and
+    // vaporises them, banking points for each. Like Boom it genuinely REMOVES Nazans.
     //
-    // It must not become a board-wipe, though. To keep it fair, each Nazan the beam clips is
-    // only deleted with a crowd-dependent CHANCE (laserKillChance): with just a few Nazans
-    // about the chance is 1, so a clean shot can wipe them all out; as the crowd grows the
-    // chance eases down toward LASER_KILL_MIN, so on a packed board a single beam thins it by
-    // ~75% at most ON AVERAGE (it's a per-Nazan roll, not a hard cap — a lucky or unlucky
-    // shot can land a little either side).
-    function doLaser(){
-      let ax = player.aimX, ay = player.aimY;
-      const am = Math.hypot(ax, ay) || 1; ax /= am; ay /= am;       // normalise the heading
-      const half = base() * LASER_HALF_WIDTH;                       // beam corridor half-width
-      const killP = laserKillChance(enemies.length);               // per-Nazan kill odds for this crowd
-      for(let i = enemies.length - 1; i >= 0; i--){
-        const e = enemies[i];
-        const dx = e.x - player.x, dy = e.y - player.y;
-        const along = dx * ax + dy * ay;                            // distance forward along the beam
-        if(along < 0) continue;                                     // behind the player: the beam shoots forward only
-        const perp = Math.abs(dx * -ay + dy * ax);                  // sideways distance from the beam line
-        if(perp <= half + (e.r || 0) * 0.6 && Math.random() < killP){ // clipped by the beam AND the kill roll lands
-          laserSparks.push({ x: e.x, y: e.y, r0: (e.r || base() * 0.5), t: 0, dur: 0.45 });
-          enemies.splice(i, 1); score += LASER_POINTS;
-          try{ sfx.boing(4, "powerup-laser-" + (e.img ? e.img.src : i)); }catch(err){}
+    // How many it kills scales with the crowd (zapCount): always at least ZAP_MIN when that many
+    // are present, just over half the board on average, capped at ZAP_MAX — decisive on a light
+    // board, a strong dent on a packed one, never a total wipe.
+    function doZap(){
+      const n = enemies.length;
+      zapArcs = null;
+      if(n === 0) return;
+      const kills = zapCount(n);
+      // Target the nearest Nazans to the player.
+      const targets = enemies
+        .map(e => ({ e, d: (e.x - player.x) * (e.x - player.x) + (e.y - player.y) * (e.y - player.y) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, kills)
+        .map(o => o.e);
+      // Build the lightning path: hop from the player to the nearest target, then on to the
+      // nearest still-unzapped target from there, so the bolt forks naturally through the cluster.
+      const pts = [];
+      let cx = player.x, cy = player.y;
+      const remaining = targets.slice();
+      while(remaining.length){
+        let bi = 0, bd = Infinity;
+        for(let k = 0; k < remaining.length; k++){
+          const dx = remaining[k].x - cx, dy = remaining[k].y - cy;
+          const dd = dx * dx + dy * dy;
+          if(dd < bd){ bd = dd; bi = k; }
         }
+        const nx = remaining.splice(bi, 1)[0];
+        pts.push({ x: nx.x, y: nx.y });
+        cx = nx.x; cy = nx.y;
+      }
+      // Vaporise the targeted Nazans: spark pop, points, and the zap voice for each.
+      for(const e of targets){
+        const idx = enemies.indexOf(e);
+        if(idx < 0) continue;
+        zapSparks.push({ x: e.x, y: e.y, r0: (e.r || base() * 0.5), t: 0, dur: 0.45 });
+        enemies.splice(idx, 1); score += ZAP_POINTS;
+        try{ sfx.boing(4, "powerup-zap-" + (e.img ? e.img.src : idx)); }catch(err){}
       }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-      laserBeam = { x: player.x, y: player.y, dx: ax, dy: ay, t: 0, dur: 0.35 };
+      zapArcs = { from: { x: player.x, y: player.y }, pts, t: 0, dur: 0.4 };
     }
 
 
@@ -1443,7 +1454,7 @@
       const def = POWERUPS[type];
       if(type === "shove"){ doShove(); }
       else if(type === "bomb"){ doBomb(); }
-      else if(type === "laser"){ doLaser(); }
+      else if(type === "zap"){ doZap(); }
       else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
       pickup = null;
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
@@ -1480,11 +1491,10 @@
           const type = pickup.type;
           held = type; pickup = null;
           try{ sfx.blip("powerup-collect"); }catch(e){}
-          // Shove, Boom and the Laser Beam are the ones you BANK: hold them and unleash at the
-          // perfect, locally-dependent moment (tap your Nazan / Space). The Laser Beam in
-          // particular must be AIMED — it fires along your heading — so you bank it and line
-          // up your shot. Everything else (timed effects) kicks in the instant you grab it.
-          if(type === "shove" || type === "bomb" || type === "laser"){ updatePrompt(); }
+          // Shove, Boom and the Chain Zap are the ones you BANK: hold them and unleash at the
+          // perfect, locally-dependent moment by tapping your own Nazan / pressing Space. None of
+          // them need aiming. Everything else (timed effects) kicks in the instant you grab it.
+          if(type === "shove" || type === "bomb" || type === "zap"){ updatePrompt(); }
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
@@ -1514,9 +1524,7 @@
         // Loaded and ready — make the controls obvious and draw the eye with a pulse.
         const def = POWERUPS[held];
         nextClass = "show ready";
-        nextText = held === "laser"
-          ? "👉 " + def.icon + " " + def.name + " ready — tap where to fire (or press Space)!"
-          : "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
+        nextText = "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
       } else {
         // Nothing to fire: hide the hint entirely so it can't mislead.
         nextClass = "";
@@ -1546,7 +1554,6 @@
       if(kx || ky){
         const m = Math.hypot(kx, ky) || 1;
         player.x += (kx / m) * sp; player.y += (ky / m) * sp;
-        player.aimX = kx / m; player.aimY = ky / m;   // remember the heading so the Laser Beam fires this way
         pointer.active = false;              // keyboard takes over from pointer
       } else if(pointer.active){
         // Star Power snaps the finger-follow tighter (the dash feels faster even by touch);
@@ -1555,9 +1562,6 @@
         const tx = (pointer.x - player.x) * follow;
         const ty = (pointer.y - player.y) * follow;
         player.x += tx; player.y += ty;
-        // Aim the Laser Beam along the way the finger is dragging us, ignoring tiny jitter.
-        const tm = Math.hypot(tx, ty);
-        if(tm > 0.5){ player.aimX = tx / tm; player.aimY = ty / tm; }
       }
       player.x = Math.min(Math.max(player.x, player.r), W - player.r);
       player.y = Math.min(Math.max(player.y, player.r), H - player.r);
@@ -1580,11 +1584,11 @@
           if(boomPuffs[i].t >= boomPuffs[i].dur) boomPuffs.splice(i, 1);
         }
       }
-      if(laserBeam){ laserBeam.t += dt; if(laserBeam.t >= laserBeam.dur) laserBeam = null; }
-      if(laserSparks.length){
-        for(let i = laserSparks.length - 1; i >= 0; i--){
-          laserSparks[i].t += dt;
-          if(laserSparks[i].t >= laserSparks[i].dur) laserSparks.splice(i, 1);
+      if(zapArcs){ zapArcs.t += dt; if(zapArcs.t >= zapArcs.dur) zapArcs = null; }
+      if(zapSparks.length){
+        for(let i = zapSparks.length - 1; i >= 0; i--){
+          zapSparks[i].t += dt;
+          if(zapSparks[i].t >= zapSparks[i].dur) zapSparks.splice(i, 1);
         }
       }
       // Star Power leaves a fading speed-trail of after-images behind the player, so the
@@ -1704,8 +1708,12 @@
             const nx = dx / d, ny = dy / d;
             const sx = player.x + nx * (repelR + e.r);   // where the bubble skin would hold it
             const sy = player.y + ny * (repelR + e.r);
-            if(sx < e.r || sx > W - e.r || sy < e.r || sy > H - e.r){
-              banish(e, nx, ny);                          // bubble pins it past an edge: shove it out of bounds
+            const m = base() * REPEL_BANISH_MARGIN;
+            // Driven toward a nearby wall? Don't let the Nazan ping-pong bubble→wall→bubble:
+            // once the bump would place it within this margin of an edge, banish it outright so
+            // cornering a Nazan against a wall actually shoves it out of bounds.
+            if(sx < e.r + m || sx > W - e.r - m || sy < e.r + m || sy > H - e.r - m){
+              banish(e, nx, ny);                          // shoved toward an edge: out of bounds
               continue;
             }
             e.x = sx; e.y = sy;                           // hold it on the bubble's surface
@@ -1905,11 +1913,11 @@
         }
         ctx.restore();
       }
-      // Electric sparks where each Nazan was vaporised by the Laser Beam — a quick crackle
+      // Electric sparks where each Nazan was vaporised by the Chain Zap — a quick crackle
       // of light, distinct from Boom's smoky fire, so it reads as a clean energy zap.
-      if(laserSparks.length){
+      if(zapSparks.length){
         ctx.save();
-        for(const p of laserSparks){
+        for(const p of zapSparks){
           const pk = p.t / p.dur;                 // 0 → 1 over the spark's life
           const rr = p.r0 * (0.4 + 1.1 * pk);      // flares outward as it fades
           const a = 0.85 * (1 - pk);
@@ -1922,28 +1930,35 @@
         }
         ctx.restore();
       }
-      // The Laser Beam itself: a bright straight bolt fired from the player along their
-      // heading, flashing out to the screen edge then fading fast. It shoots exactly where
-      // the player was aiming, so it reads as a deliberate, skill-aimed shot — the whole
-      // point of the power-up — rather than a confusing screen-wide swirl.
-      if(laserBeam){
-        const k = 1 - laserBeam.t / laserBeam.dur;          // 1 (freshest) → 0 (faded)
-        const far = Math.hypot(W, H);                        // run the bolt past the far edge
-        const ex = laserBeam.x + laserBeam.dx * far;
-        const ey = laserBeam.y + laserBeam.dy * far;
-        const half = base() * LASER_HALF_WIDTH;
+      // The Chain Zap bolt: a jagged fork of lightning leaping from the player through each
+      // Nazan it struck, flashing bright then fading fast. Auto-aimed, so it reads as an
+      // instant strike on the nearest crowd rather than a deliberate, hand-aimed beam.
+      if(zapArcs && zapArcs.pts.length){
+        const k = 1 - zapArcs.t / zapArcs.dur;             // 1 (freshest) → 0 (faded)
+        const nodes = [zapArcs.from].concat(zapArcs.pts);
         ctx.save();
-        ctx.lineCap = "round";
-        // Outer magenta glow.
-        ctx.globalAlpha = 0.45 * k;
-        ctx.lineWidth = half * 2.2;
-        ctx.strokeStyle = "#c01ad6";
-        ctx.beginPath(); ctx.moveTo(laserBeam.x, laserBeam.y); ctx.lineTo(ex, ey); ctx.stroke();
-        // Bright white-hot core.
-        ctx.globalAlpha = 0.9 * k;
-        ctx.lineWidth = Math.max(3, half * 0.7);
-        ctx.strokeStyle = "#fff";
-        ctx.beginPath(); ctx.moveTo(laserBeam.x, laserBeam.y); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        // Two passes: a wide magenta glow under a white-hot core.
+        for(let pass = 0; pass < 2; pass++){
+          ctx.globalAlpha = (pass === 0 ? 0.4 : 0.95) * k;
+          ctx.lineWidth = pass === 0 ? Math.max(6, base() * 0.03) : Math.max(2, base() * 0.01);
+          ctx.strokeStyle = pass === 0 ? "#c01ad6" : "#fff";
+          ctx.beginPath();
+          for(let s = 0; s < nodes.length - 1; s++){
+            const ax = nodes[s].x, ay = nodes[s].y, bx = nodes[s + 1].x, by = nodes[s + 1].y;
+            const segLen = Math.hypot(bx - ax, by - ay) || 1;
+            const steps = Math.max(2, Math.round(segLen / (base() * 0.05)));
+            const px = -(by - ay) / segLen, py = (bx - ax) / segLen;  // unit perpendicular for the jitter
+            ctx.moveTo(ax, ay);
+            for(let g = 1; g < steps; g++){
+              const f = g / steps;
+              const jab = (Math.random() - 0.5) * base() * 0.03;       // sideways crackle
+              ctx.lineTo(ax + (bx - ax) * f + px * jab, ay + (by - ay) * f + py * jab);
+            }
+            ctx.lineTo(bx, by);
+          }
+          ctx.stroke();
+        }
         ctx.restore();
       }
       for(const e of enemies) drawSticker(e, false);
@@ -1982,30 +1997,6 @@
         ctx.setLineDash([14, 10]);
         ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,.85)";
         ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
-      }
-      // Aim guide while the Laser Beam is banked: a faint dashed line from the player showing
-      // exactly where the beam will fire. It tracks your finger / mouse (point at the crowd and
-      // the line swings to follow), falling back to your current heading when there's no live
-      // pointer — so you can SEE the shot before you tap to take it. This is what makes the
-      // kill skill-based.
-      if(held === "laser" && player){
-        let ax = player.aimX, ay = player.aimY;
-        if(pointer.active){
-          const pdx = pointer.x - player.x, pdy = pointer.y - player.y;
-          const pm = Math.hypot(pdx, pdy);
-          if(pm > Math.max(player.r, base() * 0.04)){ ax = pdx / pm; ay = pdy / pm; }
-        }
-        const am = Math.hypot(ax, ay) || 1; ax /= am; ay /= am;
-        const far = Math.hypot(W, H);
-        ctx.save();
-        ctx.globalAlpha = 0.5 + 0.2 * Math.sin(elapsed * 6);   // gentle pulse to draw the eye
-        ctx.setLineDash([12, 10]);
-        ctx.lineWidth = 3; ctx.strokeStyle = "#c01ad6";
-        ctx.beginPath();
-        ctx.moveTo(player.x + ax * player.r, player.y + ay * player.r);
-        ctx.lineTo(player.x + ax * far, player.y + ay * far);
-        ctx.stroke();
         ctx.restore();
       }
       if(player){
@@ -2247,13 +2238,10 @@
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
       // Pointer (mouse + touch) — track position over the canvas.
       const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
-      // Firing a power-up is a quick press-and-release tap. Shove and Boom go off when you tap
-      // your own Nazan (they're positional — they don't need aiming). The Laser Beam is AIMED,
-      // so on a tap it fires from the player straight toward WHERE YOU TAPPED — the natural
-      // touch gesture of "point at the crowd and shoot", which works on mobile without the old
-      // fiddly steer-then-tap-your-own-dot dance. Dragging to steer still moves too far / lasts
-      // too long to count as a tap, so it never fires by accident. Space remains the keyboard
-      // trigger (it fires along your current heading).
+      // Firing a power-up is a quick press-and-release tap on your OWN Nazan. Shove, Boom and the
+      // Chain Zap are all positional / auto-targeting — none of them need aiming — so they go off
+      // the same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
+      // long to count as a tap, so steering never fires a power-up by accident.
       let downX = 0, downY = 0, downT = 0, downOnPlayer = false;
       canvas.addEventListener("pointerdown", (e)=>{
         e.preventDefault();
@@ -2267,19 +2255,11 @@
       });
       canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
       const endTap = (e)=>{
-        if(running && held){
+        if(running && held && downOnPlayer){
           const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
           const quick = performance.now() - downT < 300;
           if(quick && moved < Math.max(10, base() * 0.03)){
-            if(held === "laser" && player){
-              // Aim the beam from the player toward the point you tapped, then fire.
-              const ax = downX - player.x, ay = downY - player.y;
-              const am = Math.hypot(ax, ay);
-              if(am > Math.max(player.r, base() * 0.04)){ player.aimX = ax / am; player.aimY = ay / am; }
-              activate();
-            } else if(downOnPlayer){
-              activate();
-            }
+            activate();   // tap of your own Nazan fires whatever banked power-up you hold
           }
         }
         downOnPlayer = false;
