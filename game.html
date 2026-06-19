@@ -249,8 +249,8 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong>, <strong>Boom</strong> and the <strong>Chain Zap</strong> are special: you bank them and unleash them when the moment's right — all three go off when you <strong>tap your own Nazan</strong> (or press <strong>Space</strong>), no aiming needed. Shove blasts nearby Nazans away, Boom pops the whole crowd around you for points, and the <strong>Chain Zap</strong> forks lightning to the <strong>nearest</strong> Nazans and vaporises them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
-        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong>, <strong>Boom</strong> or the <strong>Chain Zap</strong> — none need aiming.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>), no aiming needed. Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. The <strong>Chain Zap</strong> now fires the <strong>instant you grab it</strong>, forking lightning to the <strong>nearest</strong> Nazans and vaporising them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong>. <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
           <div class="spRow">
@@ -1025,9 +1025,9 @@
     // once per milestone instead of every frame.
     let milestone = 0;
     // Power-ups: instead of an always-available Shove, the player collects single-use
-    // power-ups that pop up on screen one at a time. You hold at most one, fire it like
-    // the old Shove (tap your Nazan / Space / button), and only THEN can the next one
-    // appear. Each has its own flavour of escape.
+    // power-ups that pop up on screen one at a time. Timed effects and Chain Zap fire
+    // the instant you grab them; only Shove and Boom are banked for a manual tap/Space
+    // trigger. Each has its own flavour of escape.
     const POWERUPS = {
       eat:    { icon:"😋", name:"Eating Mode", color:"#e8743b", dur:4 },   // devour Nazans on contact (they flee, so chase them down)
       shove:  { icon:"💨", name:"Shove",       color:"#3d5076", dur:0 },   // banked: push nearby Nazans hard away (off-screen if driven onto an edge)
@@ -1037,18 +1037,18 @@
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
       bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a big blast radius for points
-      zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // banked: tap your Nazan to fork lightning to the nearest Nazans and vaporise them (count scales with the crowd)
+      zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // instant: auto-fork lightning to the nearest Nazans and vaporise them on pickup (count scales with the crowd)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.7;      // Star Power makes the player dash noticeably faster, like a Mario Kart star
     const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
-    // Chain Zap: a banked, AUTO-TARGETING lightning strike (see doZap). The old Laser Beam had
+    // Chain Zap: an instant, AUTO-TARGETING lightning strike (see doZap). The old Laser Beam had
     // to be AIMED — you tapped a spot to fire — which on mobile forced you to lift your steering
-    // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming: tap your
-    // own Nazan (or press Space, exactly like Shove and Boom) and a fork of lightning leaps from
-    // the player to the NEAREST Nazans and vaporises them. Like Boom it genuinely REMOVES Nazans.
+    // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming and NO extra
+    // tap: the moment you grab it, a fork of lightning leaps from the player to the NEAREST
+    // Nazans and vaporises them. Like Boom it genuinely REMOVES Nazans.
     const ZAP_POINTS = 7;            // points banked per Nazan zapped
     // How many it kills scales with the crowd: always at least ZAP_MIN (when that many are
     // present), about ZAP_FRACTION of the board ("just over half"), capped at ZAP_MAX — so a
@@ -1402,11 +1402,11 @@
       boomFx = 0.6;
     }
 
-    // The Chain Zap power-up's banked blast: a one-tap, AUTO-TARGETING lightning strike. Unlike
-    // the old aimed Laser Beam (which forced you to release your steering finger and tap a spot —
-    // deadly on mobile), Chain Zap needs NO aiming. You fire it like Shove and Boom (tap your own
-    // Nazan / Space) and a fork of lightning leaps from the player to the NEAREST Nazans and
-    // vaporises them, banking points for each. Like Boom it genuinely REMOVES Nazans.
+    // The Chain Zap power-up's instant blast: an AUTO-TARGETING lightning strike. Unlike the old
+    // aimed Laser Beam (which forced you to release your steering finger and tap a spot — deadly
+    // on mobile), Chain Zap needs NO aiming and NO follow-up input: on pickup it leaps from the
+    // player to the NEAREST Nazans and vaporises them, banking points for each. Like Boom it
+    // genuinely REMOVES Nazans.
     //
     // How many it kills scales with the crowd (zapCount): always at least ZAP_MIN when that many
     // are present, just over half the board on average, capped at ZAP_MAX — decisive on a light
@@ -1498,10 +1498,10 @@
           const type = pickup.type;
           held = type; pickup = null;
           try{ sfx.blip("powerup-collect"); }catch(e){}
-          // Shove, Boom and the Chain Zap are the ones you BANK: hold them and unleash at the
-          // perfect, locally-dependent moment by tapping your own Nazan / pressing Space. None of
-          // them need aiming. Everything else (timed effects) kicks in the instant you grab it.
-          if(type === "shove" || type === "bomb" || type === "zap"){ updatePrompt(); }
+          // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
+          // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
+          // timed effects kick in the instant you grab them.
+          if(type === "shove" || type === "bomb"){ updatePrompt(); }
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
@@ -2249,9 +2249,9 @@
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
       // Pointer (mouse + touch) — track position over the canvas.
       const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
-      // Firing a power-up is a quick press-and-release tap on your OWN Nazan. Shove, Boom and the
-      // Chain Zap are all positional / auto-targeting — none of them need aiming — so they go off
-      // the same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
+      // Firing a banked power-up is a quick press-and-release tap on your OWN Nazan. Shove and
+      // Boom are both positional / auto-targeting — neither needs aiming — so they go off the
+      // same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
       // long to count as a tap, so steering never fires a power-up by accident.
       let downX = 0, downY = 0, downT = 0, downOnPlayer = false;
       canvas.addEventListener("pointerdown", (e)=>{
