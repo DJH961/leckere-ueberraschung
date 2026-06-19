@@ -1091,7 +1091,11 @@
     // board takes real chasing — but only while there's room to run. Once the player is
     // bearing right down on one it holds its ground, so cornered prey can still be caught.
     const EAT_FLEE_SPEED   = 0.005;  // per-frame drift away from the player while Eating, fraction of base()
-    const EAT_FLEE_MIN_GAP = 2.2;    // stop fleeing once within this many combined radii of the player
+    const EAT_FLEE_MIN_GAP = 2.6;    // stop fleeing once within this many combined radii of the player (then it just behaves like a normal Nazan — neither pushed away nor pulled in)
+    // The instant Eating Mode kicks in, Nazans get a brief extra kick of flee speed so they
+    // scatter and earn themselves some running room, then it eases back to the normal drift.
+    const EAT_FLEE_BOOST_MUL  = 2.0;  // multiplier on flee speed during the opening burst
+    const EAT_FLEE_BOOST_TIME = 0.6;  // seconds of boosted flee at the start of Eating Mode
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
     // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
     // last sliver of time. That tiny grace period is a clear heads-up that the power
@@ -1647,7 +1651,11 @@
       // While Eating Mode is running, Nazans skitter away from the player so hoovering up
       // the whole board takes a proper chase (it also stops during the wind-down grace).
       const eatOn = !!(activeEffect && activeEffect.type === "eat" && !activeEffect.ending);
-      const fleeSpeed = base() * EAT_FLEE_SPEED;
+      // Opening burst: for the first moment of Eating Mode the flee drift is amplified so the
+      // pack gets a head start to scatter, then it relaxes back to the normal drift speed.
+      const eatElapsed = eatOn ? (activeEffect.max - activeEffect.time) : 0;
+      const fleeBoost = (eatOn && eatElapsed < EAT_FLEE_BOOST_TIME) ? EAT_FLEE_BOOST_MUL : 1;
+      const fleeSpeed = base() * EAT_FLEE_SPEED * fleeBoost;
       const banishMargin = base() * BANISH_MARGIN;
       const banishReturn = base() * BANISH_RETURN_SPEED;
       for(const e of enemies){
@@ -1685,7 +1693,7 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00035);
+            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025);
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
