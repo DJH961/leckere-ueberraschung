@@ -1129,12 +1129,9 @@
     //  • every type carries its own `starveBias`, which has been creeping up for every roll it
     //    went unpicked and is wiped the moment it lands (see STARVE_BIAS_STEP).
     function rollPickupType(){
-      const actualCooldownSize = Math.max(0, Math.min(PICKUP_COOLDOWN, PU_TYPES.length - 1));
-      const blocked = new Set(recentPickupTypes.slice(0, actualCooldownSize));
-      let pool = PU_TYPES.filter(t => !blocked.has(t));
-      // Safety net for tiny future power-up pools: if the cooldown would block everything,
-      // lift it for this roll so there is always at least one valid choice.
-      if(!pool.length) pool = PU_TYPES.slice();
+      const cappedCooldownSize = Math.max(0, Math.min(PICKUP_COOLDOWN, PU_TYPES.length - 1));
+      const blocked = new Set(recentPickupTypes.slice(0, cappedCooldownSize));
+      const pool = PU_TYPES.filter(t => !blocked.has(t));
       let total = 0;
       const weights = pool.map(t => {
         const w = 1 + (DELETE_TYPES.includes(t) ? deleteBias : 0) + starveBias[t];
