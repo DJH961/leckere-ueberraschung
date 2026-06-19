@@ -684,7 +684,9 @@
         src.connect(g).connect(voiceOut());
         activeClips++;
         liveClips.add(src);
-        src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); liveClips.delete(src); };
+        // Decrement only when THIS source is still tracked: stopVoices() may have already
+        // removed it (and zeroed the count), so a late onended mustn't drop a newer clip's tally.
+        src.onended = ()=>{ if(liveClips.delete(src)) activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
       }catch(e){}
     }
@@ -1348,6 +1350,10 @@
     // stay fully active until the very end, so the cue vanishes EXACTLY when the power does.
     // This way you can never, say, eat a Nazan without the eating still being visually clear.
     const EFFECT_WARN = 1.1;        // seconds of audible/ambient wind-down before a timed effect lapses
+    // The countdown "beep beep" through that window accelerates: the gap between beeps eases
+    // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
+    const BEEP_INTERVAL_MIN   = 0.16;  // shortest gap between beeps (right at expiry)
+    const BEEP_INTERVAL_RANGE = 0.18;  // extra gap added at the start of the window (eases to 0 by the end)
     const PU_TYPES = Object.keys(POWERUPS);
     // The three power-ups that genuinely REMOVE Nazans for good (Eating Mode devours them,
     // Boom blasts them, the Chain Zap vaporises them) — everything else only shoves or buffs.
@@ -1919,7 +1925,7 @@
             if(activeEffect.beepT <= 0){
               const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
               try{ sfx.expireBeep(1 - frac); }catch(err){}
-              activeEffect.beepT = 0.16 + 0.18 * frac;                     // ~0.34s apart easing down to ~0.16s
+              activeEffect.beepT = BEEP_INTERVAL_MIN + BEEP_INTERVAL_RANGE * frac;   // ~0.34s apart easing down to ~0.16s
             }
           }
           if(activeEffect.time <= activeEffect.displaySeconds - 1){
