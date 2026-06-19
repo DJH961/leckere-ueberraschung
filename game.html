@@ -1473,6 +1473,14 @@
     const EAT_WALL_AVOID  = 0.22;  // how close to a wall (fraction of base()) before it starts steering the Nazan away
     const EAT_WALL_WEIGHT = 1.6;   // how hard a wall (at full proximity) bends the flee back toward open space
     const EAT_WALL_SLIDE  = 0.15;  // fraction of the into-wall flee push kept (rest becomes a sideways slide along the wall)
+    // Anti-stick safety net: even with edge-aware steering, a fleeing Nazan can still wedge
+    // itself in a corner (the flee keeps shoving it into the walls faster than its bounce can
+    // carry it out), where it sits frozen as easy prey. If one is barely moving for a moment,
+    // we briefly DROP its flee so it just coasts and bounces like a normal Nazan — that frees
+    // it — then let fleeing resume. Better a Nazan that keeps moving than one stuck in a wall.
+    const EAT_STUCK_SPEED   = 0.0022;  // per-frame net travel (fraction of base()) below which a fleeing Nazan counts as barely moving
+    const EAT_STUCK_TIME    = 0.25;    // seconds of barely moving before we treat it as stuck
+    const EAT_STUCK_RELEASE = 0.7;     // seconds it then drifts flee-free (like a normal Nazan) to break loose before fleeing can resume
     // The final stretch of a timed power-up is a clear, ramping WIND-DOWN rather than a
     // silent grace period where the power kept working invisibly. Over EFFECT_WARN seconds
     // before it lapses the music and the full-screen background wash ease back to normal and
@@ -2139,6 +2147,9 @@
           }
           continue;
         }
+        // Remember where it started this frame so we can tell, after moving, whether a
+        // fleeing Nazan is actually getting anywhere or is wedged against a wall (below).
+        const preX = e.x, preY = e.y;
         // Count down a fresh shove; while it lasts the Nazan keeps its full punch and
         // can be carried off an edge (handled at the wall check below).
         if(e.shoveT > 0) e.shoveT -= dt;
@@ -2194,7 +2205,7 @@
         // a Nazan near a wall slides ALONG it toward open space and lets the walls bend its
         // escape back into the room — the way a person breaks sideways to avoid being
         // pinned instead of retreating into a dead end.
-        if(eatOn && player){
+        if(eatOn && player && !(e.fleePaused > 0)){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d > (e.r + player.r) * EAT_FLEE_MIN_GAP){
@@ -2238,6 +2249,25 @@
         if(bounced){
           const spd = Math.hypot(e.vx, e.vy);
           try{ sfx.boing(spd / (base() * 0.004), e.img ? e.img.src : "nazan-dodge-wall"); }catch(err){}
+        }
+        // Anti-stick watchdog: while Eating Mode is on, watch how far this Nazan actually
+        // travelled this frame. If a fleeing one is barely moving (wedged in a corner) for
+        // long enough, pause its flee for a beat so it coasts free like a normal Nazan
+        // instead of sitting there as easy prey. Outside Eating Mode the counters stay clear.
+        if(eatOn){
+          if(e.fleePaused > 0){
+            e.fleePaused -= dt;
+          } else {
+            const moved = Math.hypot(e.x - preX, e.y - preY);
+            if(moved < base() * EAT_STUCK_SPEED){
+              e.stuckT = (e.stuckT || 0) + dt;
+              if(e.stuckT >= EAT_STUCK_TIME){ e.fleePaused = EAT_STUCK_RELEASE; e.stuckT = 0; }
+            } else {
+              e.stuckT = 0;
+            }
+          }
+        } else if(e.stuckT || e.fleePaused){
+          e.stuckT = 0; e.fleePaused = 0;
         }
       }
 
