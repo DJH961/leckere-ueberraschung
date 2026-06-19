@@ -809,19 +809,19 @@
           noise({ f0:2600, f1:1400, dur:0.18, vol:0.1, q:3 });
         }
       },
-      // An unmissable "time's almost up!" alarm — three quick urgent beeps that
-      // climb in pitch, each with a bright overtone so the warning cuts clean
-      // through the music and gameplay. Sounded both when a timed power-up is
-      // about to wear off and when a banked Shove/Boom is about to auto-fire, so
-      // the player always gets a loud, clear heads-up before either elapses.
-      expiring(){
-        const beep = (t0, f) => {
-          tone({ type:"square",   f0:f,       dur:0.13, vol:0.22, t0:t0 });
-          tone({ type:"triangle", f0:f * 1.5, dur:0.13, vol:0.12, t0:t0 });   // bright overtone so it carries
-        };
-        beep(0,    784);   // G5
-        beep(0.17, 880);   // A5
-        beep(0.34, 988);   // B5 — rising urgency
+      // A banked Shove/Boom about to AUTO-FIRE gets its own "arming" countdown rather
+      // than a single pre-warning beep: a punchy charging pulse called repeatedly on an
+      // accelerating cadence as the hold runs out, with `intensity` (0 → 1) climbing as
+      // auto-fire nears so the pulse tightens, rises and grows more insistent. A growling
+      // sub-octave gives it a "weapon arming" weight that's distinct from the bright timed
+      // power-up wind-down beeps, so the player can tell WHICH thing is about to elapse.
+      bankedBeep(intensity){
+        const i = Math.max(0, Math.min(1, intensity || 0));
+        const f = 300 + i * 230;                              // charging pitch climbs as auto-fire nears
+        const v = 0.2  + i * 0.16;                            // and gets louder/more insistent
+        tone({ type:"square",   f0:f,       dur:0.12, vol:v });
+        tone({ type:"sawtooth", f0:f * 0.5, dur:0.12, vol:v * 0.5 });            // sub-octave growl: it's arming
+        tone({ type:"triangle", f0:f * 2,   dur:0.07, vol:v * 0.3, t0:0.01 });   // a bright tick riding on top
       },
       // A single urgent countdown beep for a timed power-up's FINAL second. Called
       // repeatedly on an accelerating cadence as the effect runs out, with `intensity`
@@ -865,10 +865,23 @@
         tone({ type:"square", f0:880,     dur:0.06, vol:0.15 });
         tone({ type:"square", f0:1318.51, dur:0.13, vol:0.15, t0:0.06, wobble:22 });   // up to E6
       },
-      // The mirror of powerAppear: a "slipping away!" cue when an uncollected
-      // power-up is about to vanish. Same twinkly voice and notes as the appear
-      // alert but running DOWN the scale and fading out, so it reads instantly as
-      // the same power-up leaving rather than a brand-new one arriving.
+      // An uncollected power-up slipping away now gets an accelerating "last chance!"
+      // countdown instead of one beep: a twinkly blip (same sparkle voice as powerAppear)
+      // called repeatedly on a tightening cadence as it blinks out, with `intensity`
+      // (0 → 1) climbing as it nears vanishing. The pitch SINKS and the pulse hardens as
+      // it slips further away, so it reads as the same sparkling pickup fading — just one
+      // last, increasingly urgent nudge to go grab it before it's gone.
+      leavingBeep(intensity){
+        const i = Math.max(0, Math.min(1, intensity || 0));
+        const f = 1000 - i * 320;                            // sparkle pitch sinks as it slips further away
+        const v = 0.13 + i * 0.09;                           // but pulses harder so the last chance lands
+        tone({ type:"triangle", f0:f,     dur:0.09, vol:v });
+        tone({ type:"square",   f0:f * 2, dur:0.06, vol:v * 0.25 });   // sparkle octave — powerAppear's twinkly voice
+      },
+      // The conclusive "...and it's gone" flourish the instant an uncollected power-up
+      // finally vanishes: powerAppear's arpeggio run DOWN the scale and fading out, so the
+      // moment it leaves is unmistakable and clearly the same power-up departing rather than
+      // a brand-new one arriving. The mirror of expireEnd for the pickup's vanish.
       powerLeaving(){
         const notes = [1174.66, 880, 659.25];   // D6 A5 E5 — powerAppear's arpeggio, reversed
         let t = 0, v = 0.16;
@@ -1282,6 +1295,11 @@
     // the final BANKED_BLINK_TIME, then AUTOFIRE on their own if you never spent them.
     const BANKED_HOLD_TIME  = 10;    // seconds you can carry a banked Shove/Boom before it auto-fires
     const BANKED_BLINK_TIME = 3;     // seconds of remaining hold-time over which it pulses a calm warning
+    // Across that blink window the auto-fire warning is an accelerating "arming" countdown
+    // (see sfx.bankedBeep): the gap between pulses eases from ~(MIN+RANGE) at the start of the
+    // window down to MIN right before it auto-fires, so you always hear it building.
+    const BANKED_BEEP_MIN   = 0.2;   // shortest gap between arming pulses (right before auto-fire)
+    const BANKED_BEEP_RANGE = 0.5;   // extra gap added at the start of the window (eases to 0 by the end)
     // Chain Zap: an instant, AUTO-TARGETING lightning strike (see doZap). The old Laser Beam had
     // to be AIMED — you tapped a spot to fire — which on mobile forced you to lift your steering
     // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming and NO extra
@@ -1412,12 +1430,17 @@
     let starTrail = [];              // fading after-images streaking behind a Star Power dash
     let held = null;                 // power-up type currently carried (one at a time), or null
     let heldTimer = 0;               // seconds left before a banked Shove/Boom auto-fires (0 when nothing banked)
-    let heldWarned = false;          // has the "about to auto-fire" warning cue already sounded for this banked hold?
+    let heldBeepT = 0;               // countdown to the next banked auto-fire "arming" pulse while in the warning window
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
-    const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "about to vanish" cue fires (matches the blink-out)
+    const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "slipping away" countdown starts (matches the blink-out)
+    // Across that window the vanish warning is an accelerating "last chance" countdown
+    // (see sfx.leavingBeep): the gap between blips eases from ~(MIN+RANGE) at the start down
+    // to MIN right before it disappears, then sfx.powerLeaving stamps the moment it's gone.
+    const PICKUP_BEEP_MIN   = 0.16;  // shortest gap between "slipping away" blips (right before it vanishes)
+    const PICKUP_BEEP_RANGE = 0.3;   // extra gap added at the start of the window (eases to 0 by the end)
     const PICKUP_FIRST   = 2.5;      // delay before the first pickup of a round
     // The gap before a fresh pickup appears once one is spent is deliberately RANDOM,
     // so it never lands at the exact same moment every time. For an INSTANT power-up
@@ -1566,7 +1589,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldWarned = false; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
@@ -1748,7 +1771,7 @@
         tries++;
       } while(tries < 12 && Math.hypot(x - player.x, y - player.y) < base() * 0.25);
       const type = rollPickupType();
-      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, leaving: false };
+      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, beepT: 0 };
       try{ sfx.powerAppear(); }catch(e){}
     }
 
@@ -1767,15 +1790,21 @@
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
           // countdown so it can't be hoarded forever — it auto-fires once that runs out.
-          if(type === "shove" || type === "bomb"){ heldTimer = BANKED_HOLD_TIME; heldWarned = false; updatePrompt(); }
+          if(type === "shove" || type === "bomb"){ heldTimer = BANKED_HOLD_TIME; heldBeepT = 0; updatePrompt(); }
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
-        } else if(!pickup.leaving && pickup.life <= PICKUP_LEAVE_WARN){
-          // It's blinking out — sound a matching "slipping away!" counterpart to the
-          // appear cue so the player gets one last nudge to grab it before it's gone.
-          pickup.leaving = true;
-          try{ sfx.powerLeaving(); }catch(e){}
+          try{ sfx.powerLeaving(); }catch(e){}   // a conclusive "...and it's gone" flourish the instant it disappears
+        } else if(pickup.life <= PICKUP_LEAVE_WARN){
+          // It's blinking out — run an accelerating "slipping away!" countdown (mirroring
+          // the appear cue's sparkle voice) so the player gets a building, last-chance nudge
+          // to grab it before it's gone, rather than a single easy-to-miss beep.
+          pickup.beepT = (pickup.beepT || 0) - dt;
+          if(pickup.beepT <= 0){
+            const frac = Math.max(0, pickup.life / PICKUP_LEAVE_WARN);   // 1 → 0 across the window
+            try{ sfx.leavingBeep(1 - frac); }catch(e){}
+            pickup.beepT = PICKUP_BEEP_MIN + PICKUP_BEEP_RANGE * frac;   // cadence tightens as it nears vanishing
+          }
         }
       } else if(held && heldTimer > 0){
         // Tick down a banked Shove/Boom. When the bank runs dry it AUTO-FIRES wherever the
@@ -1783,11 +1812,16 @@
         // over the final BANKED_BLINK_TIME — see updatePrompt).
         const before = Math.ceil(heldTimer);
         heldTimer -= dt;
-        // Sound a one-off warning as it enters the urgent blink window, so the player
-        // hears that a banked Shove/Boom is about to auto-fire on its own.
-        if(!heldWarned && heldTimer <= BANKED_BLINK_TIME){
-          heldWarned = true;
-          try{ sfx.expiring(); }catch(e){}
+        // Through the final BANKED_BLINK_TIME, run an accelerating "arming" countdown so the
+        // player clearly hears a banked Shove/Boom building toward auto-firing on its own,
+        // rather than a single one-shot warning that's easy to miss over the action.
+        if(heldTimer <= BANKED_BLINK_TIME){
+          heldBeepT -= dt;
+          if(heldBeepT <= 0){
+            const frac = Math.max(0, heldTimer / BANKED_BLINK_TIME);   // 1 → 0 across the window
+            try{ sfx.bankedBeep(1 - frac); }catch(e){}
+            heldBeepT = BANKED_BEEP_MIN + BANKED_BEEP_RANGE * frac;    // cadence tightens as auto-fire nears
+          }
         }
         if(heldTimer <= 0){ heldTimer = 0; activate(); }
         else if(Math.ceil(heldTimer) !== before || heldTimer <= BANKED_BLINK_TIME){ updatePrompt(); }
