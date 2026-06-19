@@ -9,7 +9,7 @@ many-languaged legend of the *Leckere Überraschung*. Live at
 `index.html` is the whole main page — no build step, no framework:
 
 - **One-tap "Enter" gate → rickroll.** The first tap unlocks audio (browsers,
-  especially iOS/Safari, block autoplay-with-sound until you interact once),
+  especially iOS/Safari, block autoplay with sound until you interact once),
   plays an 8 s rickroll, then collapses into a small top banner.
 - **Auto-listed audio versions.** Every `.opus` / `.m4a` file in `audio/` is
   pulled live from this repo and listed automatically, each with a language
