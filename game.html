@@ -1036,7 +1036,7 @@
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
-      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a big blast radius for points
+      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a modest blast radius for points
       zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // instant: auto-fork lightning to the nearest Nazans and vaporise them on pickup (count scales with the crowd)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
@@ -1096,6 +1096,14 @@
     // scatter and earn themselves some running room, then it eases back to the normal drift.
     const EAT_FLEE_BOOST_MUL  = 2.0;  // multiplier on flee speed during the opening burst
     const EAT_FLEE_BOOST_TIME = 0.6;  // seconds of boosted flee at the start of Eating Mode
+    // Edge awareness: fleeing prey shouldn't bury itself into a wall and pile up in the
+    // corners — it should break sideways toward the open floor, the way a person dodging
+    // someone in a room runs for space instead of backing into a wall. Each wall the Nazan
+    // is within EAT_WALL_AVOID (fraction of base()) of pushes it back toward the room, and
+    // any flee heading straight INTO a near wall is mostly redirected to slide ALONG it.
+    const EAT_WALL_AVOID  = 0.22;  // how close to a wall (fraction of base()) before it starts steering the Nazan away
+    const EAT_WALL_WEIGHT = 1.6;   // how hard a wall (at full proximity) bends the flee back toward open space
+    const EAT_WALL_SLIDE  = 0.15;  // fraction of the into-wall flee push kept (rest becomes a sideways slide along the wall)
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
     // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
     // last sliver of time. That tiny grace period is a clear heads-up that the power
@@ -1380,12 +1388,13 @@
       blastFx = 0.45;
     }
 
-    // The Boom power-up's banked blast: pop every Nazan caught in a big radius, banking
+    // The Boom power-up's banked blast: pop every Nazan caught in a blast radius, banking
     // points for each. Unlike a Shove (which only pushes Nazans around) this genuinely
-    // REMOVES them, like an area-of-effect Eating Mode you don't have to chase. Bank it,
-    // then unleash it near the thickest crowd to clear the most.
+    // REMOVES them, like an area-of-effect Eating Mode you don't have to chase. The radius
+    // is deliberately modest, so it clears the cluster around you rather than half the
+    // board — bank it, then unleash it right in the thick of the crowd to clear the most.
     function doBomb(){
-      const R = base() * 0.68;
+      const R = base() * 0.46;
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
@@ -1733,12 +1742,38 @@
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
         // but only while there's room to run. Once the player is bearing right down on a
-        // Nazan it stops fleeing, so cornered prey can actually be caught.
+        // Nazan it stops fleeing, so cornered prey can actually be caught. The flee is
+        // EDGE-AWARE: rather than backing straight into a wall and piling up in a corner,
+        // a Nazan near a wall slides ALONG it toward open space and lets the walls bend its
+        // escape back into the room — the way a person breaks sideways to avoid being
+        // pinned instead of retreating into a dead end.
         if(eatOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d > (e.r + player.r) * EAT_FLEE_MIN_GAP){
-            e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
+            let fx = dx / d, fy = dy / d;             // straight away from the player
+            const zone = base() * EAT_WALL_AVOID;
+            const dL = e.x, dR = W - e.x, dT = e.y, dB = H - e.y;
+            // (1) Walls push the Nazan back toward the room, harder the closer it is.
+            let wx = 0, wy = 0;
+            if(dL < zone) wx += 1 - dL / zone;
+            if(dR < zone) wx -= 1 - dR / zone;
+            if(dT < zone) wy += 1 - dT / zone;
+            if(dB < zone) wy -= 1 - dB / zone;
+            // (2) Any flee component driving INTO a near wall is mostly dropped and turned
+            // into a slide along that wall, biased to slip past the player (toward the side
+            // with more room when the player is level with the Nazan).
+            if((dL < zone && fx < 0) || (dR < zone && fx > 0)){
+              fx *= EAT_WALL_SLIDE;
+              fy += Math.abs(dy) > 1 ? Math.sign(dy) : Math.sign(H / 2 - e.y);
+            }
+            if((dT < zone && fy < 0) || (dB < zone && fy > 0)){
+              fy *= EAT_WALL_SLIDE;
+              fx += Math.abs(dx) > 1 ? Math.sign(dx) : Math.sign(W / 2 - e.x);
+            }
+            fx += wx * EAT_WALL_WEIGHT; fy += wy * EAT_WALL_WEIGHT;
+            const fl = Math.hypot(fx, fy) || 1;
+            e.x += fx / fl * fleeSpeed; e.y += fy / fl * fleeSpeed;
           }
         }
         // A Nazan that was directly shoved/touched (or bounced off one that was) carries
