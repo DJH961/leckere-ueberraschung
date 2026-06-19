@@ -2546,6 +2546,23 @@
         ctx.lineWidth = urgent ? 4 : 3; ctx.strokeStyle = def.color; ctx.stroke();
         ctx.restore();
       }
+      // Timed power-up wind-down: as a timed effect nears its end it enters the WARNING
+      // window (the same one that drives the accelerating "beep beep"). A bright ring in the
+      // power-up's colour pulses around the player — beating faster, brighter and thicker as
+      // zero approaches — so even with the sound off it's obvious the power is about to wear off.
+      if(player && activeEffect && activeEffect.warning){
+        const def = POWERUPS[activeEffect.type];
+        const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
+        const urgency = 1 - frac;                                    // 0 → 1 as it runs out
+        const wave = (Math.sin(elapsed * (10 + urgency * 16)) + 1) / 2;   // beats faster as zero nears
+        const R = (player.r + 10) * (1 + wave * (0.12 + urgency * 0.12));
+        ctx.save();
+        ctx.globalAlpha = 0.4 + wave * 0.5;
+        ctx.lineWidth = 3 + urgency * 3;
+        ctx.strokeStyle = def.color;
+        ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
       if(player){
         if(activeEffect && activeEffect.type === "ghost"){
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
