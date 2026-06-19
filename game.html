@@ -228,6 +228,33 @@
   .lbList li .who{flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .lbList li .pts{flex:0 0 auto; font-weight:800; color:var(--navy);}
   .lbEmpty{color:var(--muted); font-size:.88rem; text-align:center;}
+  /* The start/over cards' two column wrappers are invisible by default (single-column
+     flow, used on mobile and as a safe fallback); they only become real columns in
+     the desktop media query below. */
+  .cardMain, .cardBoard{display:contents;}
+  /* ===== Desktop: give the global "best" leaderboard a tall panel of its own ===== */
+  @media (min-width:760px){
+    #gameStart .gameCard, #gameOver .gameCard{
+      max-width:min(900px,94vw); text-align:left;
+      display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+      grid-template-rows:1fr auto; gap:8px 32px; padding:32px 34px;}
+    /* Left column: score / intro, sticker picker, name field. */
+    #gameStart .cardMain, #gameOver .cardMain{display:flex; flex-direction:column;
+      align-items:center; justify-content:center; text-align:center;
+      gap:4px; min-width:0; grid-column:1; grid-row:1;}
+    #gameStart .cardMain > p, #gameOver .cardMain > p{margin:5px 0;}
+    /* Action buttons live under the left column. */
+    #gameStart .gameBtns, #gameOver .gameBtns{grid-column:1; grid-row:2; margin-top:18px;}
+    /* Right column: the leaderboard, spanning the full height of the card. */
+    #gameStart .cardBoard, #gameOver .cardBoard{display:flex; flex-direction:column;
+      min-width:0; min-height:0; grid-column:2; grid-row:1 / span 2;}
+    #gameStart .lbBox, #gameOver .lbBox{margin:0; max-height:none; min-height:0;
+      flex:1 1 auto; padding:18px 20px;}
+    #gameStart .lbBox h3, #gameOver .lbBox h3{font-size:1.06rem; margin-bottom:12px;}
+    #gameStart .lbList li, #gameOver .lbList li{font-size:.98rem; padding:9px 12px;
+      gap:10px; border-radius:11px;}
+    #gameStart .lbList li .rank, #gameOver .lbList li .rank{flex-basis:2.2em;}
+  }
   @media (max-width:600px){
     #game{--mobile-panel-top:54px; --mobile-panel-bottom:8px; --mobile-leaderboard-min:170px;}
     #gameHud{padding:calc(8px + env(safe-area-inset-top)) 10px 8px;}
@@ -302,32 +329,39 @@
     <div id="gamePrompt" aria-live="polite"></div>
     <!-- Start screen -->
     <div class="gamePanel" id="gameStart">
-      <div class="gameCard">
-        <h2>Nazan Dodge</h2>
-        <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want. Survive as long as you can and grab power-ups to fight back.</p>
-        <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>arrow keys</strong> or <strong>WASD</strong>. Tap your Nazan (or press <strong>Space</strong>) to fire a banked power-up.</p>
-        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong> (they <strong>auto-fire</strong> if held too long). <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
-        <button class="helpBtn" id="gameHelpStart" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
-        <div class="stickerPick">
-          <span class="spLabel">Your Nazan</span>
-          <div class="spRow">
-            <button class="spArrow" id="spPrevStart" type="button" aria-label="Previous sticker">‹</button>
-            <div class="spPreview"><img id="spImgStart" alt="Your chosen Nazan sticker" /></div>
-            <button class="spArrow" id="spNextStart" type="button" aria-label="Next sticker">›</button>
+      <div class="gameCard startCard">
+        <!-- .cardMain / .cardBoard are display:contents by default, so the markup
+             flows as a single column on mobile (unchanged). On desktop they become
+             two real columns so the leaderboard gets a tall panel of its own. -->
+        <div class="cardMain">
+          <h2>Nazan Dodge</h2>
+          <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want. Survive as long as you can and grab power-ups to fight back.</p>
+          <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>arrow keys</strong> or <strong>WASD</strong>. Tap your Nazan (or press <strong>Space</strong>) to fire a banked power-up.</p>
+          <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong> (they <strong>auto-fire</strong> if held too long). <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
+          <button class="helpBtn" id="gameHelpStart" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
+          <div class="stickerPick">
+            <span class="spLabel">Your Nazan</span>
+            <div class="spRow">
+              <button class="spArrow" id="spPrevStart" type="button" aria-label="Previous sticker">‹</button>
+              <div class="spPreview"><img id="spImgStart" alt="Your chosen Nazan sticker" /></div>
+              <button class="spArrow" id="spNextStart" type="button" aria-label="Next sticker">›</button>
+            </div>
           </div>
-        </div>
-        <p class="best">Best: <span id="gameBestStart">0</span></p>
-        <div class="nameField">
-          <label for="gameNameStart">Your name <span class="req">*</span></label>
-          <div class="nameRow">
-            <input id="gameNameStart" type="text" maxlength="16" autocomplete="off" required aria-required="true"
-                   placeholder="Type your name" aria-label="Your name for the leaderboard" />
+          <p class="best">Best: <span id="gameBestStart">0</span></p>
+          <div class="nameField">
+            <label for="gameNameStart">Your name <span class="req">*</span></label>
+            <div class="nameRow">
+              <input id="gameNameStart" type="text" maxlength="16" autocomplete="off" required aria-required="true"
+                     placeholder="Type your name" aria-label="Your name for the leaderboard" />
+            </div>
           </div>
+          <p class="nameHint" id="gameStartNameHint">Enter your name to join the global board.</p>
         </div>
-        <p class="nameHint" id="gameStartNameHint">Enter your name to join the global board.</p>
-        <div class="lbBox" id="startLbBox">
-          <h3>🌍 Global Top Nazans</h3>
-          <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
+        <div class="cardBoard">
+          <div class="lbBox" id="startLbBox">
+            <h3>🌍 Global Top Nazans</h3>
+            <ol class="lbList" id="startLbList"><li class="lbEmpty">Loading…</li></ol>
+          </div>
         </div>
         <div class="gameBtns">
           <button class="gameBtn" id="gamePlay" type="button">▶ Play</button>
@@ -338,28 +372,34 @@
     <!-- Game over screen -->
     <div class="gamePanel hidden" id="gameOver">
       <div class="gameCard">
-        <h2>Caught!</h2>
-        <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
-        <div class="big" id="gameFinalScore">0</div>
-        <p class="best" id="gameBestLine">Best: 0</p>
-        <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
-        <div class="stickerPick">
-          <span class="spLabel">Your Nazan</span>
-          <div class="spRow">
-            <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
-            <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
-            <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+        <!-- Same two-column trick as the start card: collapsed to one column on
+             mobile, split into score-details + tall leaderboard on desktop. -->
+        <div class="cardMain">
+          <h2>Caught!</h2>
+          <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
+          <div class="big" id="gameFinalScore">0</div>
+          <p class="best" id="gameBestLine">Best: 0</p>
+          <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
+          <div class="stickerPick">
+            <span class="spLabel">Your Nazan</span>
+            <div class="spRow">
+              <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
+              <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
+              <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+            </div>
           </div>
+          <div class="nameRow">
+            <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
+                   placeholder="Type your name" aria-label="Your name for the leaderboard" />
+            <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
+          </div>
+          <p class="nameHint" id="gameNameHint">Posting your score to the global board…</p>
         </div>
-        <div class="nameRow">
-          <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
-                 placeholder="Type your name" aria-label="Your name for the leaderboard" />
-          <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
-        </div>
-        <p class="nameHint" id="gameNameHint">Posting your score to the global board…</p>
-        <div class="lbBox" id="overLbBox">
-          <h3>🌍 Global Top Nazans</h3>
-          <ol class="lbList" id="overLbList"><li class="lbEmpty">Loading…</li></ol>
+        <div class="cardBoard">
+          <div class="lbBox" id="overLbBox">
+            <h3>🌍 Global Top Nazans</h3>
+            <ol class="lbList" id="overLbList"><li class="lbEmpty">Loading…</li></ol>
+          </div>
         </div>
         <div class="gameBtns">
           <button class="gameBtn" id="gameRetry" type="button">↻ Play again</button>
