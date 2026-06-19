@@ -403,9 +403,9 @@
       snail:  { rate: 0.7,  vol: 0.95 },   // slow-motion: dragged-out, lower, a touch quieter
       shrink: { rate: 1.45, vol: 0.9  },   // tiny mode: fast, high, chipmunk-squeaky
       star:   { rate: 1.18, vol: 1.05 },   // star power: brighter and quicker, a hair louder
-      eat:    { rate: 0.92, vol: 0.85 },   // eating mode: a little lower and quieter — they're prey
+      eat:    { rate: 0.98, vol: 1.0  },   // eating mode: kept close to normal so the chatter doesn't sound off
       ghost:  { rate: 0.9,  vol: 0.55 },   // invisible: faint and distant, like a fading echo
-      repel:  { rate: 1.0,  vol: 0.7  }    // force field: muffled and held off behind the bubble
+      repel:  { rate: 1.0,  vol: 0.95 }    // force field: barely tinted — stays close to her normal voice
     };
     let voiceMode = null;              // current power-up mode tinting the voice clips (null = normal)
     let _sfxBus = null, _voiceBus = null;
@@ -626,6 +626,7 @@
       for(const url of BOUNCE_CLIPS) loadClip(url);
     }
     let activeClips = 0;               // cap simultaneous voices so it stays funny, not mush
+    const liveClips = new Set();       // currently-playing voice sources, so they can be cut on demand (e.g. at death)
     // Shuffle "bag" so we cycle through every clip before any repeats: we deal out
     // a shuffled deck of clip indices and only reshuffle once it's empty (never
     // repeating the previous clip back-to-back across the shuffle seam).
@@ -682,7 +683,10 @@
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
         src.connect(g).connect(voiceOut());
         activeClips++;
-        src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
+        liveClips.add(src);
+        // Decrement only when THIS source is still tracked: stopVoices() may have already
+        // removed it (and zeroed the count), so a late onended mustn't drop a newer clip's tally.
+        src.onended = ()=>{ if(liveClips.delete(src)) activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
       }catch(e){}
     }
@@ -783,17 +787,20 @@
       // copyright-free.
       powerFire(type){
         if(type === "shove"){
-          // forceful whoosh: a swept band of noise blown from low up to high.
-          noise({ f0:240, f1:1700, dur:0.34, vol:0.16, q:1.2 });
-          tone({ type:"sine", f0:200, f1:70, dur:0.3, vol:0.1 });
+          // forceful whoosh: a swept band of noise blown from low up to high, now with a
+          // firm low thump underneath so the shove genuinely THUMPS rather than just hisses.
+          noise({ f0:240, f1:1700, dur:0.36, vol:0.3, q:1.2 });
+          tone({ type:"sine", f0:220, f1:60, dur:0.34, vol:0.24 });
+          tone({ type:"triangle", f0:150, f1:46, dur:0.3, vol:0.18, t0:0.01 });   // punchy body
         } else if(type === "bomb"){
           // BIG explosion: a sharp crack, a deep falling boom, a rumbling sub-drop and a
-          // gritty debris blast layered together so Boom actually lands like a bomb.
-          noise({ f0:1200, f1:300, dur:0.06, vol:0.34, q:0.7 });               // initial detonation crack
-          tone({ type:"sine",     f0:200, f1:32,  dur:0.7,  vol:0.4 });          // deep falling boom
-          tone({ type:"triangle", f0:120, f1:28,  dur:0.6,  vol:0.22, t0:0.02 });// body of the blast
-          tone({ type:"square",   f0:70,  f1:24,  dur:0.55, vol:0.12 });         // sub-rumble grit
-          noise({ f0:520, f1:90,  dur:0.55, vol:0.3,  q:0.8, t0:0.02 });         // rolling debris/smoke
+          // gritty debris blast layered together so Boom actually lands like a bomb — pushed
+          // up in level so it hits hard instead of sitting politely under the music.
+          noise({ f0:1200, f1:300, dur:0.07, vol:0.46, q:0.7 });               // initial detonation crack
+          tone({ type:"sine",     f0:200, f1:32,  dur:0.75, vol:0.52 });         // deep falling boom
+          tone({ type:"triangle", f0:120, f1:28,  dur:0.65, vol:0.3,  t0:0.02 });// body of the blast
+          tone({ type:"square",   f0:70,  f1:24,  dur:0.6,  vol:0.18 });         // sub-rumble grit
+          noise({ f0:520, f1:90,  dur:0.6,  vol:0.4,  q:0.8, t0:0.02 });         // rolling debris/smoke
         } else if(type === "zap"){
           // crackling electric jolt: a buzzy descending sawtooth with fast vibrato,
           // sprinkled with a high noise crackle.
@@ -815,6 +822,27 @@
         beep(0,    784);   // G5
         beep(0.17, 880);   // A5
         beep(0.34, 988);   // B5 — rising urgency
+      },
+      // A single urgent countdown beep for a timed power-up's FINAL second. Called
+      // repeatedly on an accelerating cadence as the effect runs out, with `intensity`
+      // (0 → 1) climbing as zero nears so the "beep… beep beep beep" tightens and
+      // brightens into an unmistakable heads-up that the power is about to lapse. Louder
+      // than the old one-shot pre-warning so it actually reads over the music.
+      expireBeep(intensity){
+        const i = Math.max(0, Math.min(1, intensity || 0));
+        const f = 740 + i * 360;                              // pitch climbs as the end nears
+        const v = 0.22 + i * 0.14;                            // and gets a touch louder/more intense
+        tone({ type:"square",   f0:f,       dur:0.1, vol:v });
+        tone({ type:"triangle", f0:f * 1.5, dur:0.1, vol:v * 0.5 });   // bright overtone so it carries
+      },
+      // The conclusive "time's up!" marker the instant a timed power-up actually lapses:
+      // a short, firm two-note DOWN-beep that clearly stamps the END of the effect, set
+      // apart from the rising countdown beeps that led into it so the moment the power
+      // dies is never in doubt.
+      expireEnd(){
+        tone({ type:"square",   f0:1180, dur:0.1,  vol:0.34 });
+        tone({ type:"square",   f0:680,  dur:0.22, vol:0.32, t0:0.08 });
+        tone({ type:"triangle", f0:340,  dur:0.26, vol:0.16, t0:0.08 });   // low body so it lands with weight
       },
       // A bright, playful "a power-up appeared!" alert: a quick sparkling rising
       // arpeggio capped with a twinkling shimmer, so a fresh pickup grabs your
@@ -864,6 +892,15 @@
       // "shrink", "star", "ghost", "repel", "eat"). Pass null/"default" for normal.
       // Kept in lock-step with the music via syncMusicMode().
       setVoiceMode(mode){ voiceMode = (mode && mode !== "default") ? mode : null; },
+      // Immediately silence any Nazan voice clips still ringing out. Clips are ~1s of
+      // speech, so without this a line triggered a beat before death (or before a new
+      // round) keeps playing into the game-over screen or the next run — landing late and
+      // in the wrong moment. Cutting them here keeps her chatter tied to what's happening.
+      stopVoices(){
+        liveClips.forEach(s => { try{ s.stop(); }catch(e){} });
+        liveClips.clear();
+        activeClips = 0;
+      },
       // Which voice clip a Nazan is tied to (an index into BOUNCE_CLIPS), so spawns
       // can space same-voiced Nazans apart instead of three shouting the same line.
       soundIndexFor(key){ return clipIndexFor(key); },
@@ -1305,14 +1342,18 @@
     const EAT_WALL_AVOID  = 0.22;  // how close to a wall (fraction of base()) before it starts steering the Nazan away
     const EAT_WALL_WEIGHT = 1.6;   // how hard a wall (at full proximity) bends the flee back toward open space
     const EAT_WALL_SLIDE  = 0.15;  // fraction of the into-wall flee push kept (rest becomes a sideways slide along the wall)
-    // Just before a timed power-up actually lapses, flip its VISUALS back to normal
-    // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
-    // last sliver of time. That tiny grace period is a clear heads-up that the power
-    // is about to end, so you can scramble to safety instead of dying unaware.
-    const EFFECT_GRACE = 0.4;        // seconds of "winding down" at the end of an effect
-    // A noticeable audio warning that a timed power-up is about to lapse, sounded
-    // once when this many seconds remain so the player can react before it ends.
-    const EXPIRE_WARN = 1.5;
+    // The final stretch of a timed power-up is a clear, ramping WIND-DOWN rather than a
+    // silent grace period where the power kept working invisibly. Over EFFECT_WARN seconds
+    // before it lapses the music and the full-screen background wash ease back to normal and
+    // an accelerating countdown "beep beep" plays — but the PROTECTIVE EFFECT and the
+    // player's own visual cue (the eating ring, ghost fade, star halo, force-field bubble)
+    // stay fully active until the very end, so the cue vanishes EXACTLY when the power does.
+    // This way you can never, say, eat a Nazan without the eating still being visually clear.
+    const EFFECT_WARN = 1.1;        // seconds of audible/ambient wind-down before a timed effect lapses
+    // The countdown "beep beep" through that window accelerates: the gap between beeps eases
+    // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
+    const BEEP_INTERVAL_MIN   = 0.16;  // shortest gap between beeps (right at expiry)
+    const BEEP_INTERVAL_RANGE = 0.18;  // extra gap added at the start of the window (eases to 0 by the end)
     const PU_TYPES = Object.keys(POWERUPS);
     // The three power-ups that genuinely REMOVE Nazans for good (Eating Mode devours them,
     // Boom blasts them, the Chain Zap vaporises them) — everything else only shoves or buffs.
@@ -1448,14 +1489,15 @@
     }
     // Match the looping background music to the moment: a hungry chomp during Eating
     // Mode, a racing sparkle during Star Power, and the normal bounce otherwise. The
-    // music swaps back as soon as the effect starts winding down (its `ending` grace).
+    // music swaps back to normal as soon as the effect enters its wind-down warning,
+    // so the soundscape returns to rest a beat before the power itself lapses.
     function syncMusicMode(){
       // Each timed power-up has its own signature theme — a THEMES key named after
       // the effect type (eat / star / ghost / repel / shrink / snail). music.setMode
       // falls back to the default bounce for anything without a matching theme, and
-      // the wind-down grace returns to the default too.
+      // the wind-down warning window returns to the default too.
       let mode = "default";
-      if(activeEffect && !activeEffect.ending) mode = activeEffect.type;
+      if(activeEffect && !activeEffect.warning) mode = activeEffect.type;
       try{ music.setMode(mode); }catch(e){}
       try{ sfx.setVoiceMode(mode); }catch(e){}   // keep Nazan's voice flavour matched to the mode
     }
@@ -1528,6 +1570,7 @@
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
+      try{ sfx.stopVoices(); }catch(e){}           // drop any chatter left over from the previous run
       try{ sfx.setVoiceMode("default"); }catch(e){}   // and Nazan's voice starts un-tinted
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
@@ -1760,9 +1803,10 @@
       if(activeEffect){
         // While an effect runs, only change the live region when whole seconds change.
         const def = POWERUPS[activeEffect.type];
-        if(activeEffect.ending){
-          // Grace window: tell the player it's wearing off (the visuals have already
-          // reverted) while they still briefly hold the power.
+        if(activeEffect.warning){
+          // Wind-down window: tell the player it's wearing off (music/background have begun
+          // easing back and the countdown beeps are sounding) while the power — and its
+          // on-screen cue — are still fully in effect for this last stretch.
           nextClass = "show ending";
           nextText = def.icon + " " + def.name + " wearing off…";
         } else {
@@ -1848,7 +1892,7 @@
       }
       // Star Power leaves a fading speed-trail of after-images behind the player, so the
       // dash reads as pure momentum — the visual opposite of the Force Field's planted bubble.
-      if(activeEffect && activeEffect.type === "star" && !activeEffect.ending && player){
+      if(activeEffect && activeEffect.type === "star" && player){
         starTrail.push({ x: player.x, y: player.y, r: player.r, t: 0 });
         if(starTrail.length > 16) starTrail.shift();
       }
@@ -1860,19 +1904,29 @@
       if(activeEffect){
         activeEffect.time -= dt;
         if(activeEffect.time <= 0){
+          // The power lapses NOW — its protective effect and its on-screen cue end together
+          // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
           activeEffect = null;
+          try{ sfx.expireEnd(); }catch(err){}
           updatePrompt();
         } else {
-          // A clear audio heads-up a beat before it lapses, so the player can scramble.
-          if(!activeEffect.warned && activeEffect.time <= EXPIRE_WARN){
-            activeEffect.warned = true;
-            try{ sfx.expiring(); }catch(e){}
-          }
-          // Enter the "winding down" grace window a hair before the effect lapses: the
-          // visuals revert now (see draw()/updatePrompt()) but the power stays active.
-          if(!activeEffect.ending && activeEffect.time <= EFFECT_GRACE){
-            activeEffect.ending = true;
+          // Enter the wind-down WARNING window a little over a second before it lapses: the
+          // music and the background wash ease back to normal (see syncMusicMode()/draw())
+          // and the prompt flips to "wearing off…", while the protective effect and the
+          // player's own visual cue stay fully live right up to the end.
+          if(!activeEffect.warning && activeEffect.time <= EFFECT_WARN){
+            activeEffect.warning = true;
             updatePrompt();
+          }
+          // Through that final window, an accelerating countdown "beep beep": the cadence
+          // tightens and the pitch climbs as zero nears, clearly marking the end of the time.
+          if(activeEffect.warning){
+            activeEffect.beepT = (activeEffect.beepT || 0) - dt;
+            if(activeEffect.beepT <= 0){
+              const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
+              try{ sfx.expireBeep(1 - frac); }catch(err){}
+              activeEffect.beepT = BEEP_INTERVAL_MIN + BEEP_INTERVAL_RANGE * frac;   // ~0.34s apart easing down to ~0.16s
+            }
           }
           if(activeEffect.time <= activeEffect.displaySeconds - 1){
             activeEffect.displaySeconds = Math.ceil(activeEffect.time);
@@ -1905,8 +1959,9 @@
       const repelOn = !!(activeEffect && activeEffect.type === "repel");
       const repelR  = base() * REPEL_RADIUS;
       // While Eating Mode is running, Nazans skitter away from the player so hoovering up
-      // the whole board takes a proper chase (it also stops during the wind-down grace).
-      const eatOn = !!(activeEffect && activeEffect.type === "eat" && !activeEffect.ending);
+      // the whole board takes a proper chase. The flee lasts as long as the eating itself
+      // (and its visual ring) — they end together, never one without the other.
+      const eatOn = !!(activeEffect && activeEffect.type === "eat");
       // Opening burst: for the first moment of Eating Mode the flee drift is amplified so the
       // pack gets a head start to scatter, then it relaxes back to the normal drift speed.
       const eatElapsed = eatOn ? (activeEffect.max - activeEffect.time) : 0;
@@ -2155,11 +2210,15 @@
     }
     function draw(){
       ctx.clearRect(0, 0, W, H);
-      // Full-screen colour wash while a timed power-up runs, so its effect is obvious.
-      // During the grace window we drop the wash to signal the power is wearing off.
-      if(activeEffect && !activeEffect.ending){
+      // Full-screen colour wash while a timed power-up runs, so its effect is obvious. As the
+      // effect winds down it eases back to normal, so the AMBIENT background returns to rest a
+      // beat before the power lapses — while the player's own cue (below) stays solid to the end.
+      if(activeEffect){
         const def = POWERUPS[activeEffect.type];
-        ctx.save(); ctx.globalAlpha = 0.12; ctx.fillStyle = def.color; ctx.fillRect(0, 0, W, H); ctx.restore();
+        const fade = activeEffect.warning ? Math.max(0, activeEffect.time / EFFECT_WARN) : 1;
+        if(fade > 0){
+          ctx.save(); ctx.globalAlpha = 0.12 * fade; ctx.fillStyle = def.color; ctx.fillRect(0, 0, W, H); ctx.restore();
+        }
       }
       // Expanding shockwave ring when a Shove just fired.
       if(blastFx > 0 && player){
@@ -2271,7 +2330,7 @@
       }
       // Force Field: a clearly visible energy bubble around the player, so the push
       // dome shoving Nazans off its skin is obvious at a glance.
-      if(activeEffect && activeEffect.type === "repel" && !activeEffect.ending && player){
+      if(activeEffect && activeEffect.type === "repel" && player){
         const R = base() * REPEL_RADIUS;
         const t = elapsed;
         ctx.save();
@@ -2306,11 +2365,11 @@
         ctx.restore();
       }
       if(player){
-        if(activeEffect && !activeEffect.ending && activeEffect.type === "ghost"){
+        if(activeEffect && activeEffect.type === "ghost"){
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
-        } else if(activeEffect && !activeEffect.ending && activeEffect.type === "eat"){
+        } else if(activeEffect && activeEffect.type === "eat"){
           drawSticker(player, true, "#e8743b");   // hungry golden ring
-        } else if(activeEffect && !activeEffect.ending && activeEffect.type === "star"){
+        } else if(activeEffect && activeEffect.type === "star"){
           // Mario Kart star: a shimmering rainbow halo that cycles colour fast, plus a
           // ring of twinkling sparkles, so invincibility reads instantly.
           const t = elapsed;
@@ -2386,6 +2445,7 @@
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
+      try{ sfx.stopVoices(); }catch(e){}          // cut any Nazan chatter still ringing out so it never lingers past death
       try{ sfx.setVoiceMode("default"); }catch(e){}   // parting voice clip plays un-tinted
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
       showNazanQuote();
