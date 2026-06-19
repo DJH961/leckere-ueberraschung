@@ -727,6 +727,45 @@
           }
         }
       },
+      // A one-shot, characterful sound for each instantly-fired power-up — a
+      // distinct synth signature the moment it's unleashed: a forceful whoosh for
+      // Shove, a deep boom for Boom, and a crackling electric jolt for the Chain
+      // Zap. Built from the same goofy synth family, so they stay original and
+      // copyright-free.
+      powerFire(type){
+        if(type === "shove"){
+          // forceful whoosh: a swept band of noise blown from low up to high.
+          noise({ f0:240, f1:1700, dur:0.34, vol:0.16, q:1.2 });
+          tone({ type:"sine", f0:200, f1:70, dur:0.3, vol:0.1 });
+        } else if(type === "bomb"){
+          // deep explosion: a low falling boom under a gritty noise burst.
+          tone({ type:"sine", f0:140, f1:38, dur:0.5, vol:0.2 });
+          tone({ type:"square", f0:90, f1:30, dur:0.45, vol:0.08 });
+          noise({ f0:420, f1:120, dur:0.4, vol:0.16, q:1 });
+        } else if(type === "zap"){
+          // crackling electric jolt: a buzzy descending sawtooth with fast vibrato,
+          // sprinkled with a high noise crackle.
+          tone({ type:"sawtooth", f0:1500, f1:220, dur:0.26, vol:0.12, wobble:140, wobbleRate:38 });
+          tone({ type:"square", f0:900, f1:160, dur:0.22, vol:0.07, t0:0.02 });
+          noise({ f0:2600, f1:1400, dur:0.18, vol:0.1, q:3 });
+        }
+      },
+      // A short, noticeable "time's nearly up!" warning cue — a descending two-note
+      // "uh-oh" beep. Sounded both when a timed power-up is about to wear off and
+      // when a banked Shove/Boom is about to auto-fire, so the player always gets a
+      // clear heads-up before either elapses.
+      expiring(){
+        tone({ type:"triangle", f0:740, f1:740, dur:0.12, vol:0.14 });
+        tone({ type:"triangle", f0:494, f1:466, dur:0.2, vol:0.14, t0:0.14, wobble:14 });
+      },
+      // A comedic descending "womp-womp" defeat sting for game over — three falling
+      // notes ending on a sad downward slide, the classic "you lose" trombone, all
+      // synth so it stays original and copyright-free.
+      death(){
+        tone({ type:"sawtooth", f0:330, f1:311, dur:0.18, vol:0.13, wobble:10 });
+        tone({ type:"sawtooth", f0:294, f1:277, dur:0.18, vol:0.13, wobble:10, t0:0.2 });
+        tone({ type:"sawtooth", f0:262, f1:165, dur:0.5, vol:0.14, wobble:18, wobbleRate:7, t0:0.4 });
+      },
       // Which voice clip a Nazan is tied to (an index into BOUNCE_CLIPS), so spawns
       // can space same-voiced Nazans apart instead of three shouting the same line.
       soundIndexFor(key){ return clipIndexFor(key); },
@@ -741,7 +780,9 @@
      queues notes a fraction of a second ahead so the loop stays rock-steady
      regardless of timer jitter. The mood follows the action: a quiz-show bounce
      normally, a hungry chomp-chase during Eating Mode, and a fast sparkling
-     run during Star Power. Themes swap only on a bar line so it never lurches. */
+     run during Star Power. A theme swap takes effect on the next scheduled step
+     and restarts from the new theme's downbeat, so grabbing a power-up changes the
+     music almost immediately instead of waiting out the current bar. */
   const music = (function(){
     const midiHz = (n)=> 440 * Math.pow(2, (n - 69) / 12);
     const STEPS_PER_BAR = 8;
@@ -770,6 +811,38 @@
         { root:60, tones:[0,4,7,12] },   // C
         { root:62, tones:[0,3,7,12] },   // Dm
         { root:67, tones:[0,4,7,12] }    // G
+      ]},
+      // Invisible: an eerie, floating haunt — slow and sparse, with a low drone
+      // under wavering high notes (an original spooky lull).
+      ghost: { bpm:96, style:"haunt", prog:[
+        { root:57, tones:[0,3,7,10] },   // Am7-ish
+        { root:56, tones:[0,3,6,10] },   // Ab dim-ish
+        { root:55, tones:[0,3,7,10] },   // Gm7-ish
+        { root:53, tones:[0,4,7,11] }    // Fmaj7
+      ]},
+      // Force Field: a steady, protective pulse — a marching bass under a calm,
+      // humming chord, the audio of a planted shield holding firm.
+      repel: { bpm:116, style:"shield", prog:[
+        { root:52, tones:[0,4,7,12] },   // E
+        { root:52, tones:[0,4,7,12] },   // E
+        { root:50, tones:[0,4,7,12] },   // D
+        { root:53, tones:[0,4,7,12] }    // F
+      ]},
+      // Tiny Mode: a cute, twinkly music-box scamper — fast, high and toy-like, as
+      // if everything shrank with you (an original little march).
+      shrink: { bpm:150, style:"toy", prog:[
+        { root:60, tones:[0,4,7,12] },   // C
+        { root:62, tones:[0,3,7,12] },   // Dm
+        { root:64, tones:[0,3,7,10] },   // Em7
+        { root:65, tones:[0,4,7,12] }    // F
+      ]},
+      // Snail Mode: a slow, woozy, sluggish crawl — low and lazy with a drowsy
+      // detuned sway, matching the slow-motion crowd (an original lullaby plod).
+      snail: { bpm:72, style:"crawl", prog:[
+        { root:48, tones:[0,5,7,12] },   // C
+        { root:50, tones:[0,3,7,10] },   // Dm7
+        { root:45, tones:[0,4,7,12] },   // A
+        { root:43, tones:[0,5,7,12] }    // G
       ]}
     };
     let curName = "default", cur = THEMES.default, pendingName = "default";
@@ -813,6 +886,27 @@
         note(midiHz(chord.root + tone + 24), sd * 0.7, 0.075, "triangle", t);
         note(midiHz(chord.root + tone + 12), sd * 0.5, 0.06, "square", t);
         note(midiHz(chord.root + tone + 31), sd * 0.38, 0.045, "triangle", t + sd * 0.5);
+      } else if(cur.style === "haunt"){
+        // Ghostly haunt: a long, low sustained drone with sparse, wavering high
+        // notes that drift in and out — eerie and weightless.
+        if(within === 0 || within === 4) note(midiHz(chord.root - 12), sd * 3.4, 0.10, "sine", t);
+        if(within % 2 === 0) note(midiHz(chord.root + tone + 12), sd * 1.8, 0.05, "triangle", t);
+      } else if(cur.style === "shield"){
+        // Protective shield: a firm marching bass on every beat under a steady,
+        // humming mid chord — calm, solid and reassuring.
+        if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.0, 0.15, "square", t);
+        note(midiHz(chord.root + tone), sd * 1.4, 0.07, "sine", t);
+        if(within === 0) note(midiHz(chord.root + 7), sd * 2.0, 0.05, "triangle", t);
+      } else if(cur.style === "toy"){
+        // Tiny music-box: quick, high, plucky notes that scamper up the scale —
+        // small and cute, like a wind-up toy.
+        note(midiHz(chord.root + tone + 24), sd * 0.5, 0.07, "triangle", t);
+        if(within % 2 === 0) note(midiHz(chord.root + 12), sd * 0.4, 0.05, "sine", t);
+      } else if(cur.style === "crawl"){
+        // Sluggish crawl: a slow, lazy low pulse with a drowsy, slightly detuned
+        // sway — heavy-lidded and in no hurry at all.
+        if(within % 4 === 0) note(midiHz(chord.root - 12), sd * 2.6, 0.16, "triangle", t);
+        if(within % 2 === 0) note(midiHz(chord.root + tone) * 0.997, sd * 1.6, 0.07, "sine", t);
       } else {
         // Default quiz-show bounce: bouncy bass on every beat, a climbing arpeggio,
         // and a sparkly high accent for that game-show lift.
@@ -824,9 +918,10 @@
     function tick(){
       const ctx = getCtx();
       while(nextTime < ctx.currentTime + 0.12){
-        // Apply a requested mode change only on a bar line, so the music swaps
-        // cleanly from one downbeat to the next instead of lurching mid-phrase.
-        if(pendingName !== curName && (step % STEPS_PER_BAR) === 0){
+        // Apply a requested mode change at the very next scheduled step (not only on
+        // a bar line) so the music swaps almost immediately when a power-up fires —
+        // restarting from the new theme's downbeat so it still enters cleanly.
+        if(pendingName !== curName){
           curName = pendingName; cur = THEMES[curName] || THEMES.default; step = 0;
         }
         scheduleStep(step, nextTime);
@@ -858,9 +953,9 @@
           master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);  // fade-out
         }catch(e){}
       },
-      // Pick the mood: "eat" (chomp-chase), "star" (sparkle run) or "default".
-      // While playing, the swap lands on the next bar; otherwise it takes effect
-      // the moment the music next starts.
+      // Pick the mood by effect type ("eat", "star", "ghost", "repel", "shrink",
+      // "snail") or "default". While playing, the swap lands on the next scheduled
+      // step (near-immediate); otherwise it takes effect the moment music next starts.
       setMode(name){
         if(!THEMES[name]) name = "default";
         pendingName = name;
@@ -1117,6 +1212,9 @@
     // last sliver of time. That tiny grace period is a clear heads-up that the power
     // is about to end, so you can scramble to safety instead of dying unaware.
     const EFFECT_GRACE = 0.4;        // seconds of "winding down" at the end of an effect
+    // A noticeable audio warning that a timed power-up is about to lapse, sounded
+    // once when this many seconds remain so the player can react before it ends.
+    const EXPIRE_WARN = 1.5;
     const PU_TYPES = Object.keys(POWERUPS);
     // The three power-ups that genuinely REMOVE Nazans for good (Eating Mode devours them,
     // Boom blasts them, the Chain Zap vaporises them) — everything else only shoves or buffs.
@@ -1175,6 +1273,7 @@
     let starTrail = [];              // fading after-images streaking behind a Star Power dash
     let held = null;                 // power-up type currently carried (one at a time), or null
     let heldTimer = 0;               // seconds left before a banked Shove/Boom auto-fires (0 when nothing banked)
+    let heldWarned = false;          // has the "about to auto-fire" warning cue already sounded for this banked hold?
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
@@ -1252,11 +1351,12 @@
     // Mode, a racing sparkle during Star Power, and the normal bounce otherwise. The
     // music swaps back as soon as the effect starts winding down (its `ending` grace).
     function syncMusicMode(){
+      // Each timed power-up has its own signature theme — a THEMES key named after
+      // the effect type (eat / star / ghost / repel / shrink / snail). music.setMode
+      // falls back to the default bounce for anything without a matching theme, and
+      // the wind-down grace returns to the default too.
       let mode = "default";
-      if(activeEffect && !activeEffect.ending){
-        if(activeEffect.type === "eat") mode = "eat";
-        else if(activeEffect.type === "star") mode = "star";
-      }
+      if(activeEffect && !activeEffect.ending) mode = activeEffect.type;
       try{ music.setMode(mode); }catch(e){}
     }
     function toggleMusic(){
@@ -1324,7 +1424,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldWarned = false; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
@@ -1484,8 +1584,11 @@
       pickup = null;
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
       updatePrompt();
-      // The Star gets its own iconic invincibility jingle; everything else keeps the boing.
+      // The Star gets its own iconic invincibility jingle; the instantly-fired
+      // power-ups (Shove, Boom, Chain Zap) each get a distinct fire sound; every
+      // other (timed) effect keeps the boing.
       if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
+      else if(type === "shove" || type === "bomb" || type === "zap"){ try{ sfx.powerFire(type); }catch(e){} }
       else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
       return true;
     }
@@ -1520,7 +1623,7 @@
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
           // countdown so it can't be hoarded forever — it auto-fires once that runs out.
-          if(type === "shove" || type === "bomb"){ heldTimer = BANKED_HOLD_TIME; updatePrompt(); }
+          if(type === "shove" || type === "bomb"){ heldTimer = BANKED_HOLD_TIME; heldWarned = false; updatePrompt(); }
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
@@ -1531,6 +1634,12 @@
         // over the final BANKED_BLINK_TIME — see updatePrompt).
         const before = Math.ceil(heldTimer);
         heldTimer -= dt;
+        // Sound a one-off warning as it enters the urgent blink window, so the player
+        // hears that a banked Shove/Boom is about to auto-fire on its own.
+        if(!heldWarned && heldTimer <= BANKED_BLINK_TIME){
+          heldWarned = true;
+          try{ sfx.expiring(); }catch(e){}
+        }
         if(heldTimer <= 0){ heldTimer = 0; activate(); }
         else if(Math.ceil(heldTimer) !== before || heldTimer <= BANKED_BLINK_TIME){ updatePrompt(); }
       } else if(!held && pickupTimer > 0){
@@ -1648,6 +1757,11 @@
           activeEffect = null;
           updatePrompt();
         } else {
+          // A clear audio heads-up a beat before it lapses, so the player can scramble.
+          if(!activeEffect.warned && activeEffect.time <= EXPIRE_WARN){
+            activeEffect.warned = true;
+            try{ sfx.expiring(); }catch(e){}
+          }
           // Enter the "winding down" grace window a hair before the effect lapses: the
           // visuals revert now (see draw()/updatePrompt()) but the power stays active.
           if(!activeEffect.ending && activeEffect.time <= EFFECT_GRACE){
@@ -2137,6 +2251,7 @@
       updatePrompt();
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
+      try{ music.setMode("default"); }catch(e){}   // begin each round on the default gameplay theme
       startMusicIfEnabled();
       raf = requestAnimationFrame(step);
     }
@@ -2162,7 +2277,7 @@
     function gameOver(){
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
-      try{ music.setMode("default"); }catch(e){}   // drop any eat/star theme back to normal
+      try{ music.stop(); }catch(e){}              // end the game music when you're dead
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
       showNazanQuote();
       const final = Math.floor(score);
@@ -2173,6 +2288,8 @@
       $("#gameBestLine").textContent = (isHigh ? "🏆 New best: " : "Best: ") + Math.max(final, prev);
       overPane.classList.remove("hidden");
       renderPickers();
+      // A comedic "you lose" defeat sting, then Nazan's own parting voice clip.
+      try{ sfx.death(); }catch(e){}
       try{ sfx.boing(1, "nazan-dodge-death"); }catch(e){}
       if(isHigh && final > 0) achieve("dodge_high", "🏆", "Nazan Dodger", "You set a Nazan Dodge high score. Slippery.");
       // Whether this run lands on the GLOBAL board is decided against the score this
