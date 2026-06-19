@@ -370,6 +370,8 @@
   const sfx = (function(){
     let lastBoing = 0;                 // global throttle so we never overload the mixer
     const lastBoingKey = new Map();    // per-sticker throttle so different stickers can sing at once
+    let lastBump = 0;                  // global throttle for the springy deflect "bump" (shield/star)
+    const lastBumpKey = new Map();     // per-Nazan throttle so a crowd on the bubble doesn't buzz
     // Deterministic per-identity sound selection: the same key (e.g. a sticker
     // image or a button) always yields the same flavour & pitches, while
     // different keys sound different. Falls back to Math.random when no key.
@@ -390,13 +392,34 @@
     // Keep every effect gentle and even: pull the whole lot down a touch through one
     // shared bus, and play the voice clips at a single steady level (no impact-scaled
     // blare) so a quiet blip and a loud "boing" sit at about the same volume.
-    const SFX_MASTER = 0.7;            // overall trim so nothing is jarring
-    const CLIP_VOL   = 0.32;           // one calm level for Nazan's voice clips
-    let _sfxBus = null;
+    const SFX_MASTER   = 0.8;          // synth-cue trim — nudged up a touch so points/power-ups/timer cues read clearly
+    const VOICE_MASTER = 0.48;         // Nazan's voice clips ride lower so they no longer overrule the gameplay cues
+    const CLIP_VOL     = 0.32;         // one calm per-clip level for Nazan's voice (before the voice-bus trim)
+    // The Nazan voice clips take on the flavour of the active power-up mode so the
+    // chatter matches what's on screen: dragging & low in Snail, squeaky & small in
+    // Tiny mode, bright & quick under a Star, and hushed while Ghost/Force Field hold
+    // them at bay. `rate` shifts speed+pitch of the clip; `vol` scales its loudness.
+    const VOICE_MODES = {
+      snail:  { rate: 0.7,  vol: 0.95 },   // slow-motion: dragged-out, lower, a touch quieter
+      shrink: { rate: 1.45, vol: 0.9  },   // tiny mode: fast, high, chipmunk-squeaky
+      star:   { rate: 1.18, vol: 1.05 },   // star power: brighter and quicker, a hair louder
+      eat:    { rate: 0.92, vol: 0.85 },   // eating mode: a little lower and quieter — they're prey
+      ghost:  { rate: 0.9,  vol: 0.55 },   // invisible: faint and distant, like a fading echo
+      repel:  { rate: 1.0,  vol: 0.7  }    // force field: muffled and held off behind the bubble
+    };
+    let voiceMode = null;              // current power-up mode tinting the voice clips (null = normal)
+    let _sfxBus = null, _voiceBus = null;
     function sfxOut(){
       const ctx = getCtx();
       if(!_sfxBus){ _sfxBus = ctx.createGain(); _sfxBus.gain.value = SFX_MASTER; _sfxBus.connect(getMaster()); }
       return _sfxBus;
+    }
+    // Nazan's recorded voice clips ride their own, quieter bus so the synthesized
+    // gameplay cues (points, power-ups, timer warnings) always cut through her chatter.
+    function voiceOut(){
+      const ctx = getCtx();
+      if(!_voiceBus){ _voiceBus = ctx.createGain(); _voiceBus.gain.value = VOICE_MASTER; _voiceBus.connect(getMaster()); }
+      return _voiceBus;
     }
     function tone(opts){
       // opts: type, f0, f1, dur, vol, wobble, wobbleRate, t0, glide
@@ -644,14 +667,20 @@
         if(ctx.state === "suspended"){ try{ ctx.resume(); }catch(e){} }
         const src = ctx.createBufferSource(); src.buffer = buf;
         const g = ctx.createGain();
-        const vol = CLIP_VOL;          // one steady, gentle level for every clip
-        const t = ctx.currentTime, dur = buf.duration;
+        // Tint the clip to the active mode: shift its speed/pitch and trim its level.
+        const mode = VOICE_MODES[voiceMode] || null;
+        const rate = mode ? mode.rate : 1;
+        const vol = CLIP_VOL * (mode ? mode.vol : 1);   // mode-scaled level for this clip
+        try{ src.playbackRate.value = rate; }catch(e){}
+        // Envelope follows the ACTUAL playback length (the clip plays back faster/slower
+        // with the rate), so the fades still line up cleanly at either end.
+        const t = ctx.currentTime, dur = buf.duration / rate;
         const fi = Math.min(0.005, dur*0.25), fo = Math.min(0.02, dur*0.25);
         g.gain.setValueAtTime(0.0001, t);
         g.gain.linearRampToValueAtTime(vol, t + fi);                 // tiny fade-in kills the click
         g.gain.setValueAtTime(vol, Math.max(t + fi, t + dur - fo));
         g.gain.linearRampToValueAtTime(0.0001, t + dur);            // tiny fade-out
-        src.connect(g).connect(sfxOut());
+        src.connect(g).connect(voiceOut());
         activeClips++;
         src.onended = ()=>{ activeClips = Math.max(0, activeClips - 1); };
         src.start(t);
@@ -674,6 +703,26 @@
         } else if(now - lastBoing < 200){ return; }
         lastBoing = now;
         playClip(intensity, key);
+      },
+      // A springy, satisfying "boink" when a Nazan bounces off YOU — used while a
+      // Force Field bubble deflects them and while Star Power barges through them, so
+      // bouncing Nazans off yourself feels good and snappy. A rubbery upward pitch-pop
+      // with a wobble and a little body underneath; synth, so it stays original. Lightly
+      // throttled (global + per-Nazan) so a crowd pressed on the bubble doesn't buzz.
+      bump(intensity, key){
+        const now = performance.now();
+        if(now - lastBump < 45) return;          // global anti-buzz
+        if(key != null){
+          const prev = lastBumpKey.get(key) || 0;
+          if(now - prev < 150) return;           // same Nazan won't retrigger every frame
+          lastBumpKey.set(key, now);
+        } else if(now - lastBump < 90){ return; }
+        lastBump = now;
+        const R = rngFor(key);
+        const f = 300 + R() * 220;               // a little per-Nazan pitch variety
+        const v = Math.min(0.22, 0.13 + (intensity || 1) * 0.02);   // firmer hits pop a touch louder
+        tone({ type:"triangle", f0:f, f1:f * 2.4, dur:0.12, vol:v, wobble:32, wobbleRate:30 });  // springy pitch-pop
+        tone({ type:"sine", f0:f * 0.6, f1:f * 1.2, dur:0.1, vol:v * 0.55 });                    // body underneath
       },
       // funny "blip" for non play/pause button clicks — each button (keyed by
       // `key`) keeps a consistent goofy voice; different buttons sound different.
@@ -738,10 +787,13 @@
           noise({ f0:240, f1:1700, dur:0.34, vol:0.16, q:1.2 });
           tone({ type:"sine", f0:200, f1:70, dur:0.3, vol:0.1 });
         } else if(type === "bomb"){
-          // deep explosion: a low falling boom under a gritty noise burst.
-          tone({ type:"sine", f0:140, f1:38, dur:0.5, vol:0.2 });
-          tone({ type:"square", f0:90, f1:30, dur:0.45, vol:0.08 });
-          noise({ f0:420, f1:120, dur:0.4, vol:0.16, q:1 });
+          // BIG explosion: a sharp crack, a deep falling boom, a rumbling sub-drop and a
+          // gritty debris blast layered together so Boom actually lands like a bomb.
+          noise({ f0:1200, f1:300, dur:0.06, vol:0.34, q:0.7 });               // initial detonation crack
+          tone({ type:"sine",     f0:200, f1:32,  dur:0.7,  vol:0.4 });          // deep falling boom
+          tone({ type:"triangle", f0:120, f1:28,  dur:0.6,  vol:0.22, t0:0.02 });// body of the blast
+          tone({ type:"square",   f0:70,  f1:24,  dur:0.55, vol:0.12 });         // sub-rumble grit
+          noise({ f0:520, f1:90,  dur:0.55, vol:0.3,  q:0.8, t0:0.02 });         // rolling debris/smoke
         } else if(type === "zap"){
           // crackling electric jolt: a buzzy descending sawtooth with fast vibrato,
           // sprinkled with a high noise crackle.
@@ -750,13 +802,55 @@
           noise({ f0:2600, f1:1400, dur:0.18, vol:0.1, q:3 });
         }
       },
-      // A short, noticeable "time's nearly up!" warning cue — a descending two-note
-      // "uh-oh" beep. Sounded both when a timed power-up is about to wear off and
-      // when a banked Shove/Boom is about to auto-fire, so the player always gets a
-      // clear heads-up before either elapses.
+      // An unmissable "time's almost up!" alarm — three quick urgent beeps that
+      // climb in pitch, each with a bright overtone so the warning cuts clean
+      // through the music and gameplay. Sounded both when a timed power-up is
+      // about to wear off and when a banked Shove/Boom is about to auto-fire, so
+      // the player always gets a loud, clear heads-up before either elapses.
       expiring(){
-        tone({ type:"triangle", f0:740, f1:740, dur:0.12, vol:0.14 });
-        tone({ type:"triangle", f0:494, f1:466, dur:0.2, vol:0.14, t0:0.14, wobble:14 });
+        const beep = (t0, f) => {
+          tone({ type:"square",   f0:f,       dur:0.13, vol:0.22, t0:t0 });
+          tone({ type:"triangle", f0:f * 1.5, dur:0.13, vol:0.12, t0:t0 });   // bright overtone so it carries
+        };
+        beep(0,    784);   // G5
+        beep(0.17, 880);   // A5
+        beep(0.34, 988);   // B5 — rising urgency
+      },
+      // A bright, playful "a power-up appeared!" alert: a quick sparkling rising
+      // arpeggio capped with a twinkling shimmer, so a fresh pickup grabs your
+      // attention and feels like a fun invitation to go get it.
+      powerAppear(){
+        const notes = [659.25, 880, 1174.66];   // E5 A5 D6 — open and attention-grabbing
+        let t = 0;
+        for(const f of notes){
+          tone({ type:"triangle", f0:f,     dur:0.1,  vol:0.17, t0:t });
+          tone({ type:"square",   f0:f * 2, dur:0.08, vol:0.05, t0:t });    // sparkle octave
+          t += 0.08;
+        }
+        // a final twinkling flourish so it feels playful, not just a beep
+        tone({ type:"triangle", f0:1567.98, dur:0.2, vol:0.13, t0:t, wobble:45, wobbleRate:26 });   // G6 shimmer
+      },
+      // A snappy, satisfying "got it!" chime the moment you actually collect a
+      // power-up — a quick two-note rise so picking one up feels rewarding and
+      // stays distinct from the alert that announced it.
+      powerGrab(){
+        tone({ type:"square", f0:880,     dur:0.06, vol:0.15 });
+        tone({ type:"square", f0:1318.51, dur:0.13, vol:0.15, t0:0.06, wobble:22 });   // up to E6
+      },
+      // The mirror of powerAppear: a "slipping away!" cue when an uncollected
+      // power-up is about to vanish. Same twinkly voice and notes as the appear
+      // alert but running DOWN the scale and fading out, so it reads instantly as
+      // the same power-up leaving rather than a brand-new one arriving.
+      powerLeaving(){
+        const notes = [1174.66, 880, 659.25];   // D6 A5 E5 — powerAppear's arpeggio, reversed
+        let t = 0, v = 0.16;
+        for(const f of notes){
+          tone({ type:"triangle", f0:f,     dur:0.1,  vol:v,        t0:t });
+          tone({ type:"square",   f0:f * 2, dur:0.08, vol:v * 0.3,  t0:t });   // sparkle octave, fading with it
+          t += 0.08; v *= 0.72;                                                 // dim each step as it disappears
+        }
+        // a low, wavering tail so it clearly trails off instead of landing bright
+        tone({ type:"triangle", f0:329.63, dur:0.22, vol:0.1, t0:t, wobble:35, wobbleRate:18 });   // E5 fade-out
       },
       // A comedic descending "womp-womp" defeat sting for game over — three falling
       // notes ending on a sad downward slide, the classic "you lose" trombone, all
@@ -766,6 +860,10 @@
         tone({ type:"sawtooth", f0:294, f1:277, dur:0.18, vol:0.13, wobble:10, t0:0.2 });
         tone({ type:"sawtooth", f0:262, f1:165, dur:0.5, vol:0.14, wobble:18, wobbleRate:7, t0:0.4 });
       },
+      // Tint Nazan's voice clips to match the active power-up mode (e.g. "snail",
+      // "shrink", "star", "ghost", "repel", "eat"). Pass null/"default" for normal.
+      // Kept in lock-step with the music via syncMusicMode().
+      setVoiceMode(mode){ voiceMode = (mode && mode !== "default") ? mode : null; },
       // Which voice clip a Nazan is tied to (an index into BOUNCE_CLIPS), so spawns
       // can space same-voiced Nazans apart instead of three shouting the same line.
       soundIndexFor(key){ return clipIndexFor(key); },
@@ -1278,6 +1376,7 @@
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
+    const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "about to vanish" cue fires (matches the blink-out)
     const PICKUP_FIRST   = 2.5;      // delay before the first pickup of a round
     // The gap before a fresh pickup appears once one is spent is deliberately RANDOM,
     // so it never lands at the exact same moment every time. For an INSTANT power-up
@@ -1358,6 +1457,7 @@
       let mode = "default";
       if(activeEffect && !activeEffect.ending) mode = activeEffect.type;
       try{ music.setMode(mode); }catch(e){}
+      try{ sfx.setVoiceMode(mode); }catch(e){}   // keep Nazan's voice flavour matched to the mode
     }
     function toggleMusic(){
       musicEnabled = !musicEnabled;
@@ -1428,6 +1528,7 @@
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
+      try{ sfx.setVoiceMode("default"); }catch(e){}   // and Nazan's voice starts un-tinted
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
                  r: naturalPlayerR(), rot: 0,
                  img: playerImage() };
@@ -1604,8 +1705,8 @@
         tries++;
       } while(tries < 12 && Math.hypot(x - player.x, y - player.y) < base() * 0.25);
       const type = rollPickupType();
-      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0 };
-      try{ sfx.point(); }catch(e){}
+      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, leaving: false };
+      try{ sfx.powerAppear(); }catch(e){}
     }
 
     // Advance the pickup lifecycle each frame: let the player collect the on-screen
@@ -1618,7 +1719,7 @@
         if(dx * dx + dy * dy < rr * rr){       // collected!
           const type = pickup.type;
           held = type; pickup = null;
-          try{ sfx.blip("powerup-collect"); }catch(e){}
+          try{ sfx.powerGrab(); }catch(e){}
           // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
@@ -1627,6 +1728,11 @@
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
+        } else if(!pickup.leaving && pickup.life <= PICKUP_LEAVE_WARN){
+          // It's blinking out — sound a matching "slipping away!" counterpart to the
+          // appear cue so the player gets one last nudge to grab it before it's gone.
+          pickup.leaving = true;
+          try{ sfx.powerLeaving(); }catch(e){}
         }
       } else if(held && heldTimer > 0){
         // Tick down a banked Shove/Boom. When the bank runs dry it AUTO-FIRES wherever the
@@ -1876,6 +1982,7 @@
             }
             e.x = sx; e.y = sy;                           // hold it on the bubble's surface
             repelPush(e, nx, ny);                         // firm in-play bump, no off-screen yeet
+            try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
           }
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
@@ -1990,6 +2097,7 @@
             shove(e, dx / d, dy / d);
             score += STAR_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+            try{ sfx.bump(3, "powerup-star-bump-" + (e.img ? e.img.src : i)); }catch(err){}   // satisfying barge-through smack
             try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
           }
@@ -2278,6 +2386,7 @@
       running = false;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
+      try{ sfx.setVoiceMode("default"); }catch(e){}   // parting voice clip plays un-tinted
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; }
       showNazanQuote();
       const final = Math.floor(score);
