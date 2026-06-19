@@ -1039,7 +1039,7 @@
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
-      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a modest blast radius for points
+      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a solid blast radius for points
       zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // instant: auto-fork lightning to the nearest Nazans and vaporise them on pickup (count scales with the crowd)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
@@ -1403,7 +1403,7 @@
     // is deliberately modest, so it clears the cluster around you rather than half the
     // board — bank it, then unleash it right in the thick of the crowd to clear the most.
     function doBomb(){
-      const R = base() * 0.46;
+      const R = base() * 0.55;
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
@@ -1954,7 +1954,7 @@
       // so it reads as an explosion that wiped them out — not a Shove that pushed them.
       if(boomFx > 0 && player){
         const k = 1 - boomFx / 0.6;             // 0 → 1 over the effect's life
-        const R = base() * 0.85 * (0.25 + 0.85 * k);
+        const R = base() * 0.55 * (0.25 + 0.85 * k);
         ctx.save();
         const grad = ctx.createRadialGradient(player.x, player.y, R * 0.4, player.x, player.y, R);
         grad.addColorStop(0, "rgba(255,210,90," + (0.45 * (1 - k)).toFixed(3) + ")");
