@@ -253,7 +253,7 @@
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
         <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>), no aiming needed — but you can't sit on them forever: each pulses a gentle warning and <strong>auto-fires on its own</strong> if you hold it too long. Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. The <strong>Chain Zap</strong> now fires the <strong>instant you grab it</strong>, forking lightning to the <strong>nearest</strong> Nazans and vaporising them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
-        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong> (they blink and <strong>auto-fire</strong> if held too long). <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
+        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong> (they <strong>auto-fire</strong> if held too long). <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
           <div class="spRow">
@@ -1527,7 +1527,7 @@
         }
       } else if(held && heldTimer > 0){
         // Tick down a banked Shove/Boom. When the bank runs dry it AUTO-FIRES wherever the
-        // player is, so the power-up is always eventually spent (the prompt blinks a warning
+        // player is, so the power-up is always eventually spent (the prompt pulses a warning
         // over the final BANKED_BLINK_TIME — see updatePrompt).
         const before = Math.ceil(heldTimer);
         heldTimer -= dt;
