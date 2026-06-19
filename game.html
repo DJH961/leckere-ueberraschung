@@ -172,6 +172,13 @@
   .puList .puIco{flex:0 0 1.5em; font-size:1.2rem; line-height:1.35; text-align:center;}
   .puList .puName{font-weight:800; color:var(--navy);}
   .puList .puDesc{color:var(--muted); font-size:.88rem; line-height:1.35; display:block;}
+  .tipList{list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px;}
+  .tipList li{display:flex; gap:11px; align-items:flex-start;
+    padding:9px 12px; border-radius:12px; background:rgba(127,127,127,.06);
+    color:var(--muted); font-size:.88rem; line-height:1.4;}
+  body.dark .tipList li{background:rgba(255,255,255,.05);}
+  .tipList .tipIco{flex:0 0 1.5em; font-size:1.2rem; line-height:1.4; text-align:center;}
+  .tipList strong{color:var(--navy);}
   .helpClose{margin:20px auto 0; display:block;}
   /* Minimal achievement toast */
   #toasts{position:fixed; left:50%; bottom:88px; transform:translateX(-50%); z-index:10;
@@ -380,6 +387,16 @@
           <li><span class="puIco">💨</span><span><span class="puName">Shove</span><span class="puDesc">Banked. Blasts nearby Nazans away. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">💥</span><span><span class="puName">Boom</span><span class="puDesc">Banked. Pops the whole crowd around you for points. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">⚡</span><span><span class="puName">Chain Zap</span><span class="puDesc">Fires the instant you grab it, forking lightning to the nearest Nazans and vaporising them.</span></span></li>
+        </ul>
+        <h3>Tips &amp; tricks</h3>
+        <ul class="tipList">
+          <li><span class="tipIco" aria-hidden="true">🎯</span><span><strong>Hug the middle.</strong> Nazans spawn from the edges, so the centre gives you the most reaction time — and keeps you within reach of whichever power-up pops up.</span></li>
+          <li><span class="tipIco" aria-hidden="true">🌀</span><span><strong>Shoving buys room, not a kill.</strong> Knocking Nazans out of bounds with Shove, Star or the Force Field clears space fast, but they always wander back — treat it as a reset, not a finisher.</span></li>
+          <li><span class="tipIco" aria-hidden="true">🚗</span><span><strong>Don't bother aiming.</strong> A banked Shove or Boom auto-fires the instant a Nazan would hit you, so just barrel into a crowd — it doubles as a free panic button that saves you from an otherwise lethal touch.</span></li>
+          <li><span class="tipIco" aria-hidden="true">🍽️</span><span><strong>Grab everything, even the gentle buffs.</strong> Every non-killer you collect quietly raises the odds that a board-clearing Eating Mode, Boom or Chain Zap shows up next, so keep eating power-ups instead of dodging them.</span></li>
+          <li><span class="tipIco" aria-hidden="true">🔁</span><span><strong>No back-to-back repeats.</strong> A power-up sits out the next two pickups after you grab it, so don't count on Eating Mode twice in a row — spend what you have while you have it.</span></li>
+          <li><span class="tipIco" aria-hidden="true">👴</span><span><strong>The old Nazans are the deadly ones.</strong> Each one speeds up the longer it's on screen, so save your killers for the long-lived veterans rather than fresh arrivals.</span></li>
+          <li><span class="tipIco" aria-hidden="true">💥</span><span><strong>Let the crowd build, then cash in.</strong> The board fills up to a dozen Nazans, so an Eating Mode, Boom or Chain Zap unleashed on a packed screen clears far more — and scores far more — than one fired early.</span></li>
         </ul>
         <button class="gameBtn helpClose" id="gameHelpClose" type="button">Got it</button>
       </div>
