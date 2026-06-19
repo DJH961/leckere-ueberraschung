@@ -1485,12 +1485,12 @@
     const PICKUP_FIRST   = 2.5;      // delay before the first pickup of a round
     // The gap before a fresh pickup appears once one is spent is deliberately RANDOM,
     // so it never lands at the exact same moment every time. For an INSTANT power-up
-    // (a Shove, with no lingering effect) it can come as soon as 2s and up to ~7s. For a
+    // (a Shove, with no lingering effect) it can come as soon as 2s and up to ~10s. For a
     // TIMED effect we never want the next pickup to surface before its FINAL second, so
     // the soonest is pushed back to (duration − 1): e.g. Snail Mode (5s) reappears no
     // earlier than 4s in, sometimes right at the end, sometimes a few seconds later.
     const PICKUP_AFTER_MIN    = 2;   // soonest a fresh pickup may reappear after one is spent
-    const PICKUP_AFTER_WINDOW = 5;   // random spread added on top of the earliest moment
+    const PICKUP_AFTER_WINDOW = 8;   // random spread added on top of the earliest moment
     function nextPickupGap(dur){
       // Hold off until the effect's final second at the earliest (instant power-ups, dur 0,
       // keep the plain 2s floor), then add a random slice so the exact moment still varies.
