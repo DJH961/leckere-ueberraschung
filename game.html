@@ -85,10 +85,13 @@
     max-width:min(92vw,520px); text-align:center;}
   #gamePrompt.show{display:inline-flex; align-items:center; gap:6px;}
   #gamePrompt.ready{animation:promptPulse 1s ease-in-out infinite;}
+  #gamePrompt.ready.urgent{background:#d6402e; animation:promptBlink .42s steps(1,end) infinite;}
   #gamePrompt.active{background:rgba(61,80,118,.78);}
   #gamePrompt.ending{background:rgba(61,80,118,.55); animation:promptPulse .6s ease-in-out infinite;}
   @keyframes promptPulse{0%,100%{transform:translateX(-50%) scale(1);}
     50%{transform:translateX(-50%) scale(1.05);}}
+  @keyframes promptBlink{0%,49%{opacity:1; transform:translateX(-50%) scale(1.06);}
+    50%,100%{opacity:.35; transform:translateX(-50%) scale(1);}}
   @media (max-width:600px){
     #gamePrompt{padding:7px 14px; font-size:.78rem; bottom:14px; border-radius:30px;
       opacity:.82; max-width:min(86vw,340px);}
@@ -249,8 +252,8 @@
         <h2>Nazan Dodge</h2>
         <p>You are a Nazan. The other Nazans are bouncing — and they want a hug you do <em>not</em> want.</p>
         <p class="desktopHow">Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>. Survive as long as you can — more Nazans keep joining.</p>
-        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>), no aiming needed. Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. The <strong>Chain Zap</strong> now fires the <strong>instant you grab it</strong>, forking lightning to the <strong>nearest</strong> Nazans and vaporising them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
-        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong>. <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
+        <p class="desktopHow">Cornered? <strong>Grab a power-up</strong> when one appears. Timed ones kick in the <strong>instant you grab them</strong> — eating mode, invisibility, tiny mode, snail mode, a <strong>Force Field</strong> that wraps you in a bubble and firmly bumps Nazans off its skin (one brushed in open space stays in play; steer the bubble so it shoves a Nazan against a nearby wall and it sails out of bounds), though you slow to a crawl while it's up, so it's a push you have to commit to — or a golden <strong>Star</strong> that makes you invincible <em>and faster</em>, leaving a sparkling dash-trail as you barge straight through Nazans for points — drive one into the edge and it sails clean off the screen. <strong>Shove</strong> and <strong>Boom</strong> are special: you bank them and unleash them when the moment's right by <strong>tapping your own Nazan</strong> (or pressing <strong>Space</strong>), no aiming needed — but you can't sit on them forever: each blinks an urgent warning and <strong>auto-fires on its own</strong> if you hold it too long. Shove blasts nearby Nazans away and Boom pops the whole crowd around you for points. The <strong>Chain Zap</strong> now fires the <strong>instant you grab it</strong>, forking lightning to the <strong>nearest</strong> Nazans and vaporising them — it auto-targets, clearing just over half a crowd (and a light board outright) in one strike. Shove, Star and the Force Field push Nazans without destroying them, so guide them off the edge yourself. Only one power-up appears at a time, and the next won't show up until you've spent the last.</p>
+        <p class="mobileHow">Move with your <strong>finger</strong> or keyboard. Grab power-ups to survive; tap your Nazan to fire <strong>Shove</strong> or <strong>Boom</strong> (they blink and <strong>auto-fire</strong> if held too long). <strong>Chain Zap</strong> fires as soon as you pick it up.</p>
         <div class="stickerPick">
           <span class="spLabel">Your Nazan</span>
           <div class="spRow">
@@ -1036,7 +1039,7 @@
       shrink: { icon:"🤏", name:"Tiny Mode",   color:"#d6a32e", dur:5 },   // shrink down and slip through the crowd
       snail:  { icon:"🐌", name:"Snail Mode",  color:"#5a9e3d", dur:5 },   // Nazans crawl in slow motion
       star:   { icon:"⭐", name:"Star Power",  color:"#f7c948", dur:6 },   // Mario-Kart star: invincible, faster, push Nazans aside (off-screen if driven onto an edge)
-      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a big blast radius for points
+      bomb:   { icon:"💥", name:"Boom",        color:"#d6402e", dur:0 },   // banked: pop every Nazan in a modest blast radius for points
       zap:    { icon:"⚡", name:"Chain Zap",   color:"#c01ad6", dur:0 }    // instant: auto-fork lightning to the nearest Nazans and vaporise them on pickup (count scales with the crowd)
     };
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
@@ -1044,6 +1047,11 @@
     const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
     const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
     const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
+    // Banked power-ups (Shove, Boom) can't be hoarded forever: once collected they sit in
+    // your hand for at most BANKED_HOLD_TIME seconds, blinking an urgent warning over the
+    // final BANKED_BLINK_TIME, then AUTOFIRE on their own if you never spent them.
+    const BANKED_HOLD_TIME  = 7;     // seconds you can carry a banked Shove/Boom before it auto-fires
+    const BANKED_BLINK_TIME = 3;     // seconds of remaining hold-time over which it blinks an urgent warning
     // Chain Zap: an instant, AUTO-TARGETING lightning strike (see doZap). The old Laser Beam had
     // to be AIMED — you tapped a spot to fire — which on mobile forced you to lift your steering
     // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming and NO extra
@@ -1096,6 +1104,14 @@
     // scatter and earn themselves some running room, then it eases back to the normal drift.
     const EAT_FLEE_BOOST_MUL  = 2.0;  // multiplier on flee speed during the opening burst
     const EAT_FLEE_BOOST_TIME = 0.6;  // seconds of boosted flee at the start of Eating Mode
+    // Edge awareness: fleeing prey shouldn't bury itself into a wall and pile up in the
+    // corners — it should break sideways toward the open floor, the way a person dodging
+    // someone in a room runs for space instead of backing into a wall. Each wall the Nazan
+    // is within EAT_WALL_AVOID (fraction of base()) of pushes it back toward the room, and
+    // any flee heading straight INTO a near wall is mostly redirected to slide ALONG it.
+    const EAT_WALL_AVOID  = 0.22;  // how close to a wall (fraction of base()) before it starts steering the Nazan away
+    const EAT_WALL_WEIGHT = 1.6;   // how hard a wall (at full proximity) bends the flee back toward open space
+    const EAT_WALL_SLIDE  = 0.15;  // fraction of the into-wall flee push kept (rest becomes a sideways slide along the wall)
     // Just before a timed power-up actually lapses, flip its VISUALS back to normal
     // (solid Nazan, no aura/wash) while the protective EFFECT still applies for this
     // last sliver of time. That tiny grace period is a clear heads-up that the power
@@ -1158,6 +1174,7 @@
     let zapSparks = [];              // quick electric sparks marking each Nazan a Chain Zap vaporised
     let starTrail = [];              // fading after-images streaking behind a Star Power dash
     let held = null;                 // power-up type currently carried (one at a time), or null
+    let heldTimer = 0;               // seconds left before a banked Shove/Boom auto-fires (0 when nothing banked)
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
@@ -1307,7 +1324,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
@@ -1380,12 +1397,13 @@
       blastFx = 0.45;
     }
 
-    // The Boom power-up's banked blast: pop every Nazan caught in a big radius, banking
+    // The Boom power-up's banked blast: pop every Nazan caught in a blast radius, banking
     // points for each. Unlike a Shove (which only pushes Nazans around) this genuinely
-    // REMOVES them, like an area-of-effect Eating Mode you don't have to chase. Bank it,
-    // then unleash it near the thickest crowd to clear the most.
+    // REMOVES them, like an area-of-effect Eating Mode you don't have to chase. The radius
+    // is deliberately modest, so it clears the cluster around you rather than half the
+    // board — bank it, then unleash it right in the thick of the crowd to clear the most.
     function doBomb(){
-      const R = base() * 0.68;
+      const R = base() * 0.46;
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
@@ -1457,7 +1475,7 @@
     // true when something actually fired.
     function activate(){
       if(!running || !held) return false;
-      const type = held; held = null;
+      const type = held; held = null; heldTimer = 0;
       const def = POWERUPS[type];
       if(type === "shove"){ doShove(); }
       else if(type === "bomb"){ doBomb(); }
@@ -1500,12 +1518,21 @@
           try{ sfx.blip("powerup-collect"); }catch(e){}
           // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
-          // timed effects kick in the instant you grab them.
-          if(type === "shove" || type === "bomb"){ updatePrompt(); }
+          // timed effects kick in the instant you grab them. A banked pickup also starts a hold
+          // countdown so it can't be hoarded forever — it auto-fires once that runs out.
+          if(type === "shove" || type === "bomb"){ heldTimer = BANKED_HOLD_TIME; updatePrompt(); }
           else { activate(); }
         } else if(pickup.life <= 0){           // vanished uncollected
           pickup = null; pickupTimer = PICKUP_RESPAWN;
         }
+      } else if(held && heldTimer > 0){
+        // Tick down a banked Shove/Boom. When the bank runs dry it AUTO-FIRES wherever the
+        // player is, so the power-up is always eventually spent (the prompt blinks a warning
+        // over the final BANKED_BLINK_TIME — see updatePrompt).
+        const before = Math.ceil(heldTimer);
+        heldTimer -= dt;
+        if(heldTimer <= 0){ heldTimer = 0; activate(); }
+        else if(Math.ceil(heldTimer) !== before || heldTimer <= BANKED_BLINK_TIME){ updatePrompt(); }
       } else if(!held && pickupTimer > 0){
         pickupTimer -= dt;
         if(pickupTimer <= 0) spawnPickup();
@@ -1528,10 +1555,16 @@
           nextText = def.icon + " " + def.name + " · " + activeEffect.displaySeconds + "s";
         }
       } else if(held){
-        // Loaded and ready — make the controls obvious and draw the eye with a pulse.
+        // Loaded and ready — make the controls obvious and draw the eye with a pulse. A banked
+        // Shove/Boom also shows its hold countdown, and once it's nearly up it switches to an
+        // urgent blink so you know it's about to auto-fire on its own.
         const def = POWERUPS[held];
-        nextClass = "show ready";
-        nextText = "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
+        const secs = Math.max(0, Math.ceil(heldTimer));
+        const urgent = heldTimer > 0 && heldTimer <= BANKED_BLINK_TIME;
+        nextClass = urgent ? "show ready urgent" : "show ready";
+        nextText = heldTimer > 0
+          ? "👉 " + def.icon + " " + def.name + " ready · " + secs + "s — tap your Nazan or press Space!"
+          : "👉 " + def.icon + " " + def.name + " ready — tap your Nazan or press Space!";
       } else {
         // Nothing to fire: hide the hint entirely so it can't mislead.
         nextClass = "";
@@ -1733,12 +1766,38 @@
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
         // but only while there's room to run. Once the player is bearing right down on a
-        // Nazan it stops fleeing, so cornered prey can actually be caught.
+        // Nazan it stops fleeing, so cornered prey can actually be caught. The flee is
+        // EDGE-AWARE: rather than backing straight into a wall and piling up in a corner,
+        // a Nazan near a wall slides ALONG it toward open space and lets the walls bend its
+        // escape back into the room — the way a person breaks sideways to avoid being
+        // pinned instead of retreating into a dead end.
         if(eatOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d > (e.r + player.r) * EAT_FLEE_MIN_GAP){
-            e.x += dx / d * fleeSpeed; e.y += dy / d * fleeSpeed;
+            let fx = dx / d, fy = dy / d;             // straight away from the player
+            const zone = base() * EAT_WALL_AVOID;
+            const dL = e.x, dR = W - e.x, dT = e.y, dB = H - e.y;
+            // (1) Walls push the Nazan back toward the room, harder the closer it is.
+            let wx = 0, wy = 0;
+            if(dL < zone) wx += 1 - dL / zone;
+            if(dR < zone) wx -= 1 - dR / zone;
+            if(dT < zone) wy += 1 - dT / zone;
+            if(dB < zone) wy -= 1 - dB / zone;
+            // (2) Any flee component driving INTO a near wall is mostly dropped and turned
+            // into a slide along that wall, biased to slip past the player (toward the side
+            // with more room when the player is level with the Nazan).
+            if((dL < zone && fx < 0) || (dR < zone && fx > 0)){
+              fx *= EAT_WALL_SLIDE;
+              fy += Math.abs(dy) > 1 ? Math.sign(dy) : Math.sign(H / 2 - e.y);
+            }
+            if((dT < zone && fy < 0) || (dB < zone && fy > 0)){
+              fy *= EAT_WALL_SLIDE;
+              fx += Math.abs(dx) > 1 ? Math.sign(dx) : Math.sign(W / 2 - e.x);
+            }
+            fx += wx * EAT_WALL_WEIGHT; fy += wy * EAT_WALL_WEIGHT;
+            const fl = Math.hypot(fx, fy) || 1;
+            e.x += fx / fl * fleeSpeed; e.y += fy / fl * fleeSpeed;
           }
         }
         // A Nazan that was directly shoved/touched (or bounced off one that was) carries
@@ -2009,6 +2068,22 @@
         ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,.85)";
         ctx.beginPath(); ctx.arc(0, 0, R * 0.92, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
+      }
+      // Banked Shove/Boom: a ring in the power-up's colour hugs the player so it's clear one
+      // is loaded and tied to your own Nazan. As the hold countdown runs low it BLINKS hard —
+      // an unmistakable on-field warning that it's about to auto-fire on its own.
+      if(player && held && heldTimer > 0 && (held === "shove" || held === "bomb")){
+        const def = POWERUPS[held];
+        const urgent = heldTimer <= BANKED_BLINK_TIME;
+        const blink = urgent ? (Math.sin(elapsed * 18) > -0.2 ? 1 : 0) : 1;   // hard on/off flicker when urgent
+        if(blink){
+          const pulse = 1 + Math.sin(elapsed * 6) * 0.06;
+          ctx.save();
+          ctx.globalAlpha = urgent ? 0.95 : 0.7;
+          ctx.beginPath(); ctx.arc(player.x, player.y, (player.r + 9) * pulse, 0, Math.PI * 2);
+          ctx.lineWidth = urgent ? 5 : 3; ctx.strokeStyle = def.color; ctx.stroke();
+          ctx.restore();
+        }
       }
       if(player){
         if(activeEffect && !activeEffect.ending && activeEffect.type === "ghost"){
