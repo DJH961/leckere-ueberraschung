@@ -2232,6 +2232,11 @@
             continue;
           }
           if(activeEffect && activeEffect.type === "ghost") continue;
+          // Death auto-fire: about to die with a banked Shove or Boom in hand? Unleash it
+          // in this final instant instead of dying. A panic-button reflex — the Shove
+          // blasts the lethal Nazan (and its neighbours) away, the Boom pops the crowd
+          // around you — buying you another moment rather than wasting the pickup on death.
+          if(held === "shove" || held === "bomb"){ activate(); break; }
           gameOver(); return;
         }
       }
