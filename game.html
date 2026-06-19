@@ -1111,7 +1111,9 @@
     // grows steadily less likely. Grabbing any deleter resets the bias back to zero.
     const DELETE_BIAS_STEP = 0.07;
     let deleteBias = 0;              // accumulated odds boost for the deleting power-ups
-    let lastPickupType = null;       // the previous pickup's type, never repeated back-to-back
+    const PICKUP_COOLDOWN = 2;       // once seen, a power-up must sit out the next two rolls
+    const EFFECTIVE_PICKUP_COOLDOWN = Math.max(0, Math.min(PICKUP_COOLDOWN, PU_TYPES.length - 1));
+    let recentPickupTypes = [];      // newest-first list of types still on cooldown
     // On top of the delete bias, every INDIVIDUAL power-up builds its own "starvation" odds
     // boost: each time a pickup is rolled, every type that DIDN'T get picked nudges its own
     // weight up by this much, and the type that DID get picked resets to zero. This is no hard
@@ -1122,13 +1124,14 @@
     const starveBias = {};           // per-type accumulated odds boost; rises while unseen, resets on pick
     PU_TYPES.forEach(t => { starveBias[t] = 0; });
     // Pick the next pickup's type. Base odds are EQUAL across all power-ups, except:
-    //  • the type you just got is excluded, so you can never get the same one twice in a row;
+    //  • the last two types you got are excluded, so a power-up stays on cooldown for two rolls;
     //  • the three deleting power-ups carry an extra `deleteBias` weight that has been
     //    creeping up for every non-deleting pickup since the last delete (see DELETE_BIAS_STEP);
     //  • every type carries its own `starveBias`, which has been creeping up for every roll it
     //    went unpicked and is wiped the moment it lands (see STARVE_BIAS_STEP).
     function rollPickupType(){
-      const pool = PU_TYPES.filter(t => t !== lastPickupType);
+      const blocked = new Set(recentPickupTypes.slice(0, EFFECTIVE_PICKUP_COOLDOWN));
+      const pool = PU_TYPES.filter(t => !blocked.has(t));
       let total = 0;
       const weights = pool.map(t => {
         const w = 1 + (DELETE_TYPES.includes(t) ? deleteBias : 0) + starveBias[t];
@@ -1145,7 +1148,7 @@
       else deleteBias += DELETE_BIAS_STEP;
       // Every type that wasn't picked grows a little hungrier; the chosen one resets to zero.
       PU_TYPES.forEach(t => { starveBias[t] = (t === type) ? 0 : starveBias[t] + STARVE_BIAS_STEP; });
-      lastPickupType = type;
+      recentPickupTypes = [type, ...recentPickupTypes.slice(0, EFFECTIVE_PICKUP_COOLDOWN - 1)];
       return type;
     }
     let blastFx = 0;                 // lingering shockwave ring after a Shove fires
@@ -1305,7 +1308,7 @@
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
-      deleteBias = 0; lastPickupType = null;   // fresh run: equal odds, no carried-over delete bias
+      deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       player = { x: W / 2, y: H * 0.72, baseR: naturalPlayerR(),
