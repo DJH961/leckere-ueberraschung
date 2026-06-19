@@ -1112,6 +1112,7 @@
     const DELETE_BIAS_STEP = 0.07;
     let deleteBias = 0;              // accumulated odds boost for the deleting power-ups
     const PICKUP_COOLDOWN = 2;       // once seen, a power-up must sit out the next two rolls
+    const CAPPED_PICKUP_COOLDOWN = Math.max(0, Math.min(PICKUP_COOLDOWN, PU_TYPES.length - 1));
     let recentPickupTypes = [];      // newest-first list of types still on cooldown
     // On top of the delete bias, every INDIVIDUAL power-up builds its own "starvation" odds
     // boost: each time a pickup is rolled, every type that DIDN'T get picked nudges its own
@@ -1129,8 +1130,7 @@
     //  • every type carries its own `starveBias`, which has been creeping up for every roll it
     //    went unpicked and is wiped the moment it lands (see STARVE_BIAS_STEP).
     function rollPickupType(){
-      const cappedCooldownSize = Math.max(0, Math.min(PICKUP_COOLDOWN, PU_TYPES.length - 1));
-      const blocked = new Set(recentPickupTypes.slice(0, cappedCooldownSize));
+      const blocked = new Set(recentPickupTypes.slice(0, CAPPED_PICKUP_COOLDOWN));
       const pool = PU_TYPES.filter(t => !blocked.has(t));
       let total = 0;
       const weights = pool.map(t => {
