@@ -1830,6 +1830,8 @@
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let eatGrace = 0;                // seconds of Eating Mode's last-instant devour grace still left (see EAT_GRACE)
     let pickupTimer = 0;             // counts down to the next pickup appearing
+    let firstPickupServed = false;   // false until the FIRST pickup of a run drops — that one bypasses the crowd gate so the opening is never toy-less
+    let momentum = 0;                // 0…1 "you're on a roll" meter: a big batch clear bumps it, it bleeds off in step(), and it briefly quickens the next pickup (see pickupHaste)
     let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (any power-up) spawned right by the player
     // ----- Egan Mode (a milestone minigame; ships toggled OFF) -----
     // A small bonus round that breaks into the normal game at score milestones. The whole
@@ -1892,9 +1894,11 @@
     const PICKUP_AFTER_MIN    = 2;   // soonest a fresh pickup may reappear after one is spent
     const PICKUP_AFTER_WINDOW = 8;   // random spread added on top of the earliest moment
     // Each COMPLETED Egan round stretches the wait between power-ups a little further, so
-    // pickups grow scarcer the deeper a run goes (capped so they never dry up entirely).
-    const PICKUP_EGAN_TIER_GAP = 1.6;   // extra seconds added to the floor per completed Egan round
-    const PICKUP_EGAN_TIER_MAX = 8;     // ceiling on that cumulative stretch (≈5 rounds in)
+    // pickups grow scarcer the deeper a run goes (capped so they never dry up entirely). The
+    // stretch is gentler than it was (and pickupHaste below claws much of it back on a hot board),
+    // because removal capacity drying up was a big part of why deep runs felt unwinnable.
+    const PICKUP_EGAN_TIER_GAP = 1.2;   // extra seconds added to the floor per completed Egan round
+    const PICKUP_EGAN_TIER_MAX = 6;     // ceiling on that cumulative stretch
     function eganPickupDelay(){
       return Math.min(PICKUP_EGAN_TIER_MAX, Math.max(0, eganTier) * PICKUP_EGAN_TIER_GAP);
     }
@@ -1907,6 +1911,32 @@
       return earliest + Math.random() * PICKUP_AFTER_WINDOW;
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
+    // ---- Removal-capacity scaling: keep power-ups arriving fast enough to MATTER -----------------
+    // The pickup countdown (updatePickups) is consumed FASTER — power-ups arrive sooner — exactly
+    // when the board is hardest to survive. Three drivers, all self-balancing:
+    //   • intensity — a deep run runs denser and faster, so it earns more frequent tools and the
+    //     player's removal rate tracks the rising spawn pressure instead of falling hopelessly behind.
+    //   • board fullness (the "relief valve") — as the board nears its cap the next pickup is pulled
+    //     in; a cleared board lets the cadence relax again, so the run rubber-bands toward a workable
+    //     equilibrium. It can't be exploited for free survival — you still have to aim and land the
+    //     clear — it just stops the spawn-vs-removal mismatch from spiralling into an unwinnable wall.
+    //   • momentum — a big, fast batch clear (Boom/Zap haul, an Eating spree) briefly quickens the
+    //     next drop, rewarding aggressive, skilful play with a sustaining rhythm to chase a huge run.
+    const PICKUP_HASTE_INTEN    = 0.22; // countdown speed-up per intensity unit above the anchor
+    const PICKUP_HASTE_FULL     = 0.60; // …added at a completely full board
+    const PICKUP_HASTE_MOMENTUM = 0.50; // …added at a full momentum meter
+    function pickupHaste(){
+      const inten = Math.max(0, intensity());
+      let live = 0; for(let i = 0; i < enemies.length; i++){ if(!enemies[i].banished) live++; }
+      const cap = enemyCap();
+      const full = cap ? Math.min(1, live / cap) : 0;
+      return 1 + PICKUP_HASTE_INTEN * inten + PICKUP_HASTE_FULL * full + PICKUP_HASTE_MOMENTUM * momentum;
+    }
+    // A removal/displacement event feeds the momentum meter; each Nazan cleared bumps it a notch
+    // (capped at 1), and it bleeds off in step() over a couple of seconds.
+    const MOMENTUM_PER_KILL = 0.12; // meter gained per Nazan removed/displaced
+    const MOMENTUM_DECAY    = 0.5;  // meter lost per second (≈2s to drain a full meter)
+    function bumpMomentum(n){ momentum = Math.min(1, momentum + MOMENTUM_PER_KILL * Math.max(1, n | 0)); }
     // A power-up only drops once the board has at least this many Nazans actually ON SCREEN
     // (banished ones flying off don't count): a fresh/near-empty arena holds off on pickups and
     // re-checks on the PICKUP_RESPAWN cadence until the crowd fills in, so power-ups always land
@@ -1990,7 +2020,11 @@
     // game stays gentle and only firms up as you approach 1000, making 1000 easier to REACH while
     // leaving the feel AT 1000 unchanged. None of this touches the score math, so leaderboard
     // numbers stay directly comparable.
-    const INTENSITY_MIN   = -1.0;  // value at score 0 — reproduces the old slow, gentle opening
+    // The score-0 floor is lifted a touch (was -1.0) so the very opening isn't DEAD — see the note
+    // below. The clamp only bites the earliest sliver of the run (raw intensity dips below -0.9 only
+    // up to ~score 150), so it raises the bottom of the curve while leaving everything from ~150 on
+    // — and so the whole beloved 200→1000 stretch — landing EXACTLY where it always has.
+    const INTENSITY_MIN   = -0.9;  // value at score 0 — a hair busier than the old dead -1.0 opening
     const INTENSITY_MAX   =  4.5;  // overall cap so it stays fast-but-fair, never impossible
     const INTENSITY_EASE  =  0.65; // <1 → concave road to 1000: the early stretch is the calmest
     const INTENSITY_ABOVE_SLOPE = 0.85; // intensity gained per 1000 TOTAL score above the 1000 anchor — a touch slower past 1000
@@ -2009,17 +2043,39 @@
       }
       return Math.max(INTENSITY_MIN, Math.min(INTENSITY_MAX, i));
     }
+    // ---- QUANTITY vs EXECUTION split (the late-game knife's edge) ----------------------------
+    // Above the 1000 anchor intensity() keeps climbing without bound. Feeding ALL of that into
+    // spawn QUANTITY (interval, enemy cap, refill, floor) marches the board to a saturated wall a
+    // human simply can't thread — "difficulty" by attrition, not by skill, which is what made deep
+    // runs feel unbeatable. quantityIntensity() instead bends the ABOVE-anchor portion through a
+    // saturating curve so the quantity levers settle at a busy-but-navigable EQUILIBRIUM (it eases
+    // toward QUANTITY_SAT and never past it), while the leftover, still-unbounded intensity is poured
+    // into enemy SPEED and maturity (see spawnEnemy / the maturity ramp in step()). The result: a
+    // late game that gets harder by getting FASTER and tighter — a high skill ceiling a master can
+    // keep running — rather than by burying you. Below the anchor (intensity ≤ 0) it is identical to
+    // intensity(), so the gentle road to 1000 and the 1000 feel itself are completely unchanged.
+    const QUANTITY_SAT = 1.3;   // ceiling the above-anchor quantity pressure eases toward (≈ today's feel at score ~2200, then it flattens instead of climbing to a wall)
+    function quantityIntensity(){
+      const i = intensity();
+      if(i <= 0) return i;                                  // road to 1000: no change at all
+      return QUANTITY_SAT * (1 - Math.exp(-i / QUANTITY_SAT));
+    }
     // Spawn-interval ramp: the main lever for the road to 1000. baseTerm() is the time-free
     // replacement for the old "5 − elapsed·0.035" creep — now intensity-driven so it follows SCORE
     // rather than wall-clock seconds. It equals 1.5 at the 1000 anchor (the old value at ~100s),
     // sits HIGHER (calmer) below 1000, and keeps dropping above it.
     const INTENSITY_INTERVAL_GAIN = 3.5; // how much the spawn-interval base term swings per intensity unit
-    function spawnIntervalBase(){ return 1.5 - INTENSITY_INTERVAL_GAIN * intensity(); }
+    function spawnIntervalBase(){ return 1.5 - INTENSITY_INTERVAL_GAIN * quantityIntensity(); }
+    // The enemy COUNT cap also rides the saturating quantity dial, so the board grows for a deep run
+    // but eases toward a fixed equilibrium (≈16) instead of marching upward — busy, never a wall.
+    function enemyCap(){ return 12 + Math.max(0, Math.round(4 * quantityIntensity() / QUANTITY_SAT)); }
     // Maturity (age → speed) acceleration also follows intensity, but only SUBTLY: at the 1000
     // anchor (intensity 0) Nazans speed up at exactly the old rate, a hot run nudges them to mature
     // a touch faster, and the gentle opening lets them build up fractionally slower. Anchored at 0
-    // like the rest of the model so 1000 still feels identical.
-    const INTENSITY_MATURE_GAIN = 0.06; // share of the age→speed rate added/removed per intensity unit
+    // like the rest of the model so 1000 still feels identical. This is now the PRIMARY late-game
+    // lever: with quantity bounded (quantityIntensity), the leftover intensity is spent here so a
+    // deep run gets harder by being FASTER and more precise rather than by sheer numbers.
+    const INTENSITY_MATURE_GAIN = 0.10; // share of the age→speed rate added/removed per intensity unit
     // ---- Egan-mode INTENSITY (driven ONLY by Egan performance) -------------------------------
     // Egan rounds get tougher the BETTER you are at Egan — never because the main score is high.
     // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
@@ -2337,6 +2393,7 @@
       }
     }
 
+    const START_NAZANS = 4;   // how many Nazans the arena opens with (was a near-empty 2) so the start has something to dodge
     function spawnEnemy(){
       const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));   // slightly smaller on tall phones so there's room to weave
       // Spawn at a random edge so nothing lands right on the player.
@@ -2391,6 +2448,7 @@
       eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
       eganTier = 0; eganArmed = 0;   // fresh run: no completed Egan rounds yet
       eganPrevEnemies = [];                              // drop any board snapshot left from a previous run
+      firstPickupServed = false; momentum = 0;           // fresh run: the first pickup bypasses the crowd gate, and the roll-meter is empty
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setTempo(1); }catch(e){}                // and the music tempo starts un-pressured
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
@@ -2401,7 +2459,10 @@
                  img: playerImage() };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
-      for(let i = 0; i < 2; i++) spawnEnemy();
+      // Seed a small starting crowd so the opening has gentle action to weave through from the very
+      // first second, instead of a near-empty screen where you survive by doing nothing (these arrive
+      // slow and young like any spawn — lively, not lethal).
+      for(let i = 0; i < START_NAZANS; i++) spawnEnemy();
       if(scoreEl) scoreEl.textContent = "0";
       updatePrompt();
     }
@@ -2453,7 +2514,7 @@
         }
       }
       // Shove now banks points too (per Nazan pushed), consistent with the other clears.
-      if(pushed){ score += pushed * SHOVE_POINTS; if(scoreEl) scoreEl.textContent = String(Math.floor(score)); }
+      if(pushed){ score += pushed * SHOVE_POINTS; bumpMomentum(pushed); if(scoreEl) scoreEl.textContent = String(Math.floor(score)); }
       blastFx = 0.45;
     }
 
@@ -2472,7 +2533,7 @@
           // bursts there — making it unmistakable that the blast DESTROYED them, not
           // merely shoved them aside.
           boomPuffs.push({ x: e.x, y: e.y, r0: (e.r || base() * 0.5), t: 0, dur: 0.5 });
-          enemies.splice(i, 1); score += BOMB_POINTS;
+          enemies.splice(i, 1); score += BOMB_POINTS; bumpMomentum(1);
           try{ sfx.boing(4, "powerup-bomb-" + (e.img ? e.img.src : i)); }catch(err){}
         }
       }
@@ -2521,7 +2582,7 @@
         const idx = enemies.indexOf(e);
         if(idx < 0) continue;
         zapSparks.push({ x: e.x, y: e.y, r0: (e.r || base() * 0.5), t: 0, dur: 0.45 });
-        enemies.splice(idx, 1); score += ZAP_POINTS;
+        enemies.splice(idx, 1); score += ZAP_POINTS; bumpMomentum(1);
         try{ sfx.boing(4, "powerup-zap-" + (e.img ? e.img.src : idx)); }catch(err){}
       }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
@@ -2572,6 +2633,7 @@
       } while(tries < 12 && Math.hypot(x - player.x, y - player.y) < base() * 0.25);
       const type = rollPickupType();
       pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, beepT: 0 };
+      firstPickupServed = true;
       try{ sfx.powerAppear(); }catch(e){}
     }
 
@@ -2586,6 +2648,7 @@
       x = Math.max(r, Math.min(W - r, x));   // keep it fully on screen
       y = Math.max(r, Math.min(H - r, y));
       pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, beepT: 0 };
+      firstPickupServed = true;
       try{ sfx.powerAppear(); }catch(e){}
     }
 
@@ -2654,15 +2717,20 @@
         if(heldTimer <= 0){ heldTimer = 0; activate(); }
         else if(Math.ceil(heldTimer) !== before || heldTimer <= BANKED_BLINK_TIME){ updatePrompt(); }
       } else if(!held && pickupTimer > 0){
-        pickupTimer -= dt;
+        // Consume the countdown FASTER when the board is hot/full/momentum is up, so removal tools
+        // arrive sooner exactly when they're needed most (see pickupHaste) — the relief valve.
+        pickupTimer -= dt * pickupHaste();
         if(pickupTimer <= 0){
           // Count the Nazans actually ON SCREEN (a banished one mid-flight off the edge doesn't
           // count): power-ups only drop into a board with at least PICKUP_MIN_NAZANS to use them on.
           let onScreenNazans = 0;
           for(let k = 0; k < enemies.length; k++){ if(!enemies[k].banished) onScreenNazans++; }
+          // The very FIRST pickup of a run bypasses the crowd gate (needs only 1 Nazan), so a slow
+          // opening is never left without a toy; every later pickup honours the full gate.
+          const minNazans = firstPickupServed ? PICKUP_MIN_NAZANS : 1;
           // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
-          if(onScreenNazans < PICKUP_MIN_NAZANS){
+          if(onScreenNazans < minNazans){
             // Too few Nazans on screen yet — hold off (any earned Egan reward is kept, just
             // delayed) and re-check shortly, so a near-empty board never sprouts a power-up.
             pickupTimer = PICKUP_RESPAWN;
@@ -3338,6 +3406,7 @@
       const m = Math.floor(score / 100);
       if(m > milestone){ milestone = m; try{ sfx.point(); }catch(err){} }
       if(blastFx > 0){ blastFx = Math.max(0, blastFx - dt); }
+      if(momentum > 0){ momentum = Math.max(0, momentum - dt * MOMENTUM_DECAY); }   // the roll-meter bleeds off over a couple of seconds
       if(boomFx > 0){ boomFx = Math.max(0, boomFx - dt); }
       if(boomPuffs.length){
         for(let i = boomPuffs.length - 1; i >= 0; i--){
@@ -3459,10 +3528,14 @@
       // the 1000 anchor, and keeps dropping above it. Below 1000 intensity is negative, so refillMul
       // is >1 and the floor is higher too — the whole road to 1000 is gentler, then matches today AT
       // 1000 and escalates beyond.
-      const refillMul = 1 / (1 + inten * 0.35);
-      const floor = Math.max(0.7, 1.4 - inten * 0.12);
+      // 1000 and escalates beyond. Above 1000 the refill/floor ride the SATURATING quantity dial
+      // (quantityIntensity), so an emptied board on a deep run still fills briskly but the interval
+      // bottoms out at an equilibrium instead of collapsing toward zero — busy, never a wall.
+      const q = quantityIntensity();
+      const refillMul = 1 / (1 + q * 0.35);
+      const floor = Math.max(0.7, 1.4 - q * 0.12);
       const interval = Math.max(floor, (spawnIntervalBase() + crowdAdj) * refillMul / arenaDiff());
-      const cap = 12 + Math.min(4, Math.max(0, Math.floor(inten)));   // the board grows for top players as total-score intensity climbs (so an Egan round's points count too)
+      const cap = enemyCap();   // grows for deep runs but eases toward a fixed, navigable equilibrium (≈16)
       if(spawnAcc >= interval && enemies.length < cap){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
@@ -3540,7 +3613,10 @@
             // The per-age acceleration follows intensity too, but only subtly (anchored so it's
             // the old rate at the 1000 mark — see INTENSITY_MATURE_GAIN).
             const matureRate = 0.00025 * Math.max(0, 1 + inten * INTENSITY_MATURE_GAIN);
-            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * matureRate) * arenaDiff();
+            // The veteran SPEED ceiling rides the full (unbounded) intensity too: with quantity held
+            // to an equilibrium, a deep run's extra intensity cashes out as faster long-lived Nazans
+            // — the execution challenge that keeps the late game hard without an unthreadable swarm.
+            const target = base() * Math.min(0.020 + inten * 0.0030, 0.004 + e.age * matureRate) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
@@ -3563,6 +3639,7 @@
             // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
             // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
             score += PUSH_POINTS;
+            bumpMomentum(1);
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
             banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
@@ -3691,7 +3768,7 @@
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
           if((activeEffect && activeEffect.type === "eat") || eatGrace > 0){
-            enemies.splice(i, 1); score += KILL_POINTS;
+            enemies.splice(i, 1); score += KILL_POINTS; bumpMomentum(1);
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
             haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode (incl. the grace tail)
@@ -3705,6 +3782,7 @@
             const d = Math.hypot(dx, dy) || 1;
             shove(e, dx / d, dy / d);
             score += STAR_POINTS;
+            bumpMomentum(1);
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.bump(3, "powerup-star-bump-" + (e.img ? e.img.src : i)); }catch(err){}   // satisfying barge-through smack
             try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
@@ -4038,6 +4116,7 @@
           "ar " + ar.toFixed(2) + "  tall " + tallness().toFixed(2),
           "diff  ar " + arenaDiff().toFixed(2) + "  eg " + eganDiff().toFixed(2),
           "inten ar " + intensity().toFixed(2) + "  eg " + eganIntensity().toFixed(2),
+          "qty " + quantityIntensity().toFixed(2) + "  cap " + enemyCap() + "  haste " + pickupHaste().toFixed(2) + "  mom " + momentum.toFixed(2),
           // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena | egan difficulty.
           "       arena|egan",
           "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
