@@ -1938,11 +1938,14 @@
       }
       return pts[pts.length - 1][1];
     }
-    // Egan Mode difficulty by aspect ratio (W/H). Phones are pinned to the floor (0.70) so mobile
-    // Egan is UNCHANGED; the curve is eased from medium screens onward (1.0 → 0.95) and reaches its
-    // ceiling earlier and lower (1.33 → 1.20, was 1.40), so wide desktops are meaningfully easier and
-    // the mobile↔desktop spread shrinks across the whole landscape range, not just past the old cap.
-    const EGAN_DIFF_PTS = [[0.70, 0.70], [1.0, 0.95], [1.33, 1.20]];
+    // Egan Mode difficulty by aspect ratio (W/H), anchored to the THREE formats that actually
+    // matter: a 9:16 portrait phone (ar≈0.5625), a standard 16:9 screen (ar≈1.778) and an ultra-wide
+    // monitor (32:9, ar≈3.556). The 16:9 screen is the baseline at exactly 1.0; portrait is a touch
+    // harder (1.08, the cramped arena loses some catch room) and ultra-wide is slightly harder again,
+    // rising proportionally with width (32:9 → 1.10). This is a shallow VALLEY with its floor at 16:9,
+    // not a one-way ramp — both extremes sit a little above 1.0. arMap() interpolates the in-between
+    // formats (e.g. 21:9 → ≈1.03) and clamps flat past the first/last anchor.
+    const EGAN_DIFF_PTS = [[0.5625, 1.08], [1.7778, 1.00], [3.5556, 1.10]];
     function eganDiff(){
       const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
       return arMap(ar, EGAN_DIFF_PTS);
@@ -2158,17 +2161,14 @@
       const ar = W / Math.max(1, H);
       return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
     }
-    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's
-    // eganDiff): a tall/narrow portrait phone has far less room to dodge, so Nazans move
-    // slower and arrive less often there; a wide desktop nudges the other way. The enemy
-    // COUNT cap is deliberately left out of this (tuned separately). Uses the same arMap()
-    // anchor-point shaping as eganDiff so MEDIUM screens move too (not just the endpoints):
-    // phones sit at the floor (~0.85, harder than the old 0.75), a medium ~1.0 screen stays
-    // ~1.0 but on a continuous slope (no flat dead-zone), and the curve reaches a LOWERED desktop
-    // ceiling (1.06, down from 1.12) by ar ~1.3. Dropping the top end further closes the
-    // mobile↔desktop gap (now a ~1.25× phone→desktop spread, was ~1.49×) while still keeping a
-    // clear "wider screen = a bit harder" gradient for the extra dodging room a desktop affords.
-    const ARENA_DIFF_PTS = [[0.55, 0.85], [1.0, 1.0], [1.3, 1.06]];
+    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's eganDiff),
+    // anchored to the same THREE formats that matter: 9:16 portrait (ar≈0.5625), standard 16:9
+    // (ar≈1.778) and 32:9 ultra-wide (ar≈3.556). 16:9 is the baseline at exactly 1.0; a portrait
+    // phone has far less room to dodge so it sits a touch higher (1.08), and an ultra-wide monitor's
+    // extra dodging room is offset by a slight, proportional bump (32:9 → 1.10). A shallow VALLEY
+    // with its floor at 16:9 — both extremes sit just above 1.0 — so the in-between formats (e.g.
+    // 21:9 → ≈1.03) are interpolated by arMap(). The enemy COUNT cap is tuned separately, not here.
+    const ARENA_DIFF_PTS = [[0.5625, 1.08], [1.7778, 1.00], [3.5556, 1.10]];
     function arenaDiff(){
       const ar = W / Math.max(1, H);
       return arMap(ar, ARENA_DIFF_PTS);
@@ -3905,6 +3905,10 @@
           "arenaDiff " + arenaDiff().toFixed(3),
           "eganDiff  " + eganDiff().toFixed(3),
           "tallness  " + tallness().toFixed(3),
+          // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena|egan diff at each.
+          "9:16   " + arMap(0.5625, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
+          "16:9   " + arMap(1.7778, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(1.7778, EGAN_DIFF_PTS).toFixed(2),
+          "32:9   " + arMap(3.5556, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(3.5556, EGAN_DIFF_PTS).toFixed(2),
         ];
         const pad = base() * 0.02, lh = Math.max(14, base() * 0.028);
         const top = eganHudTop() + pad * 0.5;
