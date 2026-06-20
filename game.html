@@ -3748,7 +3748,8 @@
         // (touch only; a tap right by your Nazan or to fire a power-up stays silent).
         if(running && player && e.pointerType === "touch" && !downOnPlayer){
           const jx = pointer.x - player.x, jy = pointer.y - player.y;
-          if(jx * jx + jy * jy > (base() * 0.33) * (base() * 0.33)){ try{ sfx.swoosh(); }catch(err){} }
+          const flick = base() * 0.33;
+          if(jx * jx + jy * jy > flick * flick){ try{ sfx.swoosh(); }catch(err){} }
         }
       });
       canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
