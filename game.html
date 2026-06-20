@@ -1791,7 +1791,7 @@
     const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
     const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
-    const EGAN_MAX_ANGLE = 0.42;     // shallowest-but-varied launch pitch off horizontal (~24°); each egan picks its own.
+    const EGAN_MAX_ANGLE = 0.42;     // max launch pitch off horizontal (~24°); each egan picks a random pitch up to this.
                                      // Kept low (and the heading is clamped each frame, see eganStep) so egans always
                                      // travel side-to-side and exit LEFT or RIGHT — never steeply off the top or bottom.
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
