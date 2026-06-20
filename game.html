@@ -1590,6 +1590,11 @@
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
+    // "nico" easter egg: counts how many rounds someone has played under a name that
+    // contains "nico" (so "Nico", "not nico", "nicolas"... all qualify), so the very
+    // first one can spawn-kill them and every one after can hand them a packed board +
+    // an escape power-up (see nicoEasterEgg()).
+    const NICO_KEY = "nazanDodgeNicoGames";
     // Random things Nazan says when you get caught — shown big and loud on game over.
     const NAZAN_QUOTES = [
       "You need to blow not suck",
@@ -1611,6 +1616,7 @@
     const startPane = $("#gameStart");
     const overPane  = $("#gameOver");
     let promptClass = "", promptText = "";
+    let nicoDoom = false;   // set when nico's first game spawn-kills him, for a tailored game-over line
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
@@ -2401,8 +2407,9 @@
       }
     }
 
-    const START_NAZANS = 4;   // how many Nazans the arena opens with (was a near-empty 2) so the start has something to dodge
-    function spawnEnemy(){
+    const START_NAZANS = 3;   // how many Nazans the arena opens with so the start has something to dodge
+    function spawnEnemy(opts){
+      opts = opts || {};
       const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));   // slightly smaller on tall phones so there's room to weave
       // Spawn at a random edge so nothing lands right on the player. The "random edge"
       // heuristic only keeps clear of a CENTRED player, though — a player hugging a wall or
@@ -2413,11 +2420,26 @@
       // edge point can be "too close", so the loop must not spin forever).
       let x, y, tries = 0;
       const safe = player ? player.r + r + base() * 0.08 : 0;   // keep clear of the player by both radii + a margin
-      do {
-        if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
-        else { x = Math.random() * W; y = Math.random() < 0.5 ? r : H - r; }
-        tries++;
-      } while(player && tries < 16 && Math.hypot(x - player.x, y - player.y) < safe);
+      if(player && opts.slotAng !== undefined){
+        // Opening crowd: place this Nazan out at the arena edge along a given bearing from the
+        // player, so the seeded Nazans fan out around the board (spaced apart) instead of all
+        // clustering in one corner. We march from the player along the bearing to the first wall.
+        const ca = Math.cos(opts.slotAng), sa = Math.sin(opts.slotAng);
+        let t = Infinity;
+        if(ca >  1e-6) t = Math.min(t, (W - r - player.x) / ca);
+        else if(ca < -1e-6) t = Math.min(t, (r - player.x) / ca);
+        if(sa >  1e-6) t = Math.min(t, (H - r - player.y) / sa);
+        else if(sa < -1e-6) t = Math.min(t, (r - player.y) / sa);
+        if(!isFinite(t) || t < 0) t = Math.max(W, H);
+        x = Math.min(Math.max(player.x + ca * t, r), W - r);
+        y = Math.min(Math.max(player.y + sa * t, r), H - r);
+      } else {
+        do {
+          if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
+          else { x = Math.random() * W; y = Math.random() < 0.5 ? r : H - r; }
+          tries++;
+        } while(player && tries < 16 && Math.hypot(x - player.x, y - player.y) < safe);
+      }
       // New Nazans normally arrive GENTLY — no more screaming in at full pace. The
       // danger of each one builds from its own time on screen (see the per-enemy
       // acceleration in step()), not from how late in the round it spawned. EXCEPTION:
@@ -2426,17 +2448,24 @@
       // The arena's aspect ratio also tempers the pace: a cramped portrait phone gets
       // slower Nazans (see arenaDiff), a wide desktop a touch faster.
       const speed = base() * (0.004 + Math.random() * 0.0015) * (1 + intensity() * 0.5) * arenaDiff();
-      // Heading: a random direction, but nudged AWAY from the player so a fresh Nazan can't
-      // beeline straight into you from across the board the instant it appears. We pick a random
-      // angle, then if it points within a cone toward the player, reflect it back outward — so it
-      // emerges drifting along the edge or inward-but-off-line rather than as an instant snipe.
+      // Heading: by default a random direction nudged AWAY from the player so a refill Nazan can't
+      // beeline straight into you the instant it appears. The opening crowd (opts.engage) flips this
+      // — it heads ACROSS the board toward your side so there's something to dodge — but both cases
+      // stay outside the aim cone so nothing ever lands as a direct, unavoidable snipe.
       let ang = Math.random() * Math.PI * 2;
       if(player){
         const toPlayer = Math.atan2(player.y - y, player.x - x);
-        let diff = ang - toPlayer;
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // normalise to (-π, π]
-        if(Math.abs(diff) < SPAWN_AIM_CONE){                 // aimed too directly at the player…
-          ang = toPlayer + (diff < 0 ? -SPAWN_AIM_CONE : SPAWN_AIM_CONE);   // …push the heading just outside the cone
+        if(opts.engage){
+          // Opening crowd: head ACROSS the board toward the player's side — close enough that you
+          // actually have to move to dodge — but kicked just outside the aim cone so it never
+          // lands as an instant snipe straight on you.
+          ang = toPlayer + (Math.random() < 0.5 ? -1 : 1) * (SPAWN_AIM_CONE + Math.random() * SPAWN_AIM_CONE);
+        } else {
+          let diff = ang - toPlayer;
+          diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // normalise to (-π, π]
+          if(Math.abs(diff) < SPAWN_AIM_CONE){                 // aimed too directly at the player…
+            ang = toPlayer + (diff < 0 ? -SPAWN_AIM_CONE : SPAWN_AIM_CONE);   // …push the heading just outside the cone
+          }
         }
       }
       // Never reuse the player's own sticker as an enemy — that's confusing. Pick
@@ -2489,12 +2518,48 @@
                  img: playerImage() };
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       for(const k in keys) delete keys[k];
-      // Seed a small starting crowd so the opening has gentle action to weave through from the very
-      // first second, instead of a near-empty screen where you survive by doing nothing (these arrive
-      // slow and young like any spawn — lively, not lethal).
-      for(let i = 0; i < START_NAZANS; i++) spawnEnemy();
+      // Seed a small opening crowd, fanned out across the board so it's spaced apart (not clustered)
+      // and each one drifts ENGAGINGLY toward the player's side — close enough to make you dodge from
+      // the very first second, but kicked off a direct line so none of them lands straight on you
+      // (they still arrive slow and young like any spawn — lively, not lethal).
+      const seedSpread = 1.45;   // arc (~83°) the opening Nazans fan across, centred on "straight up"
+      for(let i = 0; i < START_NAZANS; i++){
+        const spawnAngle = -Math.PI / 2 + (i - (START_NAZANS - 1) / 2) * seedSpread
+                     + (Math.random() - 0.5) * 0.25;   // a touch of jitter so it isn't perfectly mechanical
+        spawnEnemy({ slotAng: spawnAngle, engage: true });
+      }
+      nicoEasterEgg();
       if(scoreEl) scoreEl.textContent = "0";
       updatePrompt();
+    }
+
+    // === "nico" easter egg ===
+    // A personal welcome for anyone cheeky enough to play under a name containing "nico"
+    // (including playful variants like "not nico"). The FIRST time
+    // they play, a Nazan materialises right inside them for an instant spawn kill.
+    // EVERY game after, they open boxed in by a full board of 12 Nazans — but with an
+    // Eating Mode power-up dropped right beside them so they can chomp their way clear.
+    const NICO_FULL_BOARD = 12;
+    function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
+    function nicoEasterEgg(){
+      if(!isNico()) return;
+      const games = LS.get(NICO_KEY, 0);
+      LS.set(NICO_KEY, games + 1);
+      enemies = [];   // intentional: discard the normal START_NAZANS opening so nico gets his own bespoke board
+      if(games === 0){
+        // First game ever as nico: a Nazan spawns straight on top of him (no grace),
+        // so the very first collision check ends the round on the spot. Radius mirrors
+        // spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
+        const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));
+        const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
+        enemies.push({ x: player.x, y: player.y, vx: 0, vy: 0, r, img,
+                       rot: Math.random() * Math.PI * 2, vr: 0, age: 0, shoveT: 0, spawnT: 0, noWall: false });
+        nicoDoom = true;
+        return;
+      }
+      // Returning nico: a packed opening board, plus an Eating Mode escape hatch beside him.
+      for(let i = 0; i < NICO_FULL_BOARD; i++) spawnEnemy();
+      spawnPickupNear("eat");
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
@@ -2526,6 +2591,24 @@
       e.vx = nx * push; e.vy = ny * push;
       e.shoveT = SHOVE_WINDOW;
       e.banished = false; e.returning = false; e.noWall = true;
+    }
+
+    // Force Field catching a Nazan on its bubble: bank the push, play the springy deflect,
+    // and send it gently off-screen. Shared so it fires identically whether the Nazan is in
+    // normal play OR drifting back in from an earlier banish (a reappearing one is fair game
+    // again the moment it's visible, not stuck untouchable until it has fully re-entered).
+    function fieldRepel(e){
+      const dx = e.x - player.x, dy = e.y - player.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const nx = dx / d, ny = dy / d;
+      // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
+      // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
+      score += PUSH_POINTS;
+      bumpMomentum(1);
+      if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
+      banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
+      haptic(8);   // an even subtler nudge as the Force Field deflects a Nazan off its skin
     }
 
     // Blast every Nazan within reach with a hard outward shove. This is the Shove power-up's
@@ -3355,7 +3438,8 @@
         ctx.font = "bold " + tallySize.toFixed(0) + "px system-ui, sans-serif";
         ctx.lineWidth = Math.max(2, tallySize * 0.12); ctx.strokeStyle = "rgba(255,255,255,.85)";
         ctx.fillStyle = eganTargetHit ? "#1f9d55" : "#3d5076";
-        const tally = "🥚 " + Math.min(eganCaught, EGAN_TARGET) + " / " + EGAN_TARGET +
+        // Count keeps climbing PAST the goal — the target is 25, but catching more keeps banking.
+        const tally = "🥚 " + eganCaught + " / " + EGAN_TARGET +
                       (eganTargetHit ? "  ✓" : "");
         ctx.strokeText(tally, W / 2, py); ctx.fillText(tally, W / 2, py);
         if(eganCombo >= 2){
@@ -3607,6 +3691,15 @@
         // it has fully re-entered the arena does it rejoin normal play.
         if(e.banished){
           e.x += e.vx; e.y += e.vy; e.rot += e.vr;
+          // A RETURNING Nazan is reappearing in the arena — so it's no longer untouchable.
+          // The Force Field can catch it on its bubble and fling it straight back out again,
+          // exactly as it would a Nazan in normal play (an outbound one, still flying off-screen,
+          // is out of reach and left alone).
+          if(e.returning && repelOn && player){
+            const dx = e.x - player.x, dy = e.y - player.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if(d < repelR + e.r){ fieldRepel(e); continue; }
+          }
           if(!e.returning){
             const fullyOut = e.x < -banishMargin || e.x > W + banishMargin ||
                              e.y < -banishMargin || e.y > H + banishMargin;
@@ -3668,15 +3761,7 @@
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR + e.r){
-            const nx = dx / d, ny = dy / d;
-            // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
-            // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
-            score += PUSH_POINTS;
-            bumpMomentum(1);
-            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-            try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
-            banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
-            haptic(8);   // an even subtler nudge as the Force Field deflects a Nazan off its skin
+            fieldRepel(e);
             continue;
           }
         }
@@ -3792,7 +3877,11 @@
       // Eating Mode devours the Nazan (for points!), Invisible lets them pass through.
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
-        if(e.banished) continue;                  // already flung off-screen, harmless in transit
+        // An OUTBOUND banished Nazan (still flying off-screen, not yet turned around) is far
+        // out of reach and inert. A RETURNING one drifting back in, though, is fair game for
+        // Eating Mode / Star Power / Force Field again — it just can't kill you on plain contact
+        // until it has fully rejoined play (handled by the non-lethal gates below the power-ups).
+        if(e.banished && !e.returning) continue;
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
@@ -3835,6 +3924,10 @@
             haptic(8);
             continue;
           }
+          // A returning Nazan reappearing in the arena is harmless on plain contact — it can be
+          // eaten / barged / field-pushed above, but it won't kill you (or burn a death auto-fire)
+          // until it has fully rejoined play.
+          if(e.banished) continue;
           // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
           // so it's harmless while it clears the player — otherwise you could die a frame after a
           // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
@@ -4263,10 +4356,13 @@
       }
     }
     // Pick a random Nazan taunt and pop it in, restarting the entry animation each
-    // time so a fresh line still draws the eye even on repeated deaths.
+    // time so a fresh line still draws the eye even on repeated deaths. nico gets a
+    // tailored sign-off the first time he's spawn-killed (see nicoEasterEgg()).
     function showNazanQuote(){
       const el = $("#gameNazanQuote"); if(!el) return;
-      el.textContent = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      let line = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      if(nicoDoom){ nicoDoom = false; line = "Not today, nico."; }
+      el.textContent = line;
       el.style.animation = "none";
       void el.offsetWidth;          // force reflow so the pop animation replays
       el.style.animation = "";
