@@ -1729,9 +1729,9 @@
     // Eating clears are forgiving. The OPENING BURST eases hardest of all down low: when things are
     // calm its extra kick is mostly removed, so the first scatter barely fires and the player can
     // actually start eating, while a hot run keeps the full head-start burst.
-    const EAT_FLEE_INTEN_GAIN_UP   = 0.06; // flee speed gained per +1 intensity above the anchor (small → barely harder when hot)
-    const EAT_FLEE_INTEN_GAIN_DOWN = 0.30; // flee speed shed per -1 intensity below the anchor (larger → much easier when calm)
-    const EAT_BOOST_INTEN_DOWN     = 0.55; // share of the opening burst's EXTRA kick removed per -1 intensity below the anchor
+    const EAT_FLEE_INTENSITY_GAIN_UP   = 0.06; // flee speed gained per +1 intensity above the anchor (small → barely harder when hot)
+    const EAT_FLEE_INTENSITY_GAIN_DOWN = 0.30; // flee speed shed per -1 intensity below the anchor (larger → much easier when calm)
+    const EAT_BOOST_INTENSITY_DOWN     = 0.55; // share of the opening burst's EXTRA kick removed per -1 intensity below the anchor
     // Edge awareness: fleeing prey shouldn't bury itself into a wall and pile up in the
     // corners — it should break sideways toward the open floor, the way a person dodging
     // someone in a room runs for space instead of backing into a wall. Each wall the Nazan
@@ -3439,14 +3439,14 @@
       // pack gets a head start to scatter, then it relaxes back to the normal drift speed. Both
       // the steady drift and that opening kick follow intensity (anchored at the 1000 mark): the
       // calmer the board the slower the getaway, and the opening burst eases most of all down low
-      // (see EAT_FLEE_INTEN_GAIN_*/EAT_BOOST_INTEN_DOWN), while a hot run quickens it only slightly.
+      // (see EAT_FLEE_INTENSITY_GAIN_*/EAT_BOOST_INTENSITY_DOWN), while a hot run quickens it only slightly.
       const eatElapsed = eatOn ? (activeEffect.max - activeEffect.time) : 0;
       const fleeIntenMul = inten >= 0
-        ? 1 + inten * EAT_FLEE_INTEN_GAIN_UP
-        : Math.max(0, 1 + inten * EAT_FLEE_INTEN_GAIN_DOWN);
+        ? 1 + inten * EAT_FLEE_INTENSITY_GAIN_UP
+        : Math.max(0, 1 + inten * EAT_FLEE_INTENSITY_GAIN_DOWN);
       const boostMul = inten >= 0
         ? EAT_FLEE_BOOST_MUL
-        : 1 + (EAT_FLEE_BOOST_MUL - 1) * Math.max(0, 1 + inten * EAT_BOOST_INTEN_DOWN);
+        : 1 + (EAT_FLEE_BOOST_MUL - 1) * Math.max(0, 1 + inten * EAT_BOOST_INTENSITY_DOWN);
       const fleeBoost = (eatOn && eatElapsed < EAT_FLEE_BOOST_TIME) ? boostMul : 1;
       const fleeSpeed = base() * EAT_FLEE_SPEED * fleeIntenMul * fleeBoost;
       const banishMargin = base() * BANISH_MARGIN;
