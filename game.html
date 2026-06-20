@@ -3981,11 +3981,7 @@
         ];
         const pad = base() * 0.02, lh = Math.max(14, base() * 0.028);
         const top = eganHudTop() + pad * 0.5;
-        let maxW = 0;
-        lines.forEach(ln => {
-          const w = ctx.measureText(ln).width;
-          if (w > maxW) maxW = w;
-        });
+        const maxW = Math.max(...lines.map(ln => ctx.measureText(ln).width));
         const boxWidth = maxW + pad;
         ctx.fillStyle = "rgba(15,21,38,.6)";
         ctx.fillRect(pad * 0.5, top, boxWidth, lh * lines.length + pad);
