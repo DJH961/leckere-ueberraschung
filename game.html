@@ -2754,7 +2754,7 @@
       if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
     }
     function spinEnemy(e, mul){
-      e.rot += e.vr * (mul == null ? 1 : mul);
+      e.rot += e.vr * (mul ?? 1);
     }
 
     // Drop a single, visually distinct power-up somewhere open on the field. Only ever
@@ -4174,7 +4174,7 @@
       // non-lethal grace window it is (see SPAWN_GRACE + the collision loop).
       for(const e of enemies){
         if(e.spawnT > 0){
-          const spawnDur = Math.max(MIN_SPAWN_DUR, e.spawnDur || SPAWN_GRACE);
+          const spawnDur = Math.max(MIN_SPAWN_DUR, e.spawnDur ?? SPAWN_GRACE);
           const f = 1 - e.spawnT / spawnDur;             // 0 (just spawned) → 1 (fully arrived)
           ctx.save();
           ctx.globalAlpha = 0.25 + 0.75 * f;
