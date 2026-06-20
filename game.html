@@ -1758,6 +1758,7 @@
     let eganGoldAt    = [];         // round-progress thresholds at which the next golden egans launch
     let eganTargetHit = false;      // the per-round catch target has been reached
     let eganRoundPoints = 0;        // points banked this round (varies with combos/golden), for the end card
+    let eganPointsTotal = 0;        // ALL egan-earned points this run; subtracted from score so only OUTSIDE-egan points pace the next round
     let eganPrevCount  = 0;         // how many Nazans were on screen when the round began (for a middle-ground resume)
     let eganPrevSpeed  = 0;         // their average pace at that moment (so the resume roughly matches what was left)
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
@@ -1784,9 +1785,12 @@
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
-    const EGAN_FIRST   = 1000;       // score that arms the FIRST egan round
+    // Rounds are paced by points scored OUTSIDE Egan Mode: the egan catches you bank inside a
+    // round don't count toward the next trigger, so a round always lands a full EGAN_STEP of
+    // *normal* play after the previous one (see step(): outsideScore = score - eganPointsTotal).
+    const EGAN_FIRST   = 1000;       // non-egan score that arms the FIRST egan round
     const EGAN_TEST_FIRST = 1;       // bug-test backdoor (?egan=test): arm the first round almost instantly
-    const EGAN_STEP    = 1500;       // gap between rounds after that (1000, 2500, 4000, …)
+    const EGAN_STEP    = 1000;       // non-egan points between rounds after that (every 1000 scored outside egan mode)
     const EGAN_INTRO_TIME = 2.2;     // seconds of the "EGAN MODE" title flourish
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
     const EGAN_PLAY_TIME  = 12;      // seconds egans keep spawning before the round winds down
@@ -1975,7 +1979,7 @@
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganCaught = 0;
       eganBag = []; eganBagReady = false; eganBagTotal = 0;
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;
-      eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0;
+      eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       try{ sfx.stopVoices(); }catch(e){}           // drop any chatter left over from the previous run
@@ -2488,7 +2492,7 @@
               const mul = Math.min(EGAN_COMBO_MAX_MUL, 1 + (eganCombo - 1) * EGAN_COMBO_STEP);
               const basePts = s.gold ? EGAN_GOLD_POINTS : EGAN_CATCH_POINTS;
               const gained = Math.round(basePts * mul);
-              score += gained; eganRoundPoints += gained; eganCaught++;
+              score += gained; eganRoundPoints += gained; eganPointsTotal += gained; eganCaught++;
               if(scoreEl) scoreEl.textContent = String(Math.floor(score));
               eganPops.push({ x: s.x, y: s.y, r: s.r, t: 0, dur: 0.4, gold: !!s.gold, combo: eganCombo });
               // Escalating catch sound: golden ones get a richer flourish, normal ones a
@@ -2755,13 +2759,16 @@
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
       updatePickups(dt);
 
-      // Egan Mode: when the score crosses the next milestone, arm a round. It drops in
+      // Egan Mode: a round arms every EGAN_STEP points scored OUTSIDE egan mode. Egan catches
+      // bank into `score` but are tracked in `eganPointsTotal` and subtracted out here, so the
+      // points won inside a round never shorten the wait for the next one. It drops in
       // immediately UNLESS a power-up is held or running, in which case it waits for that
       // to clear (so it never interrupts an active power) and then takes over.
       if(eganEnabled()){
-        if(score >= nextEganThreshold){
+        const outsideScore = score - eganPointsTotal;
+        if(outsideScore >= nextEganThreshold){
           eganPending = true;
-          while(score >= nextEganThreshold) nextEganThreshold += EGAN_STEP;
+          while(outsideScore >= nextEganThreshold) nextEganThreshold += EGAN_STEP;
         }
         if(eganPending && !held && !activeEffect){
           eganPending = false; enterEgan();
@@ -3263,7 +3270,10 @@
         ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
-      if(player){
+      // Hide the player's Nazan during the Egan Mode title / end-card flourish so it never
+      // blocks the animation; it stays fully visible during the catch ("play") phase.
+      const eganAnim = eganPhase === "intro" || eganPhase === "outro";
+      if(player && !eganAnim){
         if(activeEffect && activeEffect.type === "ghost"){
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
         } else if(activeEffect && activeEffect.type === "eat"){
