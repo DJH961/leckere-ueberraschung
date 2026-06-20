@@ -1618,6 +1618,9 @@
     let promptClass = "", promptText = "";
     let nicoDoom = false;   // set when nico's first game spawn-kills him, for a tailored game-over line
     let nicoDoomTimer = 0;  // first-run nico intro: hold the lethal spawn on screen long enough to read before cutting to game over
+    let nicoTinyOnly = false;      // returning nico run: force Tiny Mode pickups until the score target is reached
+    let nicoBombPending = false;   // once that target is reached, the next forced pickup becomes one Bomb before normal rotation resumes
+    let nicoIntroEatPending = false; // the opening Tiny Mode spawns one Eating Mode pickup during its last second
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
@@ -2501,7 +2504,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      nicoDoom = false; nicoDoomTimer = 0; queuedEffect = null;
+      nicoDoom = false; nicoDoomTimer = 0; nicoTinyOnly = false; nicoBombPending = false; nicoIntroEatPending = false; queuedEffect = null;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; eatGrace = 0; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
@@ -2542,10 +2545,22 @@
     // A personal welcome for anyone cheeky enough to play under a name containing "nico"
     // (including playful variants like "not nico"). The FIRST time
     // they play, a Nazan materialises right inside them in a short little "gotcha" intro.
-    // EVERY game after, they open boxed in by a full board of 12 Nazans — first tiny enough
-    // to slip through it, then immediately switched into Eating Mode to chomp their way clear.
+    // EVERY game after, they open boxed in by a full board of 12 Nazans plus a spawned Tiny
+    // Mode pickup by their feet; that opening Tiny run then spawns one Eating Mode pickup in
+    // its final second. After that, up to 750 points Nico only gets spawned Tiny pickups, then
+    // one spawned Bomb, then the normal rotation takes back over.
     const NICO_FULL_BOARD = 12;
+    const NICO_TINY_SCORE = 750;
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
+    function nicoForcedPickupType(){
+      if(!isNico()) return null;
+      if(nicoTinyOnly){
+        if(score < NICO_TINY_SCORE) return "shrink";
+        nicoTinyOnly = false;
+        nicoBombPending = true;
+      }
+      return nicoBombPending ? "bomb" : null;
+    }
     function nicoEasterEgg(){
       if(!isNico()) return;
       const games = LS.get(NICO_KEY, 0);
@@ -2564,13 +2579,14 @@
         nicoDoomTimer = NICO_DOOM_SPAWN + NICO_DOOM_HOLD;
         return;
       }
-      // Returning nico: still a packed opening board, but now he gets Tiny Mode first so he can
-      // slip through the crush, then Eating Mode instantly after that to bite his way clear.
+      // Returning nico: still a packed opening board, but now his special help comes only as
+      // spawned pickups beside him rather than instant activations.
       for(let i = 0; i < NICO_FULL_BOARD; i++) spawnEnemy();
-      startTimedEffect("shrink");
-      queuedEffect = "eat";
-      try{ sfx.boing(3, "nico-shrink"); }catch(e){}
-      haptic(25);
+      nicoTinyOnly = true;
+      nicoBombPending = false;
+      nicoIntroEatPending = true;
+      pickupTimer = 0;
+      spawnPickupNear("shrink");
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
@@ -2877,12 +2893,19 @@
             pickupTimer = PICKUP_RESPAWN;
           }
           else if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
-          // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
-          // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
-          // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
-          // power-up simply appears once the player is back rather than being missed on entry.
-          else if(secondsToEgan() < PICKUP_LIFE){ pickupTimer = PICKUP_RESPAWN; }
-          else spawnPickup();
+          else {
+            const nicoType = nicoForcedPickupType();
+            if(nicoType){
+              if(nicoType === "bomb") nicoBombPending = false;
+              spawnPickupNear(nicoType);
+            }
+            // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
+            // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
+            // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
+            // power-up simply appears once the player is back rather than being missed on entry.
+            else if(secondsToEgan() < PICKUP_LIFE){ pickupTimer = PICKUP_RESPAWN; }
+            else spawnPickup();
+          }
         }
       }
     }
@@ -3616,6 +3639,10 @@
           // music and the background wash ease back to normal (see syncMusicMode()/draw())
           // and the prompt flips to "wearing off…", while the protective effect and the
           // player's own visual cue stay fully live right up to the end.
+          if(nicoIntroEatPending && activeEffect.type === "shrink" && activeEffect.time <= 1 && !pickup){
+            nicoIntroEatPending = false;
+            spawnPickupNear("eat");
+          }
           if(!activeEffect.warning && activeEffect.time <= EFFECT_WARN){
             activeEffect.warning = true;
             haptic([22, 50, 22]);   // a firm double-buzz the instant the wind-down begins — "heads up, it's running out"
