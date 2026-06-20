@@ -52,12 +52,14 @@
   #gameExit:active{transform:scale(.96);}
   /* Right-hand HUD button cluster (music toggle + back). */
   #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 0 auto; pointer-events:none;}
-  #gameMusic{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
+  #gameMusic, #gameHaptics{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
     color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
     border-radius:30px; padding:8px 14px; font-size:1rem; line-height:1;
     box-shadow:0 4px 12px rgba(61,80,118,.18); backdrop-filter:blur(4px);}
-  #gameMusic:hover{border-color:var(--navy);}
-  #gameMusic:active{transform:scale(.96);}
+  #gameMusic:hover, #gameHaptics:hover{border-color:var(--navy);}
+  #gameMusic:active, #gameHaptics:active{transform:scale(.96);}
+  /* Haptics toggle only matters on devices that can actually vibrate — hidden until enabled. */
+  #gameHaptics{display:none;}
   /* Sticker picker — click ‹ / › to choose which Nazan you play as. */
   .stickerPick{display:flex; flex-direction:column; align-items:center; gap:8px; margin:14px 0 4px;}
   .stickerPick .spLabel{font-weight:800; color:var(--navy); font-size:.82rem;
@@ -159,6 +161,26 @@
   .clockReaction:hover img{transform:scale(1.03);}
   .clockReaction:focus-visible{outline:none;}
   .clockReaction:focus-visible img{outline:2px solid var(--navy); outline-offset:3px; transform:scale(1.03);}
+  /* Game-over layout: meme sits beside the score/quote, and the sticker picker sits
+     beside the name + edit controls, so the whole card fits one screen without scroll. */
+  .overTop{display:flex; align-items:center; justify-content:center; gap:16px;
+    flex-wrap:wrap; margin:2px 0 6px; width:100%;}
+  .overTop .clockReaction{margin:0; flex:0 0 auto;}
+  .overTop .clockReaction img{max-width:min(170px,42vw); max-height:190px;}
+  .overScore{display:flex; flex-direction:column; align-items:center; min-width:0;}
+  .overScore .nazanQuote{margin:2px auto 8px;}
+  .overScore .big{margin:2px 0;}
+  .overControls{display:flex; align-items:center; justify-content:center;
+    gap:12px; flex-wrap:wrap; margin:6px 0 2px; width:100%;}
+  #gameOver .overControls .stickerPick{margin:0; gap:6px;}
+  #gameOver .overControls .spRow{gap:8px;}
+  #gameOver .overControls .spArrow{width:34px; height:34px; font-size:1.2rem;}
+  #gameOver .overControls .spPreview{width:62px; height:62px; border-radius:14px;}
+  #gameOver .overControls .spPreview img{max-width:56px; max-height:56px;}
+  #gameOver .overControls .nameRow{display:flex; flex-direction:column; gap:8px;
+    margin:0; flex:0 1 180px; min-width:0;}
+  #gameOver .overControls .nameRow input{width:100%; min-width:0;}
+  #gameOver .overControls .nameRow .gameBtn{padding:10px 14px; font-size:.95rem;}
   .clockLightbox{position:absolute; inset:0; z-index:9; display:none;
     align-items:center; justify-content:center; padding:76px 20px 20px;
     background:rgba(20,28,46,.6); backdrop-filter:blur(3px); touch-action:pan-y;}
@@ -269,7 +291,8 @@
       gap:4px; min-width:0; grid-column:1; grid-row:1;}
     #gameStart .cardMain > p, #gameOver .cardMain > p{margin:5px 0;}
     /* Action buttons live under the left column. */
-    #gameStart .gameBtns, #gameOver .gameBtns{grid-column:1; grid-row:2; margin-top:18px;}
+    #gameStart .gameBtns, #gameOver .gameBtns{grid-column:1; grid-row:2; margin-top:18px;
+      flex-wrap:nowrap;}
     /* Right column: the leaderboard, spanning the full height of the card. */
     #gameStart .cardBoard, #gameOver .cardBoard{display:flex; flex-direction:column;
       min-width:0; min-height:0; grid-column:2; grid-row:1 / span 2;}
@@ -318,7 +341,7 @@
     .nameField label{font-size:.78rem;}
     .nameRow{width:100%; gap:8px; margin:7px 0 2px;}
     .nameRow input{width:100%; min-width:0; padding:10px 12px;}
-    #gameOver .nameRow{display:grid; grid-template-columns:1fr; align-items:stretch;}
+    #gameOver .overControls .nameRow{margin:0;}
     .nameHint{font-size:.78rem; line-height:1.25; min-height:auto;}
     .lbBox{margin:6px 0 4px; padding:10px; border:1px solid var(--card-border);
       border-radius:16px; background:rgba(255,255,255,.66);
@@ -332,8 +355,12 @@
       padding-top:4px; flex:0 0 auto;}
     .gameBtn{width:100%; padding:11px 12px; font-size:.94rem;}
     .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 4px; padding:7px 13px;}
-    /* Keep the big reaction sticker prominent but height-capped so the score,
-       picker, name field and leaderboard all still fit on one screen. */
+    /* Keep the reaction meme prominent but height-capped, and beside the score, so the
+       quote, picker, name field and leaderboard all still fit on one screen. */
+    .overTop{gap:10px; margin:2px 0 4px;}
+    .overTop .clockReaction img{max-width:34vw; max-height:19vh;}
+    .overControls{gap:10px; margin:4px 0 2px;}
+    #gameOver .overControls .nameRow{flex:1 1 130px;}
     .clockReaction{margin:5px auto 3px; gap:4px;}
     .clockReaction img{max-width:60vw; max-height:24vh;}
   }
@@ -351,6 +378,7 @@
       <div class="score">Score <span id="gameScore">0</span></div>
       <div class="hudBtns">
         <button id="gameMusic" type="button" aria-label="Mute sound">🔊</button>
+        <button id="gameHaptics" type="button" aria-label="Turn off vibration">📳</button>
         <button id="gameExit" type="button">✕ Back</button>
       </div>
     </div>
@@ -405,28 +433,36 @@
              mobile, split into score-details + tall leaderboard on desktop. -->
         <div class="cardMain">
           <h2>Caught!</h2>
-          <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
-          <!-- MUN clock: the current hour's "honest reaction" sticker, shown right beneath
-               Nazan's parting quip (the two read as one gag). Tap to enlarge. -->
-          <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
-                  aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
-            <img id="clockReactionImg" alt="" />
-          </figure>
-          <div class="big" id="gameFinalScore">0</div>
-          <p class="best" id="gameBestLine">Best: 0</p>
           <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
-          <div class="stickerPick">
-            <span class="spLabel">Your Nazan</span>
-            <div class="spRow">
-              <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
-              <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
-              <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+          <!-- Score read-out sits NEXT to the MUN clock reaction meme (they read as one gag),
+               so the card stays short enough to fit on one screen without scrolling. -->
+          <div class="overTop">
+            <!-- MUN clock: the current hour's "honest reaction" sticker. Tap to enlarge. -->
+            <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
+                    aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
+              <img id="clockReactionImg" alt="" />
+            </figure>
+            <div class="overScore">
+              <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
+              <div class="big" id="gameFinalScore">0</div>
+              <p class="best" id="gameBestLine">Best: 0</p>
             </div>
           </div>
-          <div class="nameRow">
-            <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
-                   placeholder="Type your name" aria-label="Your name for the leaderboard" />
-            <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
+          <!-- Sticker picker and name/edit controls sit side by side, condensed. -->
+          <div class="overControls">
+            <div class="stickerPick">
+              <span class="spLabel">Your Nazan</span>
+              <div class="spRow">
+                <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
+                <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
+                <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+              </div>
+            </div>
+            <div class="nameRow">
+              <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
+                     placeholder="Type your name" aria-label="Your name for the leaderboard" />
+              <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
+            </div>
           </div>
           <p class="nameHint" id="gameNameHint">Posting your score to the global board…</p>
         </div>
@@ -451,13 +487,13 @@
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>.</p>
         <p>Fire a banked power-up (Shove / Boom) by <strong>tapping your own Nazan</strong> or pressing <strong>Space</strong> — no aiming needed. Banked power-ups <strong>auto-fire</strong> if you hold them too long. Press <strong>Esc</strong> to leave the game.</p>
         <h3>Power-ups</h3>
-        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans without destroying them — steer them into an edge to knock them out of bounds.</p>
+        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans off-screen without destroying them — Shove and Star knock them out only when you drive them onto an edge, while the Force Field gently sends any Nazan that touches it on its way.</p>
         <ul class="puList">
           <li><span class="puIco">😋</span><span><span class="puName">Eating Mode</span><span class="puDesc">Devour Nazans on contact — they flee, so chase them down.</span></span></li>
           <li><span class="puIco">👻</span><span><span class="puName">Invisible</span><span class="puDesc">Nazans pass straight through you for a few seconds.</span></span></li>
           <li><span class="puIco">🤏</span><span><span class="puName">Tiny Mode</span><span class="puDesc">Shrink down and slip through the crowd.</span></span></li>
           <li><span class="puIco">🐌</span><span><span class="puName">Snail Mode</span><span class="puDesc">Every other Nazan crawls in slow motion.</span></span></li>
-          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that bumps Nazans off its skin — shove them into a wall to knock them out. You slow to a crawl while it's up, so commit to the push.</span></span></li>
+          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that gently pushes any Nazan that touches it clean off the screen. You slow to a crawl while it's up, so it's a defensive shield, not a free clear.</span></span></li>
           <li><span class="puIco">⭐</span><span><span class="puName">Star Power</span><span class="puDesc">Invincible <em>and faster</em>, with a sparkling trail — barge straight through Nazans for points.</span></span></li>
           <li><span class="puIco">💨</span><span><span class="puName">Shove</span><span class="puDesc">Banked. Blasts nearby Nazans away. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">💥</span><span><span class="puName">Boom</span><span class="puDesc">Banked. Pops the whole crowd around you for points. Tap your Nazan or press Space.</span></span></li>
@@ -1544,6 +1580,10 @@
     // Background-music preference (on by default), persisted across visits.
     let musicEnabled = LS.get("nazanDodgeMusic", true);
     setAudioMuted(!musicEnabled);   // honour the saved choice for ALL game audio
+    // Haptics (vibration) preference (on by default), persisted across visits. Only ever
+    // does anything on touch devices that support navigator.vibrate; the HUD toggle is
+    // hidden everywhere else (see initHapticsBtn).
+    let hapticsEnabled = LS.get("nazanDodgeHaptics", true);
     let running = false, raf = null;
     // Restart freeze: on a Play-again, the arena is shown frozen for a short COUNTDOWN before
     // the action resumes, easing the player back in rather than dropping them straight into a
@@ -1609,33 +1649,29 @@
       return Math.min(n, Math.min(ZAP_MAX, Math.max(ZAP_MIN, Math.ceil(n * ZAP_FRACTION))));
     }
     const REPEL_RADIUS = 0.30;       // Force Field reach (a roomy push dome), as a fraction of base()
-    // The Force Field is a DEFENSIVE bubble first: a Nazan that merely touches its skin out in
-    // the open gets firmly bumped away but stays in play and bounces off the walls normally — it
-    // must not be flung off-screen just for brushing the field mid-arena. But when you steer the
-    // bubble so it shoves a Nazan TOWARD a nearby wall, it should sail out of bounds without
-    // ping-ponging bubble→wall→bubble forever: the moment the bump would drive it within
-    // REPEL_BANISH_MARGIN of an edge, it's banished (handled in the repel block). So pushing
-    // Nazans out is easy when you corner them against a wall, yet a Nazan shoved into open space
-    // still stays in play — the direction and position of the shove decide it, not luck.
-    const REPEL_PUSH_SPEED = 0.013;  // outward bump given to a Nazan off the bubble skin (in-play, bounces off walls)
-    const REPEL_BANISH_MARGIN = 0.22; // how close to a wall (fraction of base()) a bubble-shoved Nazan must be driven to sail out of bounds
+    // The Force Field is a DEFENSIVE bubble: any Nazan that touches its skin is GENTLY pushed
+    // away off the screen. It's not a hard yeet and it doesn't rely on cornering against a wall
+    // — the moment a Nazan brushes the bubble it's banished outward and coasts cleanly off the
+    // nearest edge (ignoring walls so they never "catch" it and bounce it back at you), then
+    // drifts back in slowly later like any other banish. The price is that you crawl while the
+    // field is up (see REPEL_SPEED_MUL), so it stays distinct from the fast, free-roaming Star.
+    const FIELD_BANISH_SPEED  = 0.018;  // gentle outward push when the Force Field sends a Nazan off-screen (vs. the harder BANISH_EXIT_SPEED yeet)
     // The banishing (off-screen) power-ups (Shove, Star, Force Field) don't destroy Nazans
-    // — they give them a hard outward PUSH and let normal physics take over. A pushed Nazan
-    // keeps rolling and bouncing around in play; it only leaves the arena if the push carries
-    // it right onto an edge, where it sails off fast, vanishes for a beat, then SLOWLY
-    // drifts back in from off-screen. So you have to GUIDE a Nazan off the screen — it
-    // never happens automatically. (Eating Mode, by contrast, removes them for good.)
-    // The Force Field is the slow, planted version: its bubble shoves any Nazan that touches
-    // it, but the price is that you can barely move while it's up (see REPEL_SPEED_MUL), so
-    // it stays distinct from the fast, free-roaming Star Power.
+    // — they give them an outward PUSH off the screen. A shoved/star-barged Nazan keeps rolling
+    // and bouncing in play and only leaves if driven onto an edge; a field-touched one is sent
+    // off straight away. Either way it sails past the edge, vanishes for a beat, then SLOWLY
+    // drifts back in from off-screen. (Eating Mode, by contrast, removes them for good.)
     const BANISH_EXIT_SPEED   = 0.03;   // fast outward launch when shoved off-screen, fraction of base()
     const BANISH_RETURN_SPEED = 0.0024; // slow drift back toward the arena once fully off-screen
     const BANISH_MARGIN       = 0.18;   // how far past the edge (fraction of base()) counts as "gone"
     const SHOVE_WINDOW        = 0.25;   // seconds a freshly-pushed Nazan can still be carried off an edge
-    // A Nazan that drifts back in from a banish doesn't reset all the way to a fresh
-    // spawn's crawl — it resumes with a little "maturity" so it picks the pace back up
-    // sooner. Faster than a brand-new Nazan, but still well short of a seasoned one.
-    const BANISH_RETURN_AGE   = 10;     // seconds of age a returning Nazan resumes with
+    // A Nazan that drifts back in from a banish resumes SLOWER than it was when it got knocked
+    // out — never faster. It comes back at a reduced share of the "maturity" (age → speed) it
+    // had before the yeet, capped so even a long-lived one returns at a gentle pace. This makes
+    // banishing always buy you breathing room: however a Nazan left (shove, star, or field), and
+    // whatever speed boost sent it off, it returns calmer than it left — not faster.
+    const BANISH_RETURN_AGE_CAP = 10;   // upper bound (in age-seconds) on how fast any returning Nazan may resume
+    const BANISH_RETURN_AGE_MUL = 0.6;  // returning Nazans resume with only this share of their pre-banish maturity
     // Eating Mode: Nazans nervously edge AWAY from the hungry player, so clearing the whole
     // board takes real chasing — but only while there's room to run. Once the player is
     // bearing right down on one it holds its ground, so cornered prey can still be caught.
@@ -1880,7 +1916,7 @@
     const EGAN_COMBO_STEP     = 0.25;    // each combo level beyond the first adds this to the multiplier
     const EGAN_COMBO_MAX_MUL  = 3;       // multiplier caps here so points stay sane
     // Per-round catch target — reaching it is celebrated on the end card.
-    const EGAN_TARGET         = 20;      // egans to catch in a round to hit the goal
+    const EGAN_TARGET         = 25;      // egans to catch in a round to hit the goal
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
 
@@ -1958,9 +1994,53 @@
       syncMusicBtn();
       if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
     }
+    // ----- Haptics (vibration) helpers -----
+    // The phone can vibrate, so a vibration toggle is worth showing.
+    function hapticsSupported(){ return !!(navigator && navigator.vibrate); }
+    function syncHapticsBtn(){
+      const b = $("#gameHaptics"); if(!b) return;
+      b.textContent = hapticsEnabled ? "📳" : "📴";
+      b.setAttribute("aria-label", hapticsEnabled ? "Turn off vibration" : "Turn on vibration");
+    }
+    // Reveal the haptics toggle only on devices that can actually vibrate.
+    function initHapticsBtn(){
+      const b = $("#gameHaptics"); if(!b) return;
+      if(hapticsSupported()){ b.style.display = ""; syncHapticsBtn(); }
+      else { b.style.display = "none"; }
+    }
+    function toggleHaptics(){
+      hapticsEnabled = !hapticsEnabled;
+      LS.set("nazanDodgeHaptics", hapticsEnabled);
+      syncHapticsBtn();
+      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate(20); }catch(e){} }   // a confirming tick when switched on
+    }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
-    function naturalPlayerR(){ return Math.max(20, base() * 0.05); }   // player's full size
+    // How portrait/tall the arena is: 0 on a square-or-wider screen, ramping to 1 on a
+    // narrow phone held upright (aspect ratio W/H ≈ 0.55 or tighter). Used to give the
+    // cramped portrait arena a little mercy — a slightly bigger player and slightly
+    // smaller Nazans, so there's room to thread between a bouncing pack.
+    function tallness(){
+      const ar = W / Math.max(1, H);
+      return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
+    }
+    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's
+    // eganDiff): a tall/narrow portrait phone has far less room to dodge, so Nazans move
+    // slower and arrive less often there; a wide desktop nudges the other way. The enemy
+    // COUNT cap is deliberately left out of this (tuned separately).
+    const ARENA_DIFF_MIN = 0.75;   // portrait phones: gentler pace, more breathing room
+    const ARENA_DIFF_MAX = 1.12;   // wide desktops: a touch livelier
+    function arenaDiff(){
+      const ar = W / Math.max(1, H);
+      return Math.max(ARENA_DIFF_MIN, Math.min(ARENA_DIFF_MAX, ar));
+    }
+    // A short haptic buzz on touch devices (desktops/unsupported browsers no-op). Used
+    // for the moments that matter — death, firing a power-up, grabbing a pickup, and the
+    // accelerating wind-down warning before a timed power-up lapses — so the smaller phone
+    // screen gets a little physical feedback to lean on. Honours the player's haptics
+    // toggle so it can be silenced on mobile.
+    function haptic(pattern){ try{ if(hapticsEnabled && navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+    function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
     function resize(){
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1977,7 +2057,7 @@
     }
 
     function spawnEnemy(){
-      const r = Math.max(22, base() * 0.055);
+      const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));   // slightly smaller on tall phones so there's room to weave
       // Spawn at a random edge so nothing lands right on the player.
       let x, y;
       if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
@@ -1987,7 +2067,9 @@
       // acceleration in step()), not from how late in the round it spawned. EXCEPTION:
       // on a high-score run the intensity ramps their STARTING pace up, so a board that a
       // strong player keeps clearing no longer refills with a slow, harmless trickle.
-      const speed = base() * (0.004 + Math.random() * 0.0015) * (1 + intensity() * 0.5);
+      // The arena's aspect ratio also tempers the pace: a cramped portrait phone gets
+      // slower Nazans (see arenaDiff), a wide desktop a touch faster.
+      const speed = base() * (0.004 + Math.random() * 0.0015) * (1 + intensity() * 0.5) * arenaDiff();
       const ang = Math.random() * Math.PI * 2;
       // Never reuse the player's own sticker as an enemy — that's confusing. Pick
       // from the remaining images when more than one is available.
@@ -2043,18 +2125,20 @@
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
-    // It launches fast, sails past the edge, and is flagged so the main loop lets it
+    // It launches outward, sails past the edge, and is flagged so the main loop lets it
     // leave (no wall bounce, harmless to touch) and then SLOWLY drifts it back on later.
-    // This only fires once a shove has actually pushed a Nazan onto the edge (see shove
-    // and the wall handling in step) — it never teleports one away from mid-screen.
-    function banish(e, nx, ny){
+    // exitMul sets how hard it's sent off — a hard BANISH_EXIT_SPEED yeet for Shove/Star,
+    // a gentle FIELD_BANISH_SPEED nudge for the Force Field. Either way it returns calmer
+    // than it left: its pre-banish maturity is remembered so it comes back slower, not faster.
+    function banish(e, nx, ny, exitMul){
       if(!(nx || ny)){                      // degenerate direction (right on top of us): pick one
         const a = Math.random() * Math.PI * 2; nx = Math.cos(a); ny = Math.sin(a);
       }
-      const exit = base() * BANISH_EXIT_SPEED;
+      const exit = base() * (exitMul || BANISH_EXIT_SPEED);
       e.vx = nx * exit; e.vy = ny * exit;
       e.banished = true; e.returning = false; e.shoveT = 0; e.noWall = false;
-      e.age = 0;                            // comes back as gentle as a fresh spawn
+      e.banishAge = e.age;                  // remember its maturity so it returns no faster than this
+      e.age = 0;                            // and leaves as gentle as a fresh spawn
     }
 
     // The shared move behind every "shove"-type power-up (Shove, Star, Force Field):
@@ -2069,20 +2153,6 @@
       e.vx = nx * push; e.vy = ny * push;
       e.shoveT = SHOVE_WINDOW;
       e.banished = false; e.returning = false; e.noWall = true;
-    }
-
-    // The Force Field's gentle counterpart to shove: bump a Nazan off the bubble skin with a
-    // firm-but-modest outward push that leaves it in normal play — it bounces off the walls
-    // instead of sailing through them, so a mere touch never yeets it off-screen. (A Nazan is
-    // only banished by the field when the bubble pins it past an edge; see the repel block.)
-    function repelPush(e, nx, ny){
-      if(!(nx || ny)){
-        const a = Math.random() * Math.PI * 2; nx = Math.cos(a); ny = Math.sin(a);
-      }
-      const push = base() * REPEL_PUSH_SPEED;
-      e.vx = nx * push; e.vy = ny * push;
-      e.shoveT = 0;                          // no carry-off window: it bounces off walls normally
-      e.banished = false; e.returning = false; e.noWall = false;
     }
 
     // Blast every Nazan within reach with a hard outward shove. This is the Shove power-up's
@@ -2198,6 +2268,7 @@
       if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
       else if(type === "shove" || type === "bomb" || type === "zap"){ try{ sfx.powerFire(type); }catch(e){} }
       else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
+      haptic(25);   // a little kick the moment a banked power-up goes off
       return true;
     }
 
@@ -2241,6 +2312,7 @@
           const type = pickup.type;
           held = type; pickup = null;
           try{ sfx.powerGrab(); }catch(e){}
+          haptic(15);   // a soft tick when you scoop up a pickup
           // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
@@ -2531,7 +2603,12 @@
             s.vy = sp * Math.sin(ang);
           }
           s.x += s.vx; s.y += s.vy; s.rot += s.vr;
-          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){ eganStickers.splice(i, 1); continue; }
+          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){
+            // A MISS breaks the streak: letting an egan sail fully off any edge uncaught
+            // resets the combo immediately (it no longer waits out the combo window).
+            eganCombo = 0; eganComboT = 0;
+            eganStickers.splice(i, 1); continue;
+          }
           // Catch: overlap the player to bank the points and pop it with a little burst.
           if(player){
             const dx = s.x - player.x, dy = s.y - player.y;
@@ -2594,10 +2671,16 @@
       // every Egan mode" beat; the within-stage creep on top of it stays subtle (see intensity()).
       eganTier++;
       if(player){ player.x = W / 2; player.y = H * 0.72; }
+      // Drop the steering pointer onto the re-centred player so the resume doesn't FLING the
+      // Nazan back to wherever the finger last caught an egan — that instant jump could pass it
+      // straight through the re-seeded crowd and auto-kill it on mobile. Play stays put until
+      // the next deliberate move (mirrors reset()).
+      pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       enemies = [];
-      // Re-seed a fraction of the crowd that was on screen, clamped to a calm-but-not-empty range.
-      const want = Math.max(EGAN_RESUME_MIN,
-                            Math.min(EGAN_RESUME_MAX, Math.round(eganPrevCount * EGAN_RESUME_KEEP)));
+      // Re-seed the SAME-sized crowd that was on screen when the round began, so the arena comes
+      // back as full as it was left — just a tad slower and (with the pre-roll below) spaced out
+      // before play resumes, rather than a thinned-out handful.
+      const want = Math.max(EGAN_RESUME_MIN, eganPrevCount);
       for(let i = 0; i < want; i++) spawnEnemy();   // spawnEnemy already drops them at the edges
       // Match roughly the pace they left — a touch calmer, and capped so an accelerated swarm
       // doesn't come straight back at full tilt. Fall back to a flat ease-off if we have no read.
@@ -2613,20 +2696,37 @@
       }
       spawnAcc = 0;
       held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
-      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb)
-      // dropped right beside the player almost immediately. Miss the target and there's no early
-      // freebie — pickups just resume on their normal cadence.
+      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb).
+      // It's dropped right beside the player RIGHT NOW so it's already on screen from the very start
+      // of the return (visible through the pre-roll), not after a short delay. Miss the target and
+      // pickups just resume on their normal cadence.
+      eganRewardType = null;
       if(eganTargetHit){
-        eganRewardType = Math.random() < 0.5 ? "eat" : "bomb";
-        pickupTimer = EGAN_REWARD_PICKUP;                         // super-short delay, then it lands by the player
+        spawnPickupNear(Math.random() < 0.5 ? "eat" : "bomb");   // present immediately, by the player
+        pickupTimer = 0;
       } else {
-        eganRewardType = null;
         pickupTimer = PICKUP_FIRST;                               // a regular pickup, on the normal schedule
       }
+      // Always ease back in with the frozen "3 · 2 · 1" pre-roll, so the returning crowd is held
+      // still and spaced out for a beat before everything starts moving again.
+      countdown = COUNTDOWN_TIME;
       last = performance.now();                                    // avoid a dt spike on the first frame back
       try{ music.setMode("default"); }catch(e){}
       try{ sfx.setVoiceMode("default"); }catch(e){}
       updatePrompt();
+    }
+    // Word-wrap `text` into lines no wider than maxWidth, measured with the CURRENT ctx.font.
+    function wrapText(text, maxWidth){
+      const words = String(text).split(" ");
+      const lines = [];
+      let line = "";
+      for(const w of words){
+        const test = line ? line + " " + w : w;
+        if(line && ctx.measureText(test).width > maxWidth){ lines.push(line); line = w; }
+        else { line = test; }
+      }
+      if(line) lines.push(line);
+      return lines;
     }
     // Draw the flying egans, catch bursts, the combo/target HUD and the title / end card.
     function drawEgan(){
@@ -2704,26 +2804,35 @@
         if(alpha > 0.01){
           const cx = W / 2, cy = H * 0.4;
           const scale = 0.7 + 0.35 * alpha;
+          const maxW = W * 0.9;          // keep the card within the (possibly narrow) screen
           ctx.save();
           ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          const titleSize = base() * 0.13 * scale;
+          const title = eganPhase === "intro"
+            ? "EGAN MODE"
+            : (eganTargetHit ? "TARGET SMASHED!" : "EGANS CLEARED");
+          // Fit the title to the screen so a longer title never runs off a narrow (mobile) edge.
+          let titleSize = base() * 0.13 * scale;
           ctx.font = "bold " + titleSize.toFixed(0) + "px system-ui, sans-serif";
+          const titleW = ctx.measureText(title).width;
+          if(titleW > maxW){ titleSize *= maxW / titleW; ctx.font = "bold " + titleSize.toFixed(0) + "px system-ui, sans-serif"; }
           const grad = ctx.createLinearGradient(0, cy - titleSize, 0, cy + titleSize);
           grad.addColorStop(0, "#f7c948"); grad.addColorStop(1, "#e8743b");
           ctx.fillStyle = grad;
           ctx.strokeStyle = "rgba(61,80,118,.9)"; ctx.lineWidth = Math.max(2, titleSize * 0.04);
-          const title = eganPhase === "intro"
-            ? "EGAN MODE"
-            : (eganTargetHit ? "TARGET SMASHED!" : "EGANS CLEARED");
           ctx.strokeText(title, cx, cy); ctx.fillText(title, cx, cy);
           ctx.fillStyle = "#3d5076";
-          ctx.font = "bold " + (base() * 0.04).toFixed(0) + "px system-ui, sans-serif";
+          const subSize = base() * 0.04;
+          ctx.font = "bold " + subSize.toFixed(0) + "px system-ui, sans-serif";
           const sub = eganPhase === "intro"
             ? "Catch the Egans! Chain catches for combos · Catch " + EGAN_TARGET + " for a free power-up back home"
             : "+" + eganRoundPoints + " points · " + eganCaught + " caught" +
               (eganComboBest >= 2 ? " · best combo x" + eganComboBest : "");
-          ctx.fillText(sub, cx, cy + base() * 0.11);
+          // Wrap the subtitle so the long intro line never gets cut off on a narrow (mobile) screen.
+          const subLines = wrapText(sub, maxW);
+          const lineH = subSize * 1.32;
+          let sy = cy + base() * 0.11;
+          for(const ln of subLines){ ctx.fillText(ln, cx, sy); sy += lineH; }
           ctx.restore();
         }
       }
@@ -2785,6 +2894,7 @@
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
           activeEffect = null;
           try{ sfx.expireEnd(); }catch(err){}
+          haptic([50, 40, 70]);   // a firm down-buzz that lands with the "time's up!" cue
           updatePrompt();
         } else {
           // Enter the wind-down WARNING window a little over a second before it lapses: the
@@ -2793,6 +2903,7 @@
           // player's own visual cue stay fully live right up to the end.
           if(!activeEffect.warning && activeEffect.time <= EFFECT_WARN){
             activeEffect.warning = true;
+            haptic([30, 50, 30]);   // a firm double-buzz the instant the wind-down begins — "heads up, it's running out"
             updatePrompt();
           }
           // Through that final window, an accelerating countdown "beep beep": the cadence
@@ -2801,7 +2912,9 @@
             activeEffect.beepT = (activeEffect.beepT || 0) - dt;
             if(activeEffect.beepT <= 0){
               const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
-              try{ sfx.expireBeep(1 - frac); }catch(err){}
+              const intensity = 1 - frac;                                  // 0 → 1 as zero nears
+              try{ sfx.expireBeep(intensity); }catch(err){}
+              haptic(Math.round(14 + intensity * 30));   // each buzz lengthens in step with the beep so the phone "feels" the countdown
               activeEffect.beepT = BEEP_INTERVAL_MIN + BEEP_INTERVAL_RANGE * frac;   // ~0.34s apart easing down to ~0.16s
             }
           }
@@ -2858,9 +2971,11 @@
       // High-score pressure refills an EMPTIED board faster (and lets the interval bottom out
       // lower), so a strong player who keeps clearing the arena no longer gets the same lazy
       // trickle back. The crowd slowdown above still keeps a full board from becoming a wall.
+      // The arena's aspect ratio also stretches the gap on cramped portrait screens and tightens
+      // it on wide ones (arenaDiff), so the fill pace suits the space.
       const refillMul = 1 / (1 + inten * 0.35);
       const floor = Math.max(0.7, 1.4 - inten * 0.12);
-      const interval = Math.max(floor, ((5 - elapsed * 0.035) + crowdAdj) * refillMul);
+      const interval = Math.max(floor, ((5 - elapsed * 0.035) + crowdAdj) * refillMul / arenaDiff());
       const cap = 12 + Math.min(4, eganTier);   // the board grows a little for top players, only via completed Egan rounds
       if(spawnAcc >= interval && enemies.length < cap){ spawnAcc = 0; spawnEnemy(); }
 
@@ -2904,9 +3019,11 @@
               e.returning = true;
             }
           } else if(e.x > e.r && e.x < W - e.r && e.y > e.r && e.y < H - e.r){
-            // Re-entered the arena: rejoin play with a touch of maturity rather than a
-            // fresh spawn's full crawl, so it works its pace back up a bit quicker.
-            e.banished = false; e.returning = false; e.age = BANISH_RETURN_AGE; e.noWall = false;
+            // Re-entered the arena: rejoin play SLOWER than it left — never faster. It resumes
+            // with only a share of the maturity (age → speed) it had before the banish, capped
+            // so even a long-lived Nazan comes back at a gentle pace however it was knocked out.
+            const resumeAge = Math.min(BANISH_RETURN_AGE_CAP, (e.banishAge || 0) * BANISH_RETURN_AGE_MUL);
+            e.banished = false; e.returning = false; e.age = resumeAge; e.noWall = false;
           }
           continue;
         }
@@ -2925,7 +3042,7 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * 0.00025);
+            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * 0.00025) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
@@ -2934,35 +3051,24 @@
           }
         }
         e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
-        // Force Field: a planted DEFENSIVE bubble. A Nazan that touches the bubble is bumped
-        // off its skin and stays in normal play (it bounces off the walls) — a single touch
-        // never flings it off-screen. The only way the field banishes a Nazan is if you DRIVE
-        // the bubble against an edge so the bubble would push it past the wall: then it's pinned
-        // out of bounds and sails off (drifting back in slowly later). The catch is you crawl
-        // while the field is up (see REPEL_SPEED_MUL in updatePlayer), so shoving Nazans out is
-        // a committal move you steer into them at the edge, not a free auto-banish.
+        // Force Field: a planted DEFENSIVE bubble. Any Nazan that touches the bubble is GENTLY
+        // pushed off the screen — no hard yeet, and no need to corner it against a wall. It's
+        // banished outward straight away (FIELD_BANISH_SPEED) and coasts cleanly past the nearest
+        // edge, ignoring walls so they never "catch" it and bounce it back at you, then drifts
+        // back in slowly later. The catch is you crawl while the field is up (see REPEL_SPEED_MUL
+        // in updatePlayer), so it's a committal, defensive tool rather than a free board-clear.
         if(repelOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR + e.r){
             const nx = dx / d, ny = dy / d;
-            const sx = player.x + nx * (repelR + e.r);   // where the bubble skin would hold it
-            const sy = player.y + ny * (repelR + e.r);
-            const m = base() * REPEL_BANISH_MARGIN;
-            // Driven toward a nearby wall? Don't let the Nazan ping-pong bubble→wall→bubble:
-            // once the bump would place it within this margin of an edge, banish it outright so
-            // cornering a Nazan against a wall actually shoves it out of bounds.
-            if(sx < e.r + m || sx > W - e.r - m || sy < e.r + m || sy > H - e.r - m){
-              banish(e, nx, ny);                          // shoved toward an edge: out of bounds
-              // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
-              // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
-              score += PUSH_POINTS;
-              if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-              continue;
-            }
-            e.x = sx; e.y = sy;                           // hold it on the bubble's surface
-            repelPush(e, nx, ny);                         // firm in-play bump, no off-screen yeet
+            // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
+            // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
+            score += PUSH_POINTS;
+            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
+            banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
+            continue;
           }
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
@@ -3448,16 +3554,13 @@
         updateStartValidity();
         return;
       }
-      // A RESTART comes from the game-over card (which is still up); the very first play comes
-      // from the start card. Only restarts get the frozen countdown pre-roll.
-      const isRestart = !!(overPane && !overPane.classList.contains("hidden"));
       syncName(name);
       loadImages(); resize(); reset();
       closeHelp();
       startPane.classList.add("hidden");
       overPane.classList.add("hidden");
       updatePrompt();
-      countdown = isRestart ? COUNTDOWN_TIME : 0;   // freeze + ease back in on a restart only
+      countdown = 0;   // a fresh round (first play OR a restart after game over) starts straight away — no pre-roll
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
       try{ music.setMode("default"); }catch(e){}   // begin each round on the default gameplay theme
@@ -3485,6 +3588,7 @@
     }
     function gameOver(){
       running = false;
+      haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
@@ -3633,6 +3737,7 @@
       if(startName) startName.value = LS.get("playerName", "");
       updateStartValidity();
       syncMusicBtn();
+      initHapticsBtn();
       renderPickers();
       resize();
       renderBoard("#startLbList");
@@ -3657,8 +3762,15 @@
     function wire(){
       if(!root || !ctx) return;
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
-      // Pointer (mouse + touch) — track position over the canvas.
-      const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
+      // Pointer (mouse + touch) — track position over the canvas. On TOUCH we steer the
+      // Nazan to a point lifted above the finger, so your thumb never sits on top of the
+      // character and hides the very Nazans closing in on it. Mouse steering is unchanged.
+      const TOUCH_LIFT = ()=> base() * 0.10;
+      const setP = (e)=>{
+        pointer.active = true;
+        pointer.x = e.clientX;
+        pointer.y = e.clientY - (e.pointerType === "touch" ? TOUCH_LIFT() : 0);
+      };
       // Firing a banked power-up is a quick press-and-release tap on your OWN Nazan. Shove and
       // Boom are both positional / auto-targeting — neither needs aiming — so they go off the
       // same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
@@ -3669,7 +3781,12 @@
         downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnPlayer = false;
         if(running && player && held){
           const dx = e.clientX - player.x, dy = e.clientY - player.y;
-          const reach = Math.max(player.r, base() * 0.05);   // must land on the Nazan itself
+          // On touch the Nazan rides a fixed lift above the finger, so a tap aimed at it
+          // lands roughly TOUCH_LIFT below the sprite — widen the hit target there so
+          // firing a banked power-up by tapping your Nazan still reads reliably.
+          const reach = e.pointerType === "touch"
+            ? Math.max(player.r * 2, base() * 0.16)   // covers the lift + the sprite
+            : Math.max(player.r, base() * 0.05);      // mouse: tight, unchanged
           downOnPlayer = (dx * dx + dy * dy <= reach * reach);
         }
         setP(e);
@@ -3739,6 +3856,8 @@
       sp("spPrevOver", -1);  sp("spNextOver", 1);
       // Music mute toggle.
       const musicBtn = $("#gameMusic"); if(musicBtn) musicBtn.addEventListener("click", toggleMusic);
+      // Vibration (haptics) toggle — only visible on devices that can vibrate.
+      const hapticsBtn = $("#gameHaptics"); if(hapticsBtn) hapticsBtn.addEventListener("click", toggleHaptics);
       // Browsers block audio until the first user gesture; once one happens, kick the
       // lobby music in if the player hasn't muted it.
       const kickMusic = ()=>{ startMusicIfEnabled(); };
