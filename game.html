@@ -1907,6 +1907,11 @@
       return earliest + Math.random() * PICKUP_AFTER_WINDOW;
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
+    // A power-up only drops once the board has at least this many Nazans actually ON SCREEN
+    // (banished ones flying off don't count): a fresh/near-empty arena holds off on pickups and
+    // re-checks on the PICKUP_RESPAWN cadence until the crowd fills in, so power-ups always land
+    // into a board with something to use them on.
+    const PICKUP_MIN_NAZANS = 3;
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
     // Rounds are paced by points scored OUTSIDE Egan Mode: the egan catches you bank inside a
     // round don't count toward the next trigger, so a round always lands a full (and widening)
@@ -1988,7 +1993,7 @@
     const INTENSITY_MIN   = -1.0;  // value at score 0 — reproduces the old slow, gentle opening
     const INTENSITY_MAX   =  4.5;  // overall cap so it stays fast-but-fair, never impossible
     const INTENSITY_EASE  =  0.65; // <1 → concave road to 1000: the early stretch is the calmest
-    const INTENSITY_ABOVE_SLOPE = 1.0; // intensity gained per 1000 TOTAL score above the 1000 anchor
+    const INTENSITY_ABOVE_SLOPE = 0.85; // intensity gained per 1000 TOTAL score above the 1000 anchor — a touch slower past 1000
     function intensity(){
       const p = Math.max(0, score) / EGAN_FIRST;   // total-score progress; 1.0 at the 1000 anchor
       let i;
@@ -2022,7 +2027,7 @@
     // you catch and carries ACROSS rounds, so it — not the number of egans thrown — is the single
     // driver of difficulty: a struggling player keeps slow, big egans; a strong run has to chase
     // fast, small ones to reach the target. The very first throws are always at 0 (no points yet).
-    const EGAN_PERF_RATE = 1 / 180;      // egan intensity per Egan point banked (a strong round of ~180–220 pts ⇒ ~+1 unit)
+    const EGAN_PERF_RATE = 1 / 240;      // egan intensity per Egan point banked — gentler ramp (a strong round of ~240–290 pts ⇒ ~+1 unit)
     const EGAN_INTENSITY_MAX   = 3.0;    // egan-intensity cap — keeps a veteran's rounds fast-but-fair
     const EGAN_INTENSITY_SPEED = 0.30;   // egan flight speed grows by this fraction per egan-intensity unit
     const EGAN_INTENSITY_RATE  = 0.22;   // egan spawn cadence tightens by this fraction per egan-intensity unit
@@ -2050,6 +2055,15 @@
     // full-screen crossing instead of every egan drifting across near-horizontally.
     const EGAN_DIAG_CHANCE = 0.4;    // chance an egan crosses to the opposite vertical half
     const EGAN_ANG_CAP = Math.PI / 2 - 0.02;   // absolute pitch limit (±~89°): a launch/curve can't reach straight up/down
+    // On WIDE screens an egan launches near-horizontal, so the same curl that reads as a gentle arc on
+    // a phone bends it steeply DOWN/UP and sails it off the top/bottom long before it crosses. Restrict
+    // the per-egan turn AND the stray band on wide formats (flat 1.0 at 16:9 and narrower, easing down
+    // toward ultra-wide) so wide-screen egans stay close to their straight launch line.
+    const EGAN_CURL_PTS = [[1.7778, 1.0], [3.5556, 0.4]];   // curl multiplier vs aspect ratio: full at 16:9 (1.7778), restricted at ~32:9 ultra-wide (3.5556)
+    function eganCurlMul(){
+      const ar = W / Math.max(1, H);
+      return arMap(ar, EGAN_CURL_PTS);
+    }
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
     const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
@@ -2642,9 +2656,24 @@
       } else if(!held && pickupTimer > 0){
         pickupTimer -= dt;
         if(pickupTimer <= 0){
+          // Count the Nazans actually ON SCREEN (a banished one mid-flight off the edge doesn't
+          // count): power-ups only drop into a board with at least PICKUP_MIN_NAZANS to use them on.
+          let onScreenNazans = 0;
+          for(let k = 0; k < enemies.length; k++){ if(!enemies[k].banished) onScreenNazans++; }
           // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
-          if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
+          if(onScreenNazans < PICKUP_MIN_NAZANS){
+            // Too few Nazans on screen yet — hold off (any earned Egan reward is kept, just
+            // delayed) and re-check shortly, so a near-empty board never sprouts a power-up.
+            pickupTimer = PICKUP_RESPAWN;
+          }
+          else if(eganPending){
+            // Egan Mode is already queued to start — it's only waiting for the current held /
+            // active power-up to clear before it arms. Don't drop a fresh pickup that would be
+            // swept off the board the instant the round begins; hold off and re-check shortly.
+            pickupTimer = PICKUP_RESPAWN;
+          }
+          else if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
           // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
           // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
           // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
@@ -2841,9 +2870,10 @@
       // The band is capped just shy of straight up/down (±~89°) so even a steep launch can't curve
       // far enough to reverse course back toward the side it came from.
       const angCap = EGAN_ANG_CAP;
-      const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND);
-      const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND);
-      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
+      const curl = eganCurlMul();                                   // wide screens → tighter band & slower turn
+      const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND * curl);
+      const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND * curl);
+      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN * curl;   // gentle per-egan arc, restricted on wide screens
       // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
       // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
       const img = gold
