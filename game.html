@@ -1138,6 +1138,14 @@
         tone({ type:"square",   f0:680,  dur:0.22, vol:0.32, t0:0.08 });
         tone({ type:"triangle", f0:340,  dur:0.26, vol:0.16, t0:0.08 });   // low body so it lands with weight
       },
+      // A subtle airy "swoosh" for when you flick your Nazan a long way across the arena
+      // with a single tap on touch — a quick band-passed noise sweep (a bright rush up with
+      // a softer body settling behind it) so the long dart carries a little air with it.
+      // Deliberately quiet: a satisfying whisper that rewards the gesture, never a honk.
+      swoosh(){
+        noise({ f0:360, f1:1700, dur:0.16, q:1.1, vol:0.06 });          // airy rush upward
+        noise({ f0:900, f1:300,  dur:0.18, q:0.9, vol:0.04, t0:0.02 }); // a softer body settling behind it
+      },
       // A bright, playful "a power-up appeared!" alert: a quick sparkling rising
       // arpeggio capped with a twinkling shimmer, so a fresh pickup grabs your
       // attention and feels like a fun invitation to go get it.
@@ -3735,6 +3743,13 @@
           downOnPlayer = (dx * dx + dy * dy <= reach * reach);
         }
         setP(e);
+        // A tap that lands far from where your Nazan currently sits sends it darting a long
+        // way across the arena — reward that satisfying long flick with a subtle airy swoosh
+        // (touch only; a tap right by your Nazan or to fire a power-up stays silent).
+        if(running && player && e.pointerType === "touch" && !downOnPlayer){
+          const jx = pointer.x - player.x, jy = pointer.y - player.y;
+          if(jx * jx + jy * jy > (base() * 0.33) * (base() * 0.33)){ try{ sfx.swoosh(); }catch(err){} }
+        }
       });
       canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
       const endTap = (e)=>{
