@@ -1898,7 +1898,9 @@ loadFavicon();
     "A nice little corner of the internet. Have a look. 🌊"
   ];
   async function shareCurse(){
-    const url = location.href.split("#")[0];
+    // Share the clean main URL, not the "index.html" file path: drop any hash,
+    // query string, and a trailing "index.html" so friends get the bare URL.
+    const url = location.href.split("#")[0].split("?")[0].replace(/index\.html$/, "");
     const text = pick(SHARE_LINES);
     achieve("curse");
     mood('curse');
