@@ -1938,24 +1938,25 @@
       }
       return pts[pts.length - 1][1];
     }
-    // ===== Unified per-screen (aspect-ratio) difficulty =======================================
-    // ONE shared curve drives BOTH the main game (arenaDiff) and Egan Mode (eganDiff), so the
-    // per-format difficulty story lives in a single place. It's anchored to the THREE formats that
-    // actually matter and that must "land" exactly: a 9:16 portrait phone (ar≈0.5625), a standard
-    // 16:9 screen (ar≈1.778) and a 32:9 ultra-wide monitor (ar≈3.556).
-    //   • 16:9 is the baseline at EXACTLY 1.00.
-    //   • A portrait phone has FAR less horizontal room to dodge, so it's the hardest format to
-    //     PLAY — it gets a difficulty advantage and sits a little BELOW 1.0 (0.94). It's easier than
-    //     16:9, but only a touch (deliberately NOT as easy as the old 0.85 arena / 0.70 egan floors).
-    //   • An ultra-wide monitor has the most dodging room, so it's nudged a little ABOVE 1.0 (1.09),
-    //     proportionally to how far its aspect ratio sits from 16:9 (the same per-ar slope as the
-    //     portrait drop, ≈0.05 per ar unit), keeping all three formats close together.
-    // arMap() linearly interpolates the in-between formats (e.g. 21:9 → ≈1.02) and clamps flat past
-    // the first/last anchor. The enemy COUNT cap and the tallness() mercies are tuned separately.
-    const FORMAT_DIFF_PTS = [[0.5625, 0.94], [1.7778, 1.00], [3.5556, 1.09]];
+    // ===== Per-screen (aspect-ratio) difficulty ===============================================
+    // arMap() shapes per-format difficulty for BOTH the main game (arenaDiff, FORMAT_DIFF_PTS) and
+    // Egan Mode (eganDiff, EGAN_DIFF_PTS). Each is anchored to the THREE formats that actually
+    // matter and that must "land" exactly: a 9:16 portrait phone (ar≈0.5625), a standard 16:9
+    // screen (ar≈1.778) and a 32:9 ultra-wide monitor (ar≈3.556).
+    //   • 16:9 is the baseline at EXACTLY 1.00 in both modes.
+    //   • A portrait phone has FAR less horizontal room, so it gets a difficulty advantage and sits
+    //     BELOW 1.0. The MAIN game only dips a touch (0.94); Egan Mode dips MORE (≈0.85) — catching
+    //     flying egans on a cramped 9:16 phone is genuinely harder, so it gets a bigger break.
+    //   • An ultra-wide monitor has the most room, so it sits ABOVE 1.0. The MAIN game nudges up
+    //     gently (1.09); Egan Mode pushes HARDER (1.20) — wide screens give egans the whole width to
+    //     streak across, so the bonus round leans on that to stay challenging where the arena eases off.
+    // arMap() linearly interpolates the in-between formats and clamps flat past the first/last anchor.
+    // The enemy COUNT cap and the tallness() mercies are tuned separately.
+    const FORMAT_DIFF_PTS = [[0.5625, 0.94], [1.7778, 1.00], [3.5556, 1.09]];   // main game
+    const EGAN_DIFF_PTS   = [[0.5625, 0.85], [1.7778, 1.00], [3.5556, 1.20]];   // Egan Mode: easier on phones, harder ultra-wide
     function eganDiff(){
       const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
-      return arMap(ar, FORMAT_DIFF_PTS);
+      return arMap(ar, EGAN_DIFF_PTS);
     }
     // ---- High-score INTENSITY model ----------------------------------------------------------
     // Top players bomb/eat the board clear over and over; the old refill gave them the SAME slow
@@ -1988,12 +1989,19 @@
     const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per intensity unit
     function eganSpeedMul(){ return 1 + intensity() * EGAN_INTENSITY_SPEED; }
     function eganRateMul(){  return 1 + intensity() * EGAN_INTENSITY_RATE; }
-    const EGAN_MAX_ANGLE = 0.42;     // max launch pitch off horizontal (~24°); each egan picks a random pitch up to this.
-                                     // Kept low (and the heading is clamped each frame, see eganStep) so egans always
-                                     // travel side-to-side and exit LEFT or RIGHT — never steeply off the top or bottom.
-                                     // The pitch also works HAND IN HAND with the launch height: an egan starting near the
-                                     // top may dive steeply DOWN but barely climb up, and one near the bottom is the reverse,
-                                     // so a steep angle never just sails an egan straight off the nearest edge (see spawnEgan).
+    // Egans no longer launch at a generated ANGLE; instead each picks a launch point on one side
+    // and a destination point on the OPPOSITE side, and flies the straight line between them. That
+    // way an egan can stream clear ACROSS the whole screen (corner-to-corner if it wants), instead of
+    // being held to a shallow side-to-side pitch. EGAN_DEST_INSET keeps the destination a little in
+    // from the very top/bottom corners so a launch never aims at the exact edge, and the per-frame
+    // curve is clamped to a band around the launch heading (EGAN_CROSS_BAND) so the gentle arc can
+    // wobble the line without ever flipping the egan's horizontal direction back on itself.
+    const EGAN_DEST_INSET = 0.06;    // keep the destination point this far (fraction of H) in from the top/bottom edges
+    const EGAN_CROSS_BAND = 0.5;     // ± radians the curve may stray from the launch heading before it's clamped
+    // A share of egans are deliberate "diagonals": their destination is forced into the OPPOSITE
+    // vertical half from where they launched, so they streak corner-to-corner and really show off the
+    // full-screen crossing instead of every egan drifting across near-horizontally.
+    const EGAN_DIAG_CHANCE = 0.4;    // chance an egan crosses to the opposite vertical half
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
     const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
@@ -2176,10 +2184,10 @@
       const ar = W / Math.max(1, H);
       return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
     }
-    // Per-screen difficulty for the MAIN game. Shares the SAME unified curve (FORMAT_DIFF_PTS) as
-    // Egan Mode, so a given screen format reads the same difficulty in both modes: 9:16 portrait
-    // ≈0.94 (a small advantage for the cramped arena), 16:9 = 1.00 baseline, 32:9 ultra-wide ≈1.09
-    // (a touch harder for the extra dodging room). The enemy COUNT cap is tuned separately, not here.
+    // Per-screen difficulty for the MAIN game (FORMAT_DIFF_PTS): 9:16 portrait ≈0.94 (a small
+    // advantage for the cramped arena), 16:9 = 1.00 baseline, 32:9 ultra-wide ≈1.09 (a touch harder
+    // for the extra dodging room). Egan Mode uses its OWN curve (eganDiff / EGAN_DIFF_PTS), which
+    // eases off more on phones and pushes harder on ultra-wide. The enemy COUNT cap is tuned separately.
     function arenaDiff(){
       const ar = W / Math.max(1, H);
       return arMap(ar, FORMAT_DIFF_PTS);
@@ -2755,20 +2763,36 @@
       baseSpeed *= eganDiff();                        // wider screens → faster egans (harder), narrow → calmer
       baseSpeed *= eganSpeedMul();                     // high-score intensity: later Egan rounds fly faster (first round = 0)
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
-      const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
+      const fromLeft = Math.random() < 0.5;                          // egans come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
       const startX = fromLeft ? -r : W + r;
       const startY = r + Math.random() * Math.max(1, H - 2 * r);
-      // Launch pitch works HAND IN HAND with the launch height (y grows downward): an egan high
-      // up the screen has lots of room BELOW it, so it may dive steeply DOWN but barely climb UP;
-      // one near the bottom is the mirror image. This keeps a steep angle from instantly sailing
-      // an egan off the nearest top/bottom edge — the room it has decides how steep it may go.
-      const f = Math.max(0, Math.min(1, startY / Math.max(1, H)));   // 0 = top, 1 = bottom
-      const angMax = EGAN_MAX_ANGLE * (1 - f);                       // steepest DOWN pitch (positive) allowed
-      const angMin = -EGAN_MAX_ANGLE * f;                            // steepest UP pitch (negative) allowed
-      const angle = angMin + Math.random() * (angMax - angMin);      // radians: shallow, height-aware pitch
+      // Pick a DESTINATION point just past the OPPOSITE edge, anywhere down the height (kept a little
+      // in from the very top/bottom by EGAN_DEST_INSET). The egan flies the straight line from launch
+      // to destination, so it can sweep all the way across the screen — gently sloped on a wide
+      // monitor, steeper top-to-bottom on a tall phone — instead of being held to a shallow pitch.
+      const destX = fromLeft ? W + r : -r;
+      const inset = EGAN_DEST_INSET * H;
+      const span = Math.max(1, H - 2 * inset);
+      let destY;
+      if(Math.random() < EGAN_DIAG_CHANCE){
+        // Force a corner-to-corner diagonal: aim into the vertical half opposite the launch height.
+        const top = startY < H / 2;                                  // launched in the top half?
+        destY = top ? (H / 2 + Math.random() * (H / 2 - inset))      // …so head DOWN past the midline
+                    : (inset + Math.random() * (H / 2 - inset));     // …else head UP past the midline
+      } else {
+        destY = inset + Math.random() * span;                        // free aim anywhere down the height
+      }
+      const angle = Math.atan2(destY - startY, dir * (destX - startX));   // launch heading toward the destination
       const vx = dir * speed * Math.cos(angle);
       const vy = speed * Math.sin(angle);
+      // The per-frame curve may stray a band around this launch heading without ever flipping the
+      // egan's horizontal direction (see eganStep), so it still exits the OPPOSITE edge it aimed for.
+      // The band is capped just shy of straight up/down (±~89°) so even a steep launch can't curve
+      // far enough to reverse course back toward the side it came from.
+      const angCap = Math.PI / 2 - 0.02;
+      const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND);
+      const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND);
       const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
       // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
       // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
@@ -2832,15 +2856,15 @@
             const nvx = s.vx * c - s.vy * sn, nvy = s.vx * sn + s.vy * c;
             s.vx = nvx; s.vy = nvy;
           }
-          // Keep every egan travelling SIDE-TO-SIDE: the gentle per-frame turn must never steepen
-          // the heading into a dive or climb, and the horizontal direction must never flip. Clamp
-          // the pitch to the egan's own launch window each frame so it always sails off the LEFT or
-          // RIGHT edge — and only as steeply up/down as the height it launched from allowed.
+          // Keep every egan heading toward the OPPOSITE edge it aimed for: the gentle per-frame turn
+          // may wobble the line within the egan's launch band but must never flip its horizontal
+          // direction. Clamp the pitch to the egan's own launch window each frame so it always sails
+          // off toward its destination side and never doubles back.
           if(s.dir){
             const sp = Math.hypot(s.vx, s.vy) || 1;
             let ang = Math.atan2(s.vy, s.dir * s.vx);       // pitch off horizontal in the travel direction
-            const hi = (s.angMax != null) ? s.angMax : EGAN_MAX_ANGLE;
-            const lo = (s.angMin != null) ? s.angMin : -EGAN_MAX_ANGLE;
+            const hi = (s.angMax != null) ? s.angMax : EGAN_CROSS_BAND;
+            const lo = (s.angMin != null) ? s.angMin : -EGAN_CROSS_BAND;
             if(ang > hi) ang = hi;
             else if(ang < lo) ang = lo;
             s.vx = s.dir * sp * Math.cos(ang);
@@ -3918,10 +3942,10 @@
           "eganDiff  " + eganDiff().toFixed(3),
           "tallness  " + tallness().toFixed(3),
           "intensity " + intensity().toFixed(3),
-          // The three formats that must "land": 9:16 / 16:9 / 32:9 → unified format difficulty.
-          "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2),
-          "16:9   " + arMap(1.7778, FORMAT_DIFF_PTS).toFixed(2),
-          "32:9   " + arMap(3.5556, FORMAT_DIFF_PTS).toFixed(2),
+          // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena | egan difficulty.
+          "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
+          "16:9   " + arMap(1.7778, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(1.7778, EGAN_DIFF_PTS).toFixed(2),
+          "32:9   " + arMap(3.5556, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(3.5556, EGAN_DIFF_PTS).toFixed(2),
         ];
         const pad = base() * 0.02, lh = Math.max(14, base() * 0.028);
         const top = eganHudTop() + pad * 0.5;
