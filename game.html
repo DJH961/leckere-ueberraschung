@@ -1907,6 +1907,11 @@
       return earliest + Math.random() * PICKUP_AFTER_WINDOW;
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
+    // A power-up only drops once the board has at least this many Nazans actually ON SCREEN
+    // (banished ones flying off don't count): a fresh/near-empty arena holds off on pickups and
+    // re-checks on the PICKUP_RESPAWN cadence until the crowd fills in, so power-ups always land
+    // into a board with something to use them on.
+    const PICKUP_MIN_NAZANS = 3;
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
     // Rounds are paced by points scored OUTSIDE Egan Mode: the egan catches you bank inside a
     // round don't count toward the next trigger, so a round always lands a full (and widening)
@@ -2651,9 +2656,18 @@
       } else if(!held && pickupTimer > 0){
         pickupTimer -= dt;
         if(pickupTimer <= 0){
+          // Count the Nazans actually ON SCREEN (a banished one mid-flight off the edge doesn't
+          // count): power-ups only drop into a board with at least PICKUP_MIN_NAZANS to use them on.
+          let onScreenNazans = 0;
+          for(let k = 0; k < enemies.length; k++){ if(!enemies[k].banished) onScreenNazans++; }
           // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
-          if(eganPending){
+          if(onScreenNazans < PICKUP_MIN_NAZANS){
+            // Too few Nazans on screen yet — hold off (any earned Egan reward is kept, just
+            // delayed) and re-check shortly, so a near-empty board never sprouts a power-up.
+            pickupTimer = PICKUP_RESPAWN;
+          }
+          else if(eganPending){
             // Egan Mode is already queued to start — it's only waiting for the current held /
             // active power-up to clear before it arms. Don't drop a fresh pickup that would be
             // swept off the board the instant the round begins; hold off and re-check shortly.
