@@ -1590,9 +1590,10 @@
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
-    // "nico" easter egg: counts how many rounds someone has played under the name
-    // "nico", so the very first one can spawn-kill them and every one after can hand
-    // them a packed board + an escape power-up (see nicoEasterEgg()).
+    // "nico" easter egg: counts how many rounds someone has played under a name that
+    // contains "nico" (so "Nico", "not nico", "nicolas"... all qualify), so the very
+    // first one can spawn-kill them and every one after can hand them a packed board +
+    // an escape power-up (see nicoEasterEgg()).
     const NICO_KEY = "nazanDodgeNicoGames";
     // Random things Nazan says when you get caught — shown big and loud on game over.
     const NAZAN_QUOTES = [
@@ -2503,12 +2504,13 @@
     }
 
     // === "nico" easter egg ===
-    // A personal welcome for anyone cheeky enough to play as "nico". The FIRST time
+    // A personal welcome for anyone cheeky enough to play under a name containing "nico"
+    // (including playful variants like "not nico"). The FIRST time
     // they play, a Nazan materialises right inside them for an instant spawn kill.
     // EVERY game after, they open boxed in by a full board of 12 Nazans — but with an
     // Eating Mode power-up dropped right beside them so they can chomp their way clear.
     const NICO_FULL_BOARD = 12;
-    function isNico(){ return (LS.get("playerName", "") || "").trim().toLowerCase() === "nico"; }
+    function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function nicoEasterEgg(){
       if(!isNico()) return;
       const games = LS.get(NICO_KEY, 0);
