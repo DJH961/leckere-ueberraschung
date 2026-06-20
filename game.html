@@ -484,13 +484,13 @@
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>.</p>
         <p>Fire a banked power-up (Shove / Boom) by <strong>tapping your own Nazan</strong> or pressing <strong>Space</strong> — no aiming needed. Banked power-ups <strong>auto-fire</strong> if you hold them too long. Press <strong>Esc</strong> to leave the game.</p>
         <h3>Power-ups</h3>
-        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans without destroying them — steer them into an edge to knock them out of bounds.</p>
+        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans off-screen without destroying them — Shove and Star knock them out only when you drive them onto an edge, while the Force Field gently sends any Nazan that touches it on its way.</p>
         <ul class="puList">
           <li><span class="puIco">😋</span><span><span class="puName">Eating Mode</span><span class="puDesc">Devour Nazans on contact — they flee, so chase them down.</span></span></li>
           <li><span class="puIco">👻</span><span><span class="puName">Invisible</span><span class="puDesc">Nazans pass straight through you for a few seconds.</span></span></li>
           <li><span class="puIco">🤏</span><span><span class="puName">Tiny Mode</span><span class="puDesc">Shrink down and slip through the crowd.</span></span></li>
           <li><span class="puIco">🐌</span><span><span class="puName">Snail Mode</span><span class="puDesc">Every other Nazan crawls in slow motion.</span></span></li>
-          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that bumps Nazans off its skin — shove them into a wall to knock them out. You slow to a crawl while it's up, so commit to the push.</span></span></li>
+          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that gently pushes any Nazan that touches it clean off the screen. You slow to a crawl while it's up, so it's a defensive shield, not a free clear.</span></span></li>
           <li><span class="puIco">⭐</span><span><span class="puName">Star Power</span><span class="puDesc">Invincible <em>and faster</em>, with a sparkling trail — barge straight through Nazans for points.</span></span></li>
           <li><span class="puIco">💨</span><span><span class="puName">Shove</span><span class="puDesc">Banked. Blasts nearby Nazans away. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">💥</span><span><span class="puName">Boom</span><span class="puDesc">Banked. Pops the whole crowd around you for points. Tap your Nazan or press Space.</span></span></li>
@@ -1633,33 +1633,29 @@
       return Math.min(n, Math.min(ZAP_MAX, Math.max(ZAP_MIN, Math.ceil(n * ZAP_FRACTION))));
     }
     const REPEL_RADIUS = 0.30;       // Force Field reach (a roomy push dome), as a fraction of base()
-    // The Force Field is a DEFENSIVE bubble first: a Nazan that merely touches its skin out in
-    // the open gets firmly bumped away but stays in play and bounces off the walls normally — it
-    // must not be flung off-screen just for brushing the field mid-arena. But when you steer the
-    // bubble so it shoves a Nazan TOWARD a nearby wall, it should sail out of bounds without
-    // ping-ponging bubble→wall→bubble forever: the moment the bump would drive it within
-    // REPEL_BANISH_MARGIN of an edge, it's banished (handled in the repel block). So pushing
-    // Nazans out is easy when you corner them against a wall, yet a Nazan shoved into open space
-    // still stays in play — the direction and position of the shove decide it, not luck.
-    const REPEL_PUSH_SPEED = 0.013;  // outward bump given to a Nazan off the bubble skin (in-play, bounces off walls)
-    const REPEL_BANISH_MARGIN = 0.22; // how close to a wall (fraction of base()) a bubble-shoved Nazan must be driven to sail out of bounds
+    // The Force Field is a DEFENSIVE bubble: any Nazan that touches its skin is GENTLY pushed
+    // away off the screen. It's not a hard yeet and it doesn't rely on cornering against a wall
+    // — the moment a Nazan brushes the bubble it's banished outward and coasts cleanly off the
+    // nearest edge (ignoring walls so they never "catch" it and bounce it back at you), then
+    // drifts back in slowly later like any other banish. The price is that you crawl while the
+    // field is up (see REPEL_SPEED_MUL), so it stays distinct from the fast, free-roaming Star.
+    const FIELD_BANISH_SPEED  = 0.018;  // gentle outward push when the Force Field sends a Nazan off-screen (vs. the harder BANISH_EXIT_SPEED yeet)
     // The banishing (off-screen) power-ups (Shove, Star, Force Field) don't destroy Nazans
-    // — they give them a hard outward PUSH and let normal physics take over. A pushed Nazan
-    // keeps rolling and bouncing around in play; it only leaves the arena if the push carries
-    // it right onto an edge, where it sails off fast, vanishes for a beat, then SLOWLY
-    // drifts back in from off-screen. So you have to GUIDE a Nazan off the screen — it
-    // never happens automatically. (Eating Mode, by contrast, removes them for good.)
-    // The Force Field is the slow, planted version: its bubble shoves any Nazan that touches
-    // it, but the price is that you can barely move while it's up (see REPEL_SPEED_MUL), so
-    // it stays distinct from the fast, free-roaming Star Power.
+    // — they give them an outward PUSH off the screen. A shoved/star-barged Nazan keeps rolling
+    // and bouncing in play and only leaves if driven onto an edge; a field-touched one is sent
+    // off straight away. Either way it sails past the edge, vanishes for a beat, then SLOWLY
+    // drifts back in from off-screen. (Eating Mode, by contrast, removes them for good.)
     const BANISH_EXIT_SPEED   = 0.03;   // fast outward launch when shoved off-screen, fraction of base()
     const BANISH_RETURN_SPEED = 0.0024; // slow drift back toward the arena once fully off-screen
     const BANISH_MARGIN       = 0.18;   // how far past the edge (fraction of base()) counts as "gone"
     const SHOVE_WINDOW        = 0.25;   // seconds a freshly-pushed Nazan can still be carried off an edge
-    // A Nazan that drifts back in from a banish doesn't reset all the way to a fresh
-    // spawn's crawl — it resumes with a little "maturity" so it picks the pace back up
-    // sooner. Faster than a brand-new Nazan, but still well short of a seasoned one.
-    const BANISH_RETURN_AGE   = 10;     // seconds of age a returning Nazan resumes with
+    // A Nazan that drifts back in from a banish resumes SLOWER than it was when it got knocked
+    // out — never faster. It comes back at a reduced share of the "maturity" (age → speed) it
+    // had before the yeet, capped so even a long-lived one returns at a gentle pace. This makes
+    // banishing always buy you breathing room: however a Nazan left (shove, star, or field), and
+    // whatever speed boost sent it off, it returns calmer than it left — not faster.
+    const BANISH_RETURN_AGE_CAP = 10;   // upper bound (in age-seconds) on how fast any returning Nazan may resume
+    const BANISH_RETURN_AGE_MUL = 0.6;  // returning Nazans resume with only this share of their pre-banish maturity
     // Eating Mode: Nazans nervously edge AWAY from the hungry player, so clearing the whole
     // board takes real chasing — but only while there's room to run. Once the player is
     // bearing right down on one it holds its ground, so cornered prey can still be caught.
@@ -2028,18 +2024,20 @@
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
-    // It launches fast, sails past the edge, and is flagged so the main loop lets it
+    // It launches outward, sails past the edge, and is flagged so the main loop lets it
     // leave (no wall bounce, harmless to touch) and then SLOWLY drifts it back on later.
-    // This only fires once a shove has actually pushed a Nazan onto the edge (see shove
-    // and the wall handling in step) — it never teleports one away from mid-screen.
-    function banish(e, nx, ny){
+    // exitMul sets how hard it's sent off — a hard BANISH_EXIT_SPEED yeet for Shove/Star,
+    // a gentle FIELD_BANISH_SPEED nudge for the Force Field. Either way it returns calmer
+    // than it left: its pre-banish maturity is remembered so it comes back slower, not faster.
+    function banish(e, nx, ny, exitMul){
       if(!(nx || ny)){                      // degenerate direction (right on top of us): pick one
         const a = Math.random() * Math.PI * 2; nx = Math.cos(a); ny = Math.sin(a);
       }
-      const exit = base() * BANISH_EXIT_SPEED;
+      const exit = base() * (exitMul || BANISH_EXIT_SPEED);
       e.vx = nx * exit; e.vy = ny * exit;
       e.banished = true; e.returning = false; e.shoveT = 0; e.noWall = false;
-      e.age = 0;                            // comes back as gentle as a fresh spawn
+      e.banishAge = e.age;                  // remember its maturity so it returns no faster than this
+      e.age = 0;                            // and leaves as gentle as a fresh spawn
     }
 
     // The shared move behind every "shove"-type power-up (Shove, Star, Force Field):
@@ -2054,20 +2052,6 @@
       e.vx = nx * push; e.vy = ny * push;
       e.shoveT = SHOVE_WINDOW;
       e.banished = false; e.returning = false; e.noWall = true;
-    }
-
-    // The Force Field's gentle counterpart to shove: bump a Nazan off the bubble skin with a
-    // firm-but-modest outward push that leaves it in normal play — it bounces off the walls
-    // instead of sailing through them, so a mere touch never yeets it off-screen. (A Nazan is
-    // only banished by the field when the bubble pins it past an edge; see the repel block.)
-    function repelPush(e, nx, ny){
-      if(!(nx || ny)){
-        const a = Math.random() * Math.PI * 2; nx = Math.cos(a); ny = Math.sin(a);
-      }
-      const push = base() * REPEL_PUSH_SPEED;
-      e.vx = nx * push; e.vy = ny * push;
-      e.shoveT = 0;                          // no carry-off window: it bounces off walls normally
-      e.banished = false; e.returning = false; e.noWall = false;
     }
 
     // Blast every Nazan within reach with a hard outward shove. This is the Shove power-up's
@@ -2901,9 +2885,11 @@
               e.returning = true;
             }
           } else if(e.x > e.r && e.x < W - e.r && e.y > e.r && e.y < H - e.r){
-            // Re-entered the arena: rejoin play with a touch of maturity rather than a
-            // fresh spawn's full crawl, so it works its pace back up a bit quicker.
-            e.banished = false; e.returning = false; e.age = BANISH_RETURN_AGE; e.noWall = false;
+            // Re-entered the arena: rejoin play SLOWER than it left — never faster. It resumes
+            // with only a share of the maturity (age → speed) it had before the banish, capped
+            // so even a long-lived Nazan comes back at a gentle pace however it was knocked out.
+            const resumeAge = Math.min(BANISH_RETURN_AGE_CAP, (e.banishAge || 0) * BANISH_RETURN_AGE_MUL);
+            e.banished = false; e.returning = false; e.age = resumeAge; e.noWall = false;
           }
           continue;
         }
@@ -2931,31 +2917,20 @@
           }
         }
         e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
-        // Force Field: a planted DEFENSIVE bubble. A Nazan that touches the bubble is bumped
-        // off its skin and stays in normal play (it bounces off the walls) — a single touch
-        // never flings it off-screen. The only way the field banishes a Nazan is if you DRIVE
-        // the bubble against an edge so the bubble would push it past the wall: then it's pinned
-        // out of bounds and sails off (drifting back in slowly later). The catch is you crawl
-        // while the field is up (see REPEL_SPEED_MUL in updatePlayer), so shoving Nazans out is
-        // a committal move you steer into them at the edge, not a free auto-banish.
+        // Force Field: a planted DEFENSIVE bubble. Any Nazan that touches the bubble is GENTLY
+        // pushed off the screen — no hard yeet, and no need to corner it against a wall. It's
+        // banished outward straight away (FIELD_BANISH_SPEED) and coasts cleanly past the nearest
+        // edge, ignoring walls so they never "catch" it and bounce it back at you, then drifts
+        // back in slowly later. The catch is you crawl while the field is up (see REPEL_SPEED_MUL
+        // in updatePlayer), so it's a committal, defensive tool rather than a free board-clear.
         if(repelOn && player){
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR + e.r){
             const nx = dx / d, ny = dy / d;
-            const sx = player.x + nx * (repelR + e.r);   // where the bubble skin would hold it
-            const sy = player.y + ny * (repelR + e.r);
-            const m = base() * REPEL_BANISH_MARGIN;
-            // Driven toward a nearby wall? Don't let the Nazan ping-pong bubble→wall→bubble:
-            // once the bump would place it within this margin of an edge, banish it outright so
-            // cornering a Nazan against a wall actually shoves it out of bounds.
-            if(sx < e.r + m || sx > W - e.r - m || sy < e.r + m || sy > H - e.r - m){
-              banish(e, nx, ny);                          // shoved toward an edge: out of bounds
-              continue;
-            }
-            e.x = sx; e.y = sy;                           // hold it on the bubble's surface
-            repelPush(e, nx, ny);                         // firm in-play bump, no off-screen yeet
             try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
+            banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
+            continue;
           }
         }
         // Eating Mode: edge gently away from the player so the chase has some bite —
