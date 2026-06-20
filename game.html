@@ -1838,10 +1838,11 @@
     let eganCaught  = 0;             // how many egans were caught this round (for the end card)
     let eganPending = false;         // a milestone was crossed; waiting for any power-up to clear
     let nextEganThreshold = 0;       // next score that arms an egan round (set in reset())
-    // High-score intensity bookkeeping: each completed Egan round is a "stage" boundary.
-    let eganTier       = 0;          // how many Egan rounds have been COMPLETED this run (drives the discrete difficulty step-up)
+    // Egan bookkeeping. eganTier counts COMPLETED rounds (paces how power-ups thin out); eganArmed
+    // counts thresholds crossed (drives the widening gap between rounds). Main-game intensity no
+    // longer keys off these — it follows TOTAL score (see intensity()).
+    let eganTier       = 0;          // how many Egan rounds have been COMPLETED this run (paces pickup scarcity)
     let eganArmed      = 0;          // how many Egan thresholds have been crossed (drives the widening gap between rounds)
-    let eganStageStart = 0;          // non-egan score at which the CURRENT stage began (for the subtle within-stage ramp)
     let eganUrls    = [];            // image URLs from stickers/egans (loaded only when enabled)
     let eganImages  = [];            // preloaded egan Image objects
     let eganUrlsRequested = false;   // guard so the egans listing is fetched at most once
@@ -1958,37 +1959,55 @@
       const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
       return arMap(ar, EGAN_DIFF_PTS);
     }
-    // ---- High-score INTENSITY model ----------------------------------------------------------
-    // Top players bomb/eat the board clear over and over; the old refill gave them the SAME slow
-    // trickle of gently-arriving Nazans no matter the score, so an emptied board at 2500 felt no
-    // different from one at 100. intensity() fixes that by scaling the spawn STARTING speed and
-    // the refill RATE for strong runs, leaving the score math (and thus existing leaderboard
-    // scores) untouched. By design it has two parts:
-    //   • a SUBTLE continuous creep as the player advances THROUGH the current Egan stage, and
-    //   • a larger DISCRETE step each time an Egan round is COMPLETED (eganTier++), so the game
-    //     feels a notch harder right AFTER every Egan mode rather than mid-stage.
-    // It only engages once the first Egan stage is reached, so casual sub-1000 play is unchanged.
-    const INTENSITY_WITHIN_STAGE = 0.35;  // most the subtle within-stage creep can add (≈⅓ of a tier step)
-    const INTENSITY_TIER_STEP    = 1.0;   // the firmer jump added per COMPLETED Egan round
-    const INTENSITY_MAX          = 4.5;   // overall cap so it stays fast-but-fair, never impossible
+    // ---- INTENSITY model (continuous, TOTAL-score driven) ------------------------------------
+    // intensity() is ONE smooth dial that shapes how hard the main arena plays. It is driven purely
+    // by the TOTAL score (survival drip + every power-up AND Egan point), and is tuned so:
+    //   • score 0   → INTENSITY_MIN: the calmest opening, ramping from the very first second.
+    //   • score 1000 → exactly 0: the arena feels IDENTICAL to how it always has at 1000
+    //                  (1000 is the "perfect difficulty" anchor and the first-Egan milestone).
+    //   • score > 1000 → positive and climbing, so the deeper a run goes the hotter it runs.
+    // Because it follows TOTAL score, the points banked INSIDE an Egan round bump intensity the
+    // instant you return — so you "level up" into a slightly tougher world right after every Egan
+    // mini-game, no separate step needed. Below 1000 the curve is concave (eases in) so the early
+    // game stays gentle and only firms up as you approach 1000, making 1000 easier to REACH while
+    // leaving the feel AT 1000 unchanged. None of this touches the score math, so leaderboard
+    // numbers stay directly comparable.
+    const INTENSITY_MIN   = -1.0;  // value at score 0 — reproduces the old slow, gentle opening
+    const INTENSITY_MAX   =  4.5;  // overall cap so it stays fast-but-fair, never impossible
+    const INTENSITY_EASE  =  0.65; // <1 → concave road to 1000: the early stretch is the calmest
+    const INTENSITY_ABOVE_SLOPE = 1.0; // intensity gained per 1000 TOTAL score above the 1000 anchor
     function intensity(){
-      // No extra pressure until at least one Egan round has been COMPLETED, so the whole
-      // sub-1000 early game (and any run that never reaches an Egan round) plays exactly as before.
-      if(!eganEnabled() || eganTier <= 0) return 0;
-      const outside = score - eganPointsTotal;
-      // Subtle: 0→1 across the CURRENT stage (last Egan threshold → next one).
-      const span = Math.max(1, nextEganThreshold - eganStageStart);
-      const within = Math.max(0, Math.min(1, (outside - eganStageStart) / span));
-      return Math.min(INTENSITY_MAX, eganTier * INTENSITY_TIER_STEP + within * INTENSITY_WITHIN_STAGE);
+      const p = Math.max(0, score) / EGAN_FIRST;   // total-score progress; 1.0 at the 1000 anchor
+      let i;
+      if(p < 1){
+        // Road to 1000: ramp up from the easiest opening to exactly 0 at the anchor. The concave
+        // shape (EASE < 1) keeps the first stretch calmest, then firms up as 1000 nears — so 1000
+        // lands on today's feel while everything before it is easier than a straight line.
+        i = -Math.pow(1 - p, INTENSITY_EASE);
+      } else {
+        // Past 1000: keep climbing with TOTAL score so a strong run runs hotter, and the points
+        // won inside an Egan round nudge the world up a notch the moment the round ends.
+        i = (p - 1) * INTENSITY_ABOVE_SLOPE;
+      }
+      return Math.max(INTENSITY_MIN, Math.min(INTENSITY_MAX, i));
     }
-    // Egan Mode rides the SAME high-score intensity() as the main game, so a bonus round late in a
-    // strong run is tougher than an early one: faster flight and tighter spawns. Because intensity()
-    // only counts COMPLETED Egan rounds (eganTier), the VERY FIRST Egan round is always at intensity
-    // 0 (no boost) and each later round ramps up from there. Gains are gentle so it stays catchable.
-    const EGAN_INTENSITY_SPEED = 0.10;   // egan flight speed grows by this fraction per intensity unit
-    const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per intensity unit
-    function eganSpeedMul(){ return 1 + intensity() * EGAN_INTENSITY_SPEED; }
-    function eganRateMul(){  return 1 + intensity() * EGAN_INTENSITY_RATE; }
+    // Spawn-interval ramp: the main lever for the road to 1000. baseTerm() is the time-free
+    // replacement for the old "5 − elapsed·0.035" creep — now intensity-driven so it follows SCORE
+    // rather than wall-clock seconds. It equals 1.5 at the 1000 anchor (the old value at ~100s),
+    // sits HIGHER (calmer) below 1000, and keeps dropping above it.
+    const INTENSITY_INTERVAL_GAIN = 3.5; // how much the spawn-interval base term swings per intensity unit
+    function spawnIntervalBase(){ return 1.5 - INTENSITY_INTERVAL_GAIN * intensity(); }
+    // ---- Egan-mode INTENSITY (driven ONLY by Egan performance) -------------------------------
+    // Egan rounds get tougher the BETTER you are at Egan — never because the main score is high.
+    // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
+    // / golden egans ⇒ more points ⇒ faster, tighter rounds). The very first round is always at 0
+    // (no Egan points yet), so it opens gently and each later round ramps from your own Egan skill.
+    const EGAN_PERF_RATE = 1 / 600;      // egan intensity per Egan point banked (≈600 pts ⇒ +1 unit; a strong round banks ~150–250)
+    const EGAN_INTENSITY_SPEED = 0.10;   // egan flight speed grows by this fraction per egan-intensity unit
+    const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per egan-intensity unit
+    function eganIntensity(){ return Math.min(INTENSITY_MAX, Math.max(0, eganPointsTotal) * EGAN_PERF_RATE); }
+    function eganSpeedMul(){ return 1 + eganIntensity() * EGAN_INTENSITY_SPEED; }
+    function eganRateMul(){  return 1 + eganIntensity() * EGAN_INTENSITY_RATE; }
     // Egans no longer launch at a generated ANGLE; instead each picks a launch point on one side
     // and a destination point on the OPPOSITE side, and flies the straight line between them. That
     // way an egan can stream clear ACROSS the whole screen (corner-to-corner if it wants), instead of
@@ -2116,9 +2135,10 @@
       if(activeEffect && !activeEffect.warning) mode = activeEffect.type;
       try{ music.setMode(mode); }catch(e){}
       try{ sfx.setVoiceMode(mode); }catch(e){}   // keep Nazan's voice flavour matched to the mode
-      // High-score intensity tightens the tempo a touch — subtle within a stage, a firmer lift
-      // after each completed Egan round (the step lives in intensity()). Capped so it stays musical.
-      try{ music.setTempo(1 + Math.min(0.2, intensity() * 0.04)); }catch(e){}
+      // Intensity tightens the tempo a touch as the TOTAL score climbs — barely there early, a
+      // firmer lift the deeper a run goes (including the bump from an Egan round's points). Below
+      // 1000 intensity is ≤0 so the tempo sits at its calm baseline. Capped so it stays musical.
+      try{ music.setTempo(1 + Math.min(0.2, Math.max(0, intensity()) * 0.04)); }catch(e){}
     }
     function toggleMusic(){
       musicEnabled = !musicEnabled;
@@ -2326,7 +2346,7 @@
       eganBag = []; eganBagReady = false; eganBagTotal = 0;
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;
       eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
-      eganTier = 0; eganArmed = 0; eganStageStart = 0;   // fresh run: no high-score pressure yet
+      eganTier = 0; eganArmed = 0;   // fresh run: no completed Egan rounds yet
       eganPrevEnemies = [];                              // drop any board snapshot left from a previous run
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setTempo(1); }catch(e){}                // and the music tempo starts un-pressured
@@ -2944,10 +2964,10 @@
     // simply resume on their normal schedule (no early freebie).
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0;
-      // Completing an Egan round steps the difficulty up a notch: the next stretch of normal
-      // play arrives a tad harder (faster starting Nazans, quicker refills) and a touch more
-      // intense (music tempo + a warmer screen). This discrete bump is the "feels harder after
-      // every Egan mode" beat; the within-stage creep on top of it stays subtle (see intensity()).
+      // Completing an Egan round automatically steps the world up a notch: the catches you banked
+      // were added to the TOTAL score, and main-game intensity() follows the total score — so you
+      // return into a slightly faster, hotter arena right after every Egan mini-game, with no
+      // separate difficulty step needed. eganTier just paces how power-ups thin out from here.
       eganTier++;
       if(player){ player.x = W / 2; player.y = H * 0.72; }
       // Drop the steering pointer onto the re-centred player so the resume doesn't FLING the
@@ -3339,10 +3359,9 @@
         const outsideScore = score - eganPointsTotal;
         if(outsideScore >= nextEganThreshold){
           eganPending = true;
-          // Advance the stage: the current stage now runs from this threshold to the next,
-          // whose gap WIDENS each time (eganGap), so rounds get rarer the further you push.
+          // Advance the Egan arming threshold to the next one, whose gap WIDENS each time
+          // (eganGap), so bonus rounds get rarer the further you push.
           while(outsideScore >= nextEganThreshold){
-            eganStageStart = nextEganThreshold;
             eganArmed++;
             nextEganThreshold += eganGap(eganArmed);
           }
@@ -3374,10 +3393,15 @@
       // trickle back. The crowd slowdown above still keeps a full board from becoming a wall.
       // The arena's aspect ratio also stretches the gap on cramped portrait screens and tightens
       // it on wide ones (arenaDiff), so the fill pace suits the space.
+      // The base term itself is now score-driven (spawnIntervalBase via intensity): it sits HIGHER
+      // (calmer) below 1000 so the early game is easier to survive, equals the old ~100s value at
+      // the 1000 anchor, and keeps dropping above it. Below 1000 intensity is negative, so refillMul
+      // is >1 and the floor is higher too — the whole road to 1000 is gentler, then matches today AT
+      // 1000 and escalates beyond.
       const refillMul = 1 / (1 + inten * 0.35);
       const floor = Math.max(0.7, 1.4 - inten * 0.12);
-      const interval = Math.max(floor, ((5 - elapsed * 0.035) + crowdAdj) * refillMul / arenaDiff());
-      const cap = 12 + Math.min(4, eganTier);   // the board grows a little for top players, only via completed Egan rounds
+      const interval = Math.max(floor, (spawnIntervalBase() + crowdAdj) * refillMul / arenaDiff());
+      const cap = 12 + Math.min(4, Math.max(0, Math.floor(inten)));   // the board grows for top players as total-score intensity climbs (so an Egan round's points count too)
       if(spawnAcc >= interval && enemies.length < cap){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
@@ -3694,9 +3718,9 @@
         }
         ctx.restore();
       }
-      // Normal arena: a faint warm "heat" vignette that deepens with high-score intensity, so a
-      // strong run visibly runs hotter — barely there mid-stage, a clearer step after each Egan
-      // round. Casual (pre-first-Egan) play has intensity 0, so nothing is drawn then.
+      // Normal arena: a faint warm "heat" vignette that deepens with intensity, so a strong run
+      // visibly runs hotter the higher the TOTAL score climbs. Below 1000 intensity is ≤0, so
+      // heat ≤0 and nothing is drawn — the early game stays clean, exactly as before.
       else if(running){
         const heat = intensity() / INTENSITY_MAX;
         if(heat > 0.01){
@@ -3942,7 +3966,10 @@
           "arenaDiff " + arenaDiff().toFixed(3),
           "eganDiff  " + eganDiff().toFixed(3),
           "tallness  " + tallness().toFixed(3),
+          "score     " + Math.floor(score),
+          "outside   " + Math.floor(score - eganPointsTotal),
           "intensity " + intensity().toFixed(3),
+          "eganInten " + eganIntensity().toFixed(3),
           // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena | egan difficulty.
           "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
           "16:9   " + arMap(1.7778, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(1.7778, EGAN_DIFF_PTS).toFixed(2),
