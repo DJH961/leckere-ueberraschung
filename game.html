@@ -1763,9 +1763,10 @@
     // buzz on any last-gasp catch) so a grace eat still reads, sounds and feels exactly like a
     // proper one rather than a silent freebie.
     const EAT_GRACE = 0.16;        // seconds Eating Mode still devours on contact after its timer hits zero
-    // A fresh Nazan materialises over SPAWN_GRACE seconds: through that window it's harmless
-    // (the collision loop skips it, exactly as it already skips banished / freshly-shoved
-    // Nazans) and draw() fades + scales it in as a telegraph. This is the cheap safety net
+    // A fresh Nazan materialises over SPAWN_GRACE seconds: through that window it's non-lethal,
+    // and draw() fades + scales it in as a telegraph. Power-up interactions still apply during
+    // this fade-in (so Star / Eat / shoves / field never "miss" a fresh spawn); only plain
+    // contact is gated. This is the cheap safety net
     // behind the safe-distance spawn check — even if a spawn lands near a cornered player, the
     // player still gets a reaction window instead of an instant, unavoidable death.
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
@@ -3792,14 +3793,6 @@
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         if(e.banished) continue;                  // already flung off-screen, harmless in transit
-        // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
-        // so it's harmless while it clears the player — otherwise you could die a frame after a
-        // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
-        if(e.shoveT > 0) continue;
-        // A Nazan still materialising (spawnT > 0) is harmless while it fades in — the cheap
-        // safety net behind the safe-distance spawn check, so a spawn that lands near a cornered
-        // player can't be an instant, unavoidable death. It reads as a deliberate fade-in (draw()).
-        if(e.spawnT > 0) continue;
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
@@ -3826,6 +3819,13 @@
             continue;
           }
           if(activeEffect && activeEffect.type === "ghost") continue;
+          // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
+          // so it's harmless while it clears the player — otherwise you could die a frame after a
+          // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
+          if(e.shoveT > 0) continue;
+          // A Nazan still materialising (spawnT > 0) is non-lethal while it fades in: plain
+          // collision can't kill you yet, but power-ups above can still consume or shove it.
+          if(e.spawnT > 0) continue;
           // Death auto-fire: about to die with a banked Shove or Boom in hand? Unleash it
           // in this final instant instead of dying. A panic-button reflex — the Shove
           // blasts the lethal Nazan (and its neighbours) away, the Boom pops the crowd
