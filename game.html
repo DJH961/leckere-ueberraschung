@@ -1769,9 +1769,10 @@
     // buzz on any last-gasp catch) so a grace eat still reads, sounds and feels exactly like a
     // proper one rather than a silent freebie.
     const EAT_GRACE = 0.16;        // seconds Eating Mode still devours on contact after its timer hits zero
-    // A fresh Nazan materialises over SPAWN_GRACE seconds: through that window it's harmless
-    // (the collision loop skips it, exactly as it already skips banished / freshly-shoved
-    // Nazans) and draw() fades + scales it in as a telegraph. This is the cheap safety net
+    // A fresh Nazan materialises over SPAWN_GRACE seconds: through that window it's non-lethal,
+    // and draw() fades + scales it in as a telegraph. Power-up interactions still apply during
+    // this fade-in (so Star / Eat / shoves / field never "miss" a fresh spawn); only plain
+    // contact is gated. This is the cheap safety net
     // behind the safe-distance spawn check — even if a spawn lands near a cornered player, the
     // player still gets a reaction window instead of an instant, unavoidable death.
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
@@ -3878,17 +3879,9 @@
         const e = enemies[i];
         // An OUTBOUND banished Nazan (still flying off-screen, not yet turned around) is far
         // out of reach and inert. A RETURNING one drifting back in, though, is fair game for
-        // Eating Mode / Star Power again — it just can't kill you on plain contact until it has
-        // fully rejoined play (handled at the death check below).
+        // Eating Mode / Star Power / Force Field again — it just can't kill you on plain contact
+        // until it has fully rejoined play (handled by the non-lethal gates below the power-ups).
         if(e.banished && !e.returning) continue;
-        // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
-        // so it's harmless while it clears the player — otherwise you could die a frame after a
-        // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
-        if(e.shoveT > 0) continue;
-        // A Nazan still materialising (spawnT > 0) is harmless while it fades in — the cheap
-        // safety net behind the safe-distance spawn check, so a spawn that lands near a cornered
-        // player can't be an instant, unavoidable death. It reads as a deliberate fade-in (draw()).
-        if(e.spawnT > 0) continue;
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
@@ -3915,10 +3908,33 @@
             continue;
           }
           if(activeEffect && activeEffect.type === "ghost") continue;
+          // Force Field up: its bubble makes contact non-lethal, full stop. The field push in
+          // the enemy loop above normally banishes Nazans long before they reach you, but a
+          // Nazan drifting back in from an earlier banish un-flags right at the arena edge on a
+          // frame the field hasn't re-grabbed it yet — so a crawling, wall-hugging player could
+          // be brushed and killed while the shield is visibly up. Catch it here too and push it
+          // straight back off (same PUSH score as the field), so the shield never lets you die.
+          if(activeEffect && activeEffect.type === "repel"){
+            const d = Math.hypot(dx, dy) || 1;
+            score += PUSH_POINTS;
+            bumpMomentum(1);
+            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+            try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
+            banish(e, dx / d, dy / d, FIELD_BANISH_SPEED);                  // gently sent off-screen, no wall bounce
+            haptic(8);
+            continue;
+          }
           // A returning Nazan reappearing in the arena is harmless on plain contact — it can be
-          // eaten or barged aside above, but it won't kill you (or burn a death auto-fire) until
-          // it has fully rejoined play.
+          // eaten / barged / field-pushed above, but it won't kill you (or burn a death auto-fire)
+          // until it has fully rejoined play.
           if(e.banished) continue;
+          // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
+          // so it's harmless while it clears the player — otherwise you could die a frame after a
+          // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
+          if(e.shoveT > 0) continue;
+          // A Nazan still materialising (spawnT > 0) is non-lethal while it fades in: plain
+          // collision can't kill you yet, but power-ups above can still consume or shove it.
+          if(e.spawnT > 0) continue;
           // Death auto-fire: about to die with a banked Shove or Boom in hand? Unleash it
           // in this final instant instead of dying. A panic-button reflex — the Shove
           // blasts the lethal Nazan (and its neighbours) away, the Boom pops the crowd
