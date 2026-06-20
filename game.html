@@ -2079,7 +2079,13 @@
       LS.set("nazanDodgeMusic", musicEnabled);
       setAudioMuted(!musicEnabled);   // mute/unmute EVERYTHING (sfx, voices and music)
       syncMusicBtn();
-      if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
+      if(musicEnabled){
+        // Only the live game has background music. On the start / game-over screens
+        // there's no music to resume, so toggling sound back on there shouldn't kick
+        // a track off — just play a little "sound's on" chime to confirm the unmute.
+        if(running) startMusicIfEnabled();
+        else { try{ sfx.point(); }catch(e){} }
+      } else { try{ music.stop(); }catch(e){} }
     }
     // ----- Haptics (vibration) helpers -----
     // The phone can vibrate, so a vibration toggle is worth showing.
