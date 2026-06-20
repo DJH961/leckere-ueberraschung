@@ -161,8 +161,6 @@
   .clockReaction:hover img{transform:scale(1.03);}
   .clockReaction:focus-visible{outline:none;}
   .clockReaction:focus-visible img{outline:2px solid var(--navy); outline-offset:3px; transform:scale(1.03);}
-  .clockReactionCap{font-weight:800; color:var(--navy); font-size:.86rem; letter-spacing:.4px;
-    font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:5px;}
   .clockLightbox{position:absolute; inset:0; z-index:9; display:none;
     align-items:center; justify-content:center; padding:76px 20px 20px;
     background:rgba(20,28,46,.6); backdrop-filter:blur(3px); touch-action:pan-y;}
@@ -340,7 +338,6 @@
        picker, name field and leaderboard all still fit on one screen. */
     .clockReaction{margin:5px auto 3px; gap:4px;}
     .clockReaction img{max-width:60vw; max-height:24vh;}
-    .clockReactionCap{font-size:.8rem;}
   }
   @media (max-width:360px){
     #game{--mobile-leaderboard-min:115px;}
@@ -418,7 +415,6 @@
           <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
                   aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
             <img id="clockReactionImg" alt="" />
-            <figcaption class="clockReactionCap" id="clockReactionCap">--:--</figcaption>
           </figure>
           <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
           <div class="stickerPick">
@@ -3303,13 +3299,11 @@
 
     function update(){
       const fig = $("#clockReaction"); if(!fig) return;
-      const now = new Date(), h = now.getHours();
+      const h = new Date().getHours();
       const url = ready ? pickFor(h) : undefined;
       if(url){
         const img = $("#clockReactionImg");
         img.src = url; img.alt = "Our honest " + label(h) + " reaction.";
-        $("#clockReactionCap").textContent = "🕒 " +
-          String(h).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
         fig.hidden = false;
       }else{
         fig.hidden = true;
