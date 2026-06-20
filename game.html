@@ -1844,6 +1844,7 @@
     let heldBeepT = 0;               // countdown to the next banked auto-fire "arming" pulse while in the warning window
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
+    let queuedEffect = null;         // one immediate follow-up timed effect queued to begin the instant the current one ends
     let eatGrace = 0;                // seconds of Eating Mode's last-instant devour grace still left (see EAT_GRACE)
     let pickupTimer = 0;             // counts down to the next pickup appearing
     let firstPickupServed = false;   // false until the FIRST pickup of a run drops — that one bypasses the crowd gate so the opening is never toy-less
@@ -2499,7 +2500,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      nicoDoom = false; nicoDoomTimer = 0;
+      nicoDoom = false; nicoDoomTimer = 0; queuedEffect = null;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; eatGrace = 0; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
@@ -2540,8 +2541,8 @@
     // A personal welcome for anyone cheeky enough to play under a name containing "nico"
     // (including playful variants like "not nico"). The FIRST time
     // they play, a Nazan materialises right inside them in a short little "gotcha" intro.
-    // EVERY game after, they open boxed in by a full board of 12 Nazans — but with an
-    // Eating Mode power-up dropped right beside them so they can chomp their way clear.
+    // EVERY game after, they open boxed in by a full board of 12 Nazans — first tiny enough
+    // to slip through it, then immediately switched into Eating Mode to chomp their way clear.
     const NICO_FULL_BOARD = 12;
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function nicoEasterEgg(){
@@ -2562,9 +2563,13 @@
         nicoDoomTimer = NICO_DOOM_SPAWN + NICO_DOOM_HOLD;
         return;
       }
-      // Returning nico: a packed opening board, plus an Eating Mode escape hatch beside him.
+      // Returning nico: still a packed opening board, but now he gets Tiny Mode first so he can
+      // slip through the crush, then Eating Mode instantly after that to bite his way clear.
       for(let i = 0; i < NICO_FULL_BOARD; i++) spawnEnemy();
-      spawnPickupNear("eat");
+      startTimedEffect("shrink");
+      queuedEffect = "eat";
+      try{ sfx.boing(3, "nico-shrink"); }catch(e){}
+      haptic(25);
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
@@ -2721,10 +2726,8 @@
       if(type === "shove"){ doShove(); }
       else if(type === "bomb"){ doBomb(); }
       else if(type === "zap"){ zapKills = doZap(); }
-      else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
+      else { startTimedEffect(type); }
       pickup = null;
-      pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
-      updatePrompt();
       // The Star gets its own iconic invincibility jingle; the instantly-fired
       // power-ups (Shove, Boom, Chain Zap) each get a distinct fire sound; every
       // other (timed) effect keeps the boing.
@@ -2736,6 +2739,14 @@
       // genuinely feels bigger in the hand.
       if(type === "zap" && zapKills > 0){ haptic(zapKillBuzz(zapKills)); }
       else { haptic(25); }
+      return true;
+    }
+    function startTimedEffect(type){
+      const def = POWERUPS[type];
+      if(!def || !def.dur) return false;
+      activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur };
+      pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
+      updatePrompt();
       return true;
     }
 
@@ -3572,16 +3583,28 @@
       if(activeEffect){
         activeEffect.time -= dt;
         if(activeEffect.time <= 0){
+          const endedType = activeEffect.type;
+          const followUp = queuedEffect;
           // The power lapses NOW — its protective effect and its on-screen cue end together
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
           // Eating Mode is the lone exception: arm a whisper-thin devour grace (EAT_GRACE) so a
           // Nazan reached at the very last instant is still eaten, not fatal (see the collision
           // loop + draw()). Every other effect ends hard, exactly as before.
-          if(activeEffect.type === "eat") eatGrace = EAT_GRACE;
+          if(endedType === "eat") eatGrace = EAT_GRACE;
           activeEffect = null;
-          try{ sfx.expireEnd(); }catch(err){}
-          haptic([36, 40, 50]);   // a firm down-buzz that lands with the "time's up!" cue
-          updatePrompt();
+          if(followUp){
+            queuedEffect = null;
+            startTimedEffect(followUp);
+            try{
+              if(followUp === "star") sfx.starPower();
+              else sfx.boing(3, "powerup-" + followUp);
+            }catch(err){}
+            haptic(25);
+          } else {
+            try{ sfx.expireEnd(); }catch(err){}
+            haptic([36, 40, 50]);   // a firm down-buzz that lands with the "time's up!" cue
+            updatePrompt();
+          }
         } else {
           // Enter the wind-down WARNING window a little over a second before it lapses: the
           // music and the background wash ease back to normal (see syncMusicMode()/draw())
