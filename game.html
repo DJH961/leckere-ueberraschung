@@ -1914,6 +1914,13 @@
     // carve a circle of clear space around the re-centred player so they don't materialise inside
     // the crowd. Any Nazan that lands inside this radius is shifted straight outward to its rim.
     const EGAN_RESUME_CLEAR_R   = 0.28;  // radius of the cleared bubble around the player, as a fraction of base()
+    // Even with the cleared bubble, a restored Nazan sitting on its rim could still be AIMED straight
+    // at the re-centred player — so the instant the frozen pre-roll lifts it would fly directly onto
+    // them with no room to dodge (an "auto-death", worst at higher difficulty where the crowd is fast
+    // and dense). To guarantee Egan resume is never an instant kill, any Nazan within this wider safety
+    // band that's still closing on the player has its velocity turned to point OUTWARD, so everyone
+    // near the player drifts AWAY for the first moment of the restart and there's always a way out.
+    const EGAN_RESUME_SAFE_R    = 0.55;  // radius (fraction of base()) within which inward-bound Nazans are turned outward on resume
     const EGAN_REWARD_PICKUP    = 0.6;   // hitting the catch target: serve the bonus power-up this soon after the round ends
     // Golden egans: a couple of special, recoloured egans worth a fat bonus.
     const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
@@ -2767,6 +2774,25 @@
             // If pushing it out runs into a wall, slide it back along the rim onto the open floor.
             e.x = Math.max(e.r, Math.min(W - e.r, e.x));
             e.y = Math.max(e.r, Math.min(H - e.r, e.y));
+          }
+        }
+        // Guarantee no instant death on resume: any Nazan close enough to threaten the player AND
+        // still heading toward them gets its velocity turned to point straight outward (same speed),
+        // so when the pre-roll lifts the nearby crowd drifts AWAY first instead of flying onto the
+        // player. Without this a rim Nazan aimed inward could close the cleared gap before the player
+        // can react — the "no way out" case, especially with a fast tier-3 crowd.
+        const safeR = base() * EGAN_RESUME_SAFE_R;
+        for(const e of enemies){
+          let dx = e.x - player.x, dy = e.y - player.y;
+          let d = Math.hypot(dx, dy);
+          if(d > safeR + e.r) continue;                 // far enough away to leave alone
+          if(d < 1e-3){ const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
+          const nx = dx / d, ny = dy / d;               // unit vector pointing from player OUT to the Nazan
+          const radial = e.vx * nx + e.vy * ny;         // velocity component along that outward direction
+          if(radial < 0){                               // negative ⇒ it's closing on the player: redirect it outward
+            const sp = Math.hypot(e.vx, e.vy);
+            e.vx = nx * sp;
+            e.vy = ny * sp;
           }
         }
       } else {
