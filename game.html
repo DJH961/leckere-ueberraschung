@@ -2002,6 +2002,7 @@
     // vertical half from where they launched, so they streak corner-to-corner and really show off the
     // full-screen crossing instead of every egan drifting across near-horizontally.
     const EGAN_DIAG_CHANCE = 0.4;    // chance an egan crosses to the opposite vertical half
+    const EGAN_ANG_CAP = Math.PI / 2 - 0.02;   // absolute pitch limit (±~89°): a launch/curve can't reach straight up/down
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
     const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
@@ -2790,7 +2791,7 @@
       // egan's horizontal direction (see eganStep), so it still exits the OPPOSITE edge it aimed for.
       // The band is capped just shy of straight up/down (±~89°) so even a steep launch can't curve
       // far enough to reverse course back toward the side it came from.
-      const angCap = Math.PI / 2 - 0.02;
+      const angCap = EGAN_ANG_CAP;
       const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND);
       const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND);
       const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
@@ -2863,8 +2864,8 @@
           if(s.dir){
             const sp = Math.hypot(s.vx, s.vy) || 1;
             let ang = Math.atan2(s.vy, s.dir * s.vx);       // pitch off horizontal in the travel direction
-            const hi = (s.angMax != null) ? s.angMax : EGAN_CROSS_BAND;
-            const lo = (s.angMin != null) ? s.angMin : -EGAN_CROSS_BAND;
+            const hi = (s.angMax != null) ? s.angMax : EGAN_ANG_CAP;
+            const lo = (s.angMin != null) ? s.angMin : -EGAN_ANG_CAP;
             if(ang > hi) ang = hi;
             else if(ang < lo) ang = lo;
             s.vx = s.dir * sp * Math.cos(ang);
