@@ -151,13 +151,11 @@
   /* ===== MUN clock reaction + lightbox on the game-over card ===== */
   /* The current hour's "honest reaction" sticker, shown big as the time-appropriate
      meme reacting to your final score (next to Nazan's taunt). Tap/click to enlarge. */
-  .clockReaction{margin:10px auto 6px; display:flex; flex-direction:column; align-items:center;
+  .clockReaction{margin:2px auto 8px; display:flex; flex-direction:column; align-items:center;
     gap:7px; cursor:pointer; max-width:100%; -webkit-tap-highlight-color:transparent;}
   .clockReaction[hidden]{display:none;}
-  .clockReaction img{width:auto; max-width:min(260px,74vw); max-height:300px; object-fit:contain;
-    display:block; border-radius:16px; border:1px solid var(--card-border); background:#fff;
-    box-shadow:0 12px 30px rgba(61,80,118,.28); transition:transform .15s ease;}
-  body.dark .clockReaction img{background:var(--card);}
+  .clockReaction img{width:auto; max-width:min(220px,68vw); max-height:260px; object-fit:contain;
+    display:block; transition:transform .15s ease;}
   .clockReaction:hover img{transform:scale(1.03);}
   .clockReaction:focus-visible{outline:none;}
   .clockReaction:focus-visible img{outline:2px solid var(--navy); outline-offset:3px; transform:scale(1.03);}
@@ -408,14 +406,14 @@
         <div class="cardMain">
           <h2>Caught!</h2>
           <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
-          <div class="big" id="gameFinalScore">0</div>
-          <p class="best" id="gameBestLine">Best: 0</p>
-          <!-- MUN clock: the current hour's "honest reaction" sticker, shown big as
-               the time-appropriate meme reacting to your score. Tap to enlarge. -->
+          <!-- MUN clock: the current hour's "honest reaction" sticker, shown right beneath
+               Nazan's parting quip (the two read as one gag). Tap to enlarge. -->
           <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
                   aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
             <img id="clockReactionImg" alt="" />
           </figure>
+          <div class="big" id="gameFinalScore">0</div>
+          <p class="best" id="gameBestLine">Best: 0</p>
           <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
           <div class="stickerPick">
             <span class="spLabel">Your Nazan</span>
@@ -1545,6 +1543,11 @@
     let musicEnabled = LS.get("nazanDodgeMusic", true);
     setAudioMuted(!musicEnabled);   // honour the saved choice for ALL game audio
     let running = false, raf = null;
+    // Restart freeze: on a Play-again, the arena is shown frozen for a short COUNTDOWN before
+    // the action resumes, easing the player back in rather than dropping them straight into a
+    // moving crowd. countdown > 0 means we're in that frozen pre-roll (see step()/drawCountdown).
+    let countdown = 0;
+    const COUNTDOWN_TIME = 1.6;      // a SNAPPY frozen "3 · 2 · 1" pre-roll before a restarted round resumes (kept short on purpose)
     let player = null, enemies = [], score = 0, last = 0, spawnAcc = 0, elapsed = 0;
     // Global-board state for the current game-over screen.
     let pendingScore = 0, submitted = false, justSubmitted = false, editingName = false;
@@ -1723,6 +1726,7 @@
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
+    let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (eat/bomb) spawned right by the player
     // ----- Egan Mode (a milestone minigame; ships toggled OFF) -----
     // A small bonus round that breaks into the normal game at score milestones. The whole
     // feature is gated behind eganEnabled(): with the flag off NONE of this runs (no extra
@@ -1786,25 +1790,38 @@
     const EGAN_INTRO_TIME = 2.2;     // seconds of the "EGAN MODE" title flourish
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
     const EGAN_PLAY_TIME  = 12;      // seconds egans keep spawning before the round winds down
-    const EGAN_CATCH_POINTS = 10;    // points banked per egan caught
+    const EGAN_CATCH_POINTS = 5;     // points banked per egan caught (before combo)
     const EGAN_SPAWN_MAX = 1.1;      // longest gap between egans (early, calmer part of the round)
     const EGAN_SPAWN_MIN = 0.45;     // shortest gap between egans (late, busier part of the round)
     const EGAN_SPEED_SLOW = 0.006;   // per-frame travel (fraction of base()) early in the round
     const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
     const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
+    // Wider arenas give egans far more room to cross, so the round is tuned to the screen's
+    // aspect ratio: difficulty scales DOWN on narrow/portrait phones and UP on wide desktops
+    // (faster egans AND tighter spawn gaps), keeping the catch challenge consistent everywhere.
+    const EGAN_DIFF_REF = 1.0;       // aspect ratio (W/H) treated as the neutral 1× difficulty point
+    const EGAN_DIFF_MIN = 0.7;       // floor for narrow/tall screens — never trivially easy
+    const EGAN_DIFF_MAX = 1.4;       // ceiling for ultra-wide screens — never unfairly fast
+    function eganDiff(){
+      const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
+      return Math.max(EGAN_DIFF_MIN, Math.min(EGAN_DIFF_MAX, ar / EGAN_DIFF_REF));
+    }
     const EGAN_MAX_ANGLE = 0.42;     // max launch pitch off horizontal (~24°); each egan picks a random pitch up to this.
                                      // Kept low (and the heading is clamped each frame, see eganStep) so egans always
                                      // travel side-to-side and exit LEFT or RIGHT — never steeply off the top or bottom.
+                                     // The pitch also works HAND IN HAND with the launch height: an egan starting near the
+                                     // top may dive steeply DOWN but barely climb up, and one near the bottom is the reverse,
+                                     // so a steep angle never just sails an egan straight off the nearest edge (see spawnEgan).
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
     const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
     const EGAN_RESUME_SPEED_MUL = 0.85;  // re-seeded Nazans land a touch calmer than the pace just left (was a too-slow flat 0.6)
     const EGAN_RESUME_SPEED_MAX = 0.0075;// ...but ceiling their pace (fraction of base()) so an accelerated swarm doesn't return at full tilt
-    const EGAN_RESUME_PICKUP    = 1.5;   // serve a power-up this soon after the round ends
+    const EGAN_REWARD_PICKUP    = 0.6;   // hitting the catch target: serve the bonus power-up this soon after the round ends
     // Golden egans: a couple of special, recoloured egans worth a fat bonus.
     const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
-    const EGAN_GOLD_POINTS    = 50;      // base points for catching a golden egan (before combo)
+    const EGAN_GOLD_POINTS    = 15;      // base points for catching a golden egan (before combo)
     const EGAN_GOLD_TINT      = "#ffcf33"; // golden recolour painted over the sticker
     const EGAN_GOLD_SIZE_MUL  = 1.12;    // golden egans are a touch bigger so they stand out / stay catchable
     const EGAN_GOLD_AT        = [0.3, 0.62]; // round-progress points at which the golden egans launch
@@ -1951,7 +1968,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
@@ -2143,6 +2160,20 @@
       try{ sfx.powerAppear(); }catch(e){}
     }
 
+    // Drop a SPECIFIC power-up right next to the player — used for the Egan Mode catch-target
+    // reward, which earns the player an instant, well-placed eat/bomb the moment they're back.
+    function spawnPickupNear(type){
+      const r = Math.max(20, base() * 0.045);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = player.r + r + base() * 0.04;
+      let x = player.x + Math.cos(ang) * dist;
+      let y = player.y + Math.sin(ang) * dist;
+      x = Math.max(r, Math.min(W - r, x));   // keep it fully on screen
+      y = Math.max(r, Math.min(H - r, y));
+      pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, beepT: 0 };
+      try{ sfx.powerAppear(); }catch(e){}
+    }
+
     // Advance the pickup lifecycle each frame: let the player collect the on-screen
     // pickup by touching it, expire it if ignored too long, and time the next spawn.
     function updatePickups(dt){
@@ -2195,7 +2226,12 @@
         else if(Math.ceil(heldTimer) !== before || heldTimer <= BANKED_BLINK_TIME){ updatePrompt(); }
       } else if(!held && pickupTimer > 0){
         pickupTimer -= dt;
-        if(pickupTimer <= 0) spawnPickup();
+        if(pickupTimer <= 0){
+          // The Egan catch-target reward is a specific eat/bomb placed right by the player; any
+          // other timed spawn is a normal random pickup somewhere on the board.
+          if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
+          else spawnPickup();
+        }
       }
     }
 
@@ -2345,21 +2381,30 @@
       const slow = base() * EGAN_SPEED_SLOW, fast = base() * EGAN_SPEED_FAST;
       let baseSpeed = slow + (fast - slow) * p;
       baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * p;   // late-round bite
+      baseSpeed *= eganDiff();                        // wider screens → faster egans (harder), narrow → calmer
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
-      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // radians: shallow, varied pitch (stays side-to-side)
+      const startX = fromLeft ? -r : W + r;
+      const startY = r + Math.random() * Math.max(1, H - 2 * r);
+      // Launch pitch works HAND IN HAND with the launch height (y grows downward): an egan high
+      // up the screen has lots of room BELOW it, so it may dive steeply DOWN but barely climb UP;
+      // one near the bottom is the mirror image. This keeps a steep angle from instantly sailing
+      // an egan off the nearest top/bottom edge — the room it has decides how steep it may go.
+      const f = Math.max(0, Math.min(1, startY / Math.max(1, H)));   // 0 = top, 1 = bottom
+      const angMax = EGAN_MAX_ANGLE * (1 - f);                       // steepest DOWN pitch (positive) allowed
+      const angMin = -EGAN_MAX_ANGLE * f;                            // steepest UP pitch (negative) allowed
+      const angle = angMin + Math.random() * (angMax - angMin);      // radians: shallow, height-aware pitch
       const vx = dir * speed * Math.cos(angle);
       const vy = speed * Math.sin(angle);
       const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
-      const startX = fromLeft ? -r : W + r;
-      const startY = r + Math.random() * Math.max(1, H - 2 * r);
       // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
       // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
       const img = gold
         ? (eganImages.length ? eganImages[Math.floor(Math.random() * eganImages.length)] : null)
         : (eganBag.length ? eganBag.pop() : null);   // normal egans: each sticker shown once per round
       eganStickers.push({ x: startX, y: startY, vx, vy, dir, turn, r, img, gold: !!gold,
+                          angMin, angMax,
                           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.05 });
     }
     // The minigame's own per-frame tick: title → catching → end card, then hand back.
@@ -2392,7 +2437,7 @@
         const spawning = eganBagReady ? eganBag.length > 0 : eganRoundT < EGAN_PLAY_TIME;
         if(spawning){
           eganSpawnAcc += dt;
-          const interval = EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog);
+          const interval = (EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog)) / eganDiff();
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
         // Golden egans: launch each armed bonus egan once the round reaches its scheduled
@@ -2417,13 +2462,15 @@
           }
           // Keep every egan travelling SIDE-TO-SIDE: the gentle per-frame turn must never steepen
           // the heading into a dive or climb, and the horizontal direction must never flip. Clamp
-          // the pitch to ±EGAN_MAX_ANGLE off horizontal each frame so egans always sail off the
-          // LEFT or RIGHT edge — never steeply out the top or (the unbeatable) bottom.
+          // the pitch to the egan's own launch window each frame so it always sails off the LEFT or
+          // RIGHT edge — and only as steeply up/down as the height it launched from allowed.
           if(s.dir){
             const sp = Math.hypot(s.vx, s.vy) || 1;
             let ang = Math.atan2(s.vy, s.dir * s.vx);       // pitch off horizontal in the travel direction
-            if(ang >  EGAN_MAX_ANGLE) ang =  EGAN_MAX_ANGLE;
-            else if(ang < -EGAN_MAX_ANGLE) ang = -EGAN_MAX_ANGLE;
+            const hi = (s.angMax != null) ? s.angMax : EGAN_MAX_ANGLE;
+            const lo = (s.angMin != null) ? s.angMin : -EGAN_MAX_ANGLE;
+            if(ang > hi) ang = hi;
+            else if(ang < lo) ang = lo;
             s.vx = s.dir * sp * Math.cos(ang);
             s.vy = sp * Math.sin(ang);
           }
@@ -2479,8 +2526,10 @@
     }
     // Hand control back to the normal game in a gently COOLED-DOWN arena that lands on a MIDDLE
     // GROUND: the player is re-centred, and we re-seed a crowd roughly matching (but calmer and
-    // less packed than) the one the round interrupted — never a dead-empty, crawling restart — and
-    // a power-up is teed up to arrive early so the player gets a breather.
+    // less packed than) the one the round interrupted — never a dead-empty, crawling restart.
+    // If the player HIT the catch target this round, they're owed a bonus: a strong eat/bomb
+    // power-up pops in right next to them a beat after they're back. Otherwise pickups simply
+    // resume on their normal schedule (no early freebie).
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = [];
       if(player){ player.x = W / 2; player.y = H * 0.72; }
@@ -2503,7 +2552,16 @@
       }
       spawnAcc = 0;
       held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
-      pickupTimer = EGAN_RESUME_PICKUP;                            // serve a power-up early
+      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb)
+      // dropped right beside the player almost immediately. Miss the target and there's no early
+      // freebie — pickups just resume on their normal cadence.
+      if(eganTargetHit){
+        eganRewardType = Math.random() < 0.5 ? "eat" : "bomb";
+        pickupTimer = EGAN_REWARD_PICKUP;                         // super-short delay, then it lands by the player
+      } else {
+        eganRewardType = null;
+        pickupTimer = PICKUP_FIRST;                               // a regular pickup, on the normal schedule
+      }
       last = performance.now();                                    // avoid a dt spike on the first frame back
       try{ music.setMode("default"); }catch(e){}
       try{ sfx.setVoiceMode("default"); }catch(e){}
@@ -2617,6 +2675,16 @@
       // Egan Mode runs as a self-contained sub-loop layered on the same RAF: while a round
       // is live the normal Nazan/score logic is paused and we tick the minigame instead.
       if(eganPhase){ eganStep(dt); raf = requestAnimationFrame(step); return; }
+      // Restart pre-roll: hold the freshly-reset arena frozen while a short countdown ticks,
+      // so a restarted round eases back in instead of starting mid-motion. Nothing moves and the
+      // score doesn't climb until the countdown clears.
+      if(countdown > 0){
+        countdown -= dt;
+        draw();
+        drawCountdown();
+        raf = requestAnimationFrame(step);
+        return;
+      }
       elapsed += dt;
       score += dt * 10;
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
@@ -3233,6 +3301,32 @@
       if(eganPhase) drawEgan();
     }
 
+    // The restart pre-roll overlay: a dimming wash over the frozen arena with a big, snappy
+    // "3 · 2 · 1" count that pops as each number lands, then hands straight back to play.
+    function drawCountdown(){
+      const n = Math.max(1, Math.ceil(countdown));   // 3 → 2 → 1
+      const frac = countdown - Math.floor(countdown); // 1 → 0 within the current number
+      ctx.save();
+      ctx.fillStyle = "rgba(15,21,38,.34)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const cx = W / 2, cy = H * 0.45;
+      const pop = 1.18 - 0.18 * frac;                 // a quick scale-pop as each number appears
+      const size = base() * 0.28 * pop;
+      ctx.globalAlpha = Math.max(0.15, Math.min(1, frac * 2.4));
+      ctx.font = "bold " + size.toFixed(0) + "px system-ui, sans-serif";
+      const grad = ctx.createLinearGradient(0, cy - size / 2, 0, cy + size / 2);
+      grad.addColorStop(0, "#f7c948"); grad.addColorStop(1, "#e8743b");
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = "rgba(255,255,255,.92)"; ctx.lineWidth = Math.max(3, size * 0.04);
+      ctx.strokeText(String(n), cx, cy); ctx.fillText(String(n), cx, cy);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(255,255,255,.95)";
+      ctx.font = "bold " + (base() * 0.05).toFixed(0) + "px system-ui, sans-serif";
+      ctx.fillText("Get ready!", cx, cy + size * 0.7);
+      ctx.restore();
+    }
+
     function start(){
       // A name is mandatory to play — it's how scores land on the global board.
       const nameInput = $("#gameNameStart");
@@ -3244,12 +3338,16 @@
         updateStartValidity();
         return;
       }
+      // A RESTART comes from the game-over card (which is still up); the very first play comes
+      // from the start card. Only restarts get the frozen countdown pre-roll.
+      const isRestart = !!(overPane && !overPane.classList.contains("hidden"));
       syncName(name);
       loadImages(); resize(); reset();
       closeHelp();
       startPane.classList.add("hidden");
       overPane.classList.add("hidden");
       updatePrompt();
+      countdown = isRestart ? COUNTDOWN_TIME : 0;   // freeze + ease back in on a restart only
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
       try{ music.setMode("default"); }catch(e){}   // begin each round on the default gameplay theme
