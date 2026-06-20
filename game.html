@@ -995,6 +995,24 @@
           t += 0.09;
         }
       },
+      // A warm, gently resolving wind-down to round off Egan Mode — a soft
+      // descending three-note cadence (G6 E6 C6) that lands on a held, glowing
+      // chord, so leaving the bonus feels like a satisfying exhale rather than a
+      // hard cut. Built from the same goofy synth family so it stays original.
+      eganOutro(){
+        const seq = [1567.98, 1318.51, 1046.5];            // G6 E6 C6 — settling downward
+        let t = 0;
+        for(const f of seq){
+          tone({ type:"triangle", f0:f, dur:0.16, vol:0.11, t0:t });
+          tone({ type:"sine",     f0:f / 2, dur:0.16, vol:0.05, t0:t });   // soft sub-octave warmth
+          t += 0.12;
+        }
+        // A held, slightly wobbling C-major glow to land on — the "we're home" chord.
+        const chord = [523.25, 659.25, 783.99];            // C5 E5 G5
+        for(const f of chord){
+          tone({ type:"triangle", f0:f, dur:0.7, vol:0.06, t0:t, wobble:6 });
+        }
+      },
       // cheery ascending "ta-da-daa!" fanfare to kick off a minigame round.
       gameStart(){
         tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
@@ -1734,6 +1752,8 @@
     let eganGoldAt    = [];         // round-progress thresholds at which the next golden egans launch
     let eganTargetHit = false;      // the per-round catch target has been reached
     let eganRoundPoints = 0;        // points banked this round (varies with combos/golden), for the end card
+    let eganPrevCount  = 0;         // how many Nazans were on screen when the round began (for a middle-ground resume)
+    let eganPrevSpeed  = 0;         // their average pace at that moment (so the resume roughly matches what was left)
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
     const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "slipping away" countdown starts (matches the blink-out)
     // Across that window the vanish warning is an accelerating "last chance" countdown
@@ -1771,9 +1791,14 @@
     const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
     const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
-    const EGAN_MAX_ANGLE = 1.05;     // steepest launch angle off horizontal (~60°); each egan picks its own
-    const EGAN_RESUME_ENEMIES   = 3;     // Nazans re-seeded into the cooled-down arena on resume
-    const EGAN_RESUME_SPEED_MUL = 0.6;   // knock the re-seeded Nazans a tad slower than a fresh spawn
+    const EGAN_MAX_ANGLE = 0.42;     // shallowest-but-varied launch pitch off horizontal (~24°); each egan picks its own.
+                                     // Kept low (and the heading is clamped each frame, see eganStep) so egans always
+                                     // travel side-to-side and exit LEFT or RIGHT — never steeply off the top or bottom.
+    const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
+    const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
+    const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
+    const EGAN_RESUME_SPEED_MUL = 0.85;  // re-seeded Nazans land a touch calmer than the pace just left (was a too-slow flat 0.6)
+    const EGAN_RESUME_SPEED_MAX = 0.0075;// ...but ceiling their pace (fraction of base()) so an accelerated swarm doesn't return at full tilt
     const EGAN_RESUME_PICKUP    = 1.5;   // serve a power-up this soon after the round ends
     // Golden egans: a couple of special, recoloured egans worth a fat bonus.
     const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
@@ -2284,8 +2309,18 @@
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;       // fresh combo streak
       eganGoldLeft = EGAN_GOLD_PER_ROUND; eganGoldAt = EGAN_GOLD_AT.slice();   // golden egans armed
       eganTargetHit = false; eganRoundPoints = 0;
+      // Snapshot the crowd we're leaving so the resume can land on a MIDDLE GROUND — calmer and
+      // less packed than mid-game, but roughly matching what was on screen rather than a dead-empty,
+      // crawling restart (see exitEgan()).
+      eganPrevCount = enemies.length;
+      let spSum = 0; for(const e of enemies) spSum += Math.hypot(e.vx, e.vy);
+      eganPrevSpeed = enemies.length ? spSum / enemies.length : 0;
       enemies = [];                 // sweep the Nazans off for the bonus round
       pickup = null;                // and clear any uncollected pickup on screen
+      // Wipe any leftover power-up state AND its lingering visual fragments (blast rings, boom
+      // puffs, zap arcs/sparks, the star trail) so none of it bleeds into the clean Egan backdrop.
+      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = [];
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; promptClass = promptText = ""; }
       // Egan Mode gets its OWN look and music so it reads as a separate minigame, not the
       // main game with a few extra stickers: a distinct bonus-round theme plays here and a
@@ -2311,7 +2346,7 @@
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
-      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // radians: steeper, more diverse pitch
+      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // radians: shallow, varied pitch (stays side-to-side)
       const vx = dir * speed * Math.cos(angle);
       const vy = speed * Math.sin(angle);
       const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
@@ -2322,7 +2357,7 @@
       const img = gold
         ? (eganImages.length ? eganImages[Math.floor(Math.random() * eganImages.length)] : null)
         : (eganBag.length ? eganBag.pop() : null);   // normal egans: each sticker shown once per round
-      eganStickers.push({ x: startX, y: startY, vx, vy, turn, r, img, gold: !!gold,
+      eganStickers.push({ x: startX, y: startY, vx, vy, dir, turn, r, img, gold: !!gold,
                           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.05 });
     }
     // The minigame's own per-frame tick: title → catching → end card, then hand back.
@@ -2378,6 +2413,18 @@
             const nvx = s.vx * c - s.vy * sn, nvy = s.vx * sn + s.vy * c;
             s.vx = nvx; s.vy = nvy;
           }
+          // Keep every egan travelling SIDE-TO-SIDE: the gentle per-frame turn must never steepen
+          // the heading into a dive or climb, and the horizontal direction must never flip. Clamp
+          // the pitch to ±EGAN_MAX_ANGLE off horizontal each frame so egans always sail off the
+          // LEFT or RIGHT edge — never steeply out the top or (the unbeatable) bottom.
+          if(s.dir){
+            const sp = Math.hypot(s.vx, s.vy) || 1;
+            let ang = Math.atan2(s.vy, s.dir * s.vx);       // pitch off horizontal in the travel direction
+            if(ang >  EGAN_MAX_ANGLE) ang =  EGAN_MAX_ANGLE;
+            else if(ang < -EGAN_MAX_ANGLE) ang = -EGAN_MAX_ANGLE;
+            s.vx = s.dir * sp * Math.cos(ang);
+            s.vy = sp * Math.sin(ang);
+          }
           s.x += s.vx; s.y += s.vy; s.rot += s.vr;
           if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){ eganStickers.splice(i, 1); continue; }
           // Catch: overlap the player to bank the points and pop it with a little burst.
@@ -2414,7 +2461,10 @@
         const spent = eganBagReady
           ? (eganBag.length === 0 && eganGoldLeft === 0)
           : eganRoundT >= EGAN_PLAY_TIME;
-        if(spent && eganStickers.length === 0){ eganPhase = "outro"; eganT = 0; }
+        if(spent && eganStickers.length === 0){
+          eganPhase = "outro"; eganT = 0;
+          try{ sfx.eganOutro(); }catch(err){}   // a warm, resolving wind-down to round off the mode
+        }
       } else if(eganPhase === "outro"){
         if(eganT >= EGAN_OUTRO_TIME){ exitEgan(); }
       }
@@ -2425,15 +2475,30 @@
       }
       draw();
     }
-    // Hand control back to the normal game in a gently COOLED-DOWN arena: the player is
-    // re-centred, a few Nazans are re-seeded near the borders and a touch slower than a
-    // fresh spawn, and a power-up is teed up to arrive early so the player gets a breather.
+    // Hand control back to the normal game in a gently COOLED-DOWN arena that lands on a MIDDLE
+    // GROUND: the player is re-centred, and we re-seed a crowd roughly matching (but calmer and
+    // less packed than) the one the round interrupted — never a dead-empty, crawling restart — and
+    // a power-up is teed up to arrive early so the player gets a breather.
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = [];
       if(player){ player.x = W / 2; player.y = H * 0.72; }
       enemies = [];
-      for(let i = 0; i < EGAN_RESUME_ENEMIES; i++) spawnEnemy();   // spawnEnemy already drops them at the edges
-      for(const e of enemies){ e.vx *= EGAN_RESUME_SPEED_MUL; e.vy *= EGAN_RESUME_SPEED_MUL; e.age = 0; }
+      // Re-seed a fraction of the crowd that was on screen, clamped to a calm-but-not-empty range.
+      const want = Math.max(EGAN_RESUME_MIN,
+                            Math.min(EGAN_RESUME_MAX, Math.round(eganPrevCount * EGAN_RESUME_KEEP)));
+      for(let i = 0; i < want; i++) spawnEnemy();   // spawnEnemy already drops them at the edges
+      // Match roughly the pace they left — a touch calmer, and capped so an accelerated swarm
+      // doesn't come straight back at full tilt. Fall back to a flat ease-off if we have no read.
+      if(eganPrevSpeed > 0){
+        const target = Math.min(eganPrevSpeed * EGAN_RESUME_SPEED_MUL, base() * EGAN_RESUME_SPEED_MAX);
+        for(const e of enemies){
+          const cur = Math.hypot(e.vx, e.vy) || 1;
+          const k = target / cur;
+          e.vx *= k; e.vy *= k; e.age = 0;
+        }
+      } else {
+        for(const e of enemies){ e.vx *= EGAN_RESUME_SPEED_MUL; e.vy *= EGAN_RESUME_SPEED_MUL; e.age = 0; }
+      }
       spawnAcc = 0;
       held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
       pickupTimer = EGAN_RESUME_PICKUP;                            // serve a power-up early
