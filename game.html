@@ -2075,7 +2075,7 @@
     // like the rest of the model so 1000 still feels identical. This is now the PRIMARY late-game
     // lever: with quantity bounded (quantityIntensity), the leftover intensity is spent here so a
     // deep run gets harder by being FASTER and more precise rather than by sheer numbers.
-    const INTENSITY_MATURE_GAIN = 0.10; // share of the age→speed rate added/removed per intensity unit
+    const INTENSITY_MATURE_GAIN = 0.08; // share of the age→speed rate added/removed per intensity unit
     // ---- Egan-mode INTENSITY (driven ONLY by Egan performance) -------------------------------
     // Egan rounds get tougher the BETTER you are at Egan — never because the main score is high.
     // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
@@ -3616,7 +3616,7 @@
             // The veteran SPEED ceiling rides the full (unbounded) intensity too: with quantity held
             // to an equilibrium, a deep run's extra intensity cashes out as faster long-lived Nazans
             // — the execution challenge that keeps the late game hard without an unthreadable swarm.
-            const target = base() * Math.min(0.020 + inten * 0.0030, 0.004 + e.age * matureRate) * arenaDiff();
+            const target = base() * Math.min(0.020 + inten * 0.0025, 0.004 + e.age * matureRate) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
