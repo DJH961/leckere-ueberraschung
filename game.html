@@ -2513,10 +2513,11 @@
       if(!isNico()) return;
       const games = LS.get(NICO_KEY, 0);
       LS.set(NICO_KEY, games + 1);
-      enemies = [];
+      enemies = [];   // intentional: discard the normal START_NAZANS opening so nico gets his own bespoke board
       if(games === 0){
         // First game ever as nico: a Nazan spawns straight on top of him (no grace),
-        // so the very first collision check ends the round on the spot.
+        // so the very first collision check ends the round on the spot. Radius mirrors
+        // spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
         const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));
         const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
         enemies.push({ x: player.x, y: player.y, vx: 0, vy: 0, r, img,
