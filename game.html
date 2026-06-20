@@ -148,19 +148,21 @@
   .helpBtn:hover{border-color:var(--navy);}
   .helpBtn:active{transform:scale(.96);}
   .helpBtn .helpIco{font-size:1rem; line-height:1;}
-  /* ===== MUN clock badge + lightbox on the game-over card ===== */
-  .clockBadge{position:absolute; top:8px; left:8px; z-index:2;
-    display:inline-flex; align-items:center; gap:7px; padding:4px 12px 4px 4px;
-    border-radius:30px; border:1px solid var(--card-border); background:#fff;
-    color:var(--navy); font:inherit; font-weight:800; font-size:.82rem; cursor:pointer;
-    box-shadow:0 4px 12px rgba(61,80,118,.18); line-height:1;}
-  body.dark .clockBadge{background:var(--card);}
-  .clockBadge:hover{border-color:var(--navy);}
-  .clockBadge:active{transform:scale(.96);}
-  .clockBadge[hidden]{display:none;}
-  .clockBadge img{width:30px; height:30px; border-radius:50%; object-fit:cover; display:block;
-    background:#eef3fa;}
-  .clockBadge .cbTime{font-variant-numeric:tabular-nums;}
+  /* ===== MUN clock reaction + lightbox on the game-over card ===== */
+  /* The current hour's "honest reaction" sticker, shown big as the time-appropriate
+     meme reacting to your final score (next to Nazan's taunt). Tap/click to enlarge. */
+  .clockReaction{margin:10px auto 6px; display:flex; flex-direction:column; align-items:center;
+    gap:7px; cursor:pointer; max-width:100%; -webkit-tap-highlight-color:transparent;}
+  .clockReaction[hidden]{display:none;}
+  .clockReaction img{width:auto; max-width:min(260px,74vw); max-height:300px; object-fit:contain;
+    display:block; border-radius:16px; border:1px solid var(--card-border); background:#fff;
+    box-shadow:0 12px 30px rgba(61,80,118,.28); transition:transform .15s ease;}
+  body.dark .clockReaction img{background:var(--card);}
+  .clockReaction:hover img{transform:scale(1.03);}
+  .clockReaction:focus-visible{outline:none;}
+  .clockReaction:focus-visible img{outline:2px solid var(--navy); outline-offset:3px; transform:scale(1.03);}
+  .clockReactionCap{font-weight:800; color:var(--navy); font-size:.86rem; letter-spacing:.4px;
+    font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; gap:5px;}
   .clockLightbox{position:absolute; inset:0; z-index:9; display:none;
     align-items:center; justify-content:center; padding:76px 20px 20px;
     background:rgba(20,28,46,.6); backdrop-filter:blur(3px); touch-action:pan-y;}
@@ -283,7 +285,7 @@
     #gameStart .lbList li .rank, #gameOver .lbList li .rank{flex-basis:2.2em;}
   }
   @media (max-width:600px){
-    #game{--mobile-panel-top:54px; --mobile-panel-bottom:8px; --mobile-leaderboard-min:170px;}
+    #game{--mobile-panel-top:54px; --mobile-panel-bottom:8px; --mobile-leaderboard-min:128px;}
     #gameHud{padding:calc(8px + env(safe-area-inset-top)) 10px 8px;}
     #gameHud .score{font-size:1rem; padding:6px 11px; border-radius:12px;}
     #gameExit{font-size:.86rem; padding:7px 13px;}
@@ -334,9 +336,14 @@
       padding-top:4px; flex:0 0 auto;}
     .gameBtn{width:100%; padding:11px 12px; font-size:.94rem;}
     .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 4px; padding:7px 13px;}
+    /* Keep the big reaction sticker prominent but height-capped so the score,
+       picker, name field and leaderboard all still fit on one screen. */
+    .clockReaction{margin:5px auto 3px; gap:4px;}
+    .clockReaction img{max-width:60vw; max-height:24vh;}
+    .clockReactionCap{font-size:.8rem;}
   }
   @media (max-width:360px){
-    #game{--mobile-leaderboard-min:155px;}
+    #game{--mobile-leaderboard-min:115px;}
     .gameBtns{grid-template-columns:1fr;}
   }
 </style>
@@ -399,14 +406,6 @@
     <!-- Game over screen -->
     <div class="gamePanel hidden" id="gameOver">
       <div class="gameCard">
-        <!-- MUN clock: a compact badge (current hour's "honest reaction" sticker +
-             the time) pinned to the card corner so it never crowds the score,
-             selectors or leaderboard. Tap it to reveal the full sticker. -->
-        <button class="clockBadge" id="clockBadge" type="button" hidden
-                aria-label="The MUN clock — tap for the current hour's reaction">
-          <img id="clockBadgeImg" alt="" />
-          <span class="cbTime" id="clockBadgeTime">--:--</span>
-        </button>
         <!-- Same two-column trick as the start card: collapsed to one column on
              mobile, split into score-details + tall leaderboard on desktop. -->
         <div class="cardMain">
@@ -414,6 +413,13 @@
           <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
           <div class="big" id="gameFinalScore">0</div>
           <p class="best" id="gameBestLine">Best: 0</p>
+          <!-- MUN clock: the current hour's "honest reaction" sticker, shown big as
+               the time-appropriate meme reacting to your score. Tap to enlarge. -->
+          <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
+                  aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
+            <img id="clockReactionImg" alt="" />
+            <figcaption class="clockReactionCap" id="clockReactionCap">--:--</figcaption>
+          </figure>
           <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
           <div class="stickerPick">
             <span class="spLabel">Your Nazan</span>
@@ -3271,8 +3277,8 @@
   /* ---------- MUN clock ----------
      stickers/clock/ holds one "honest <time> reaction" sticker per hour, named
      HH-label (e.g. 21-9pm). On the game-over screen we surface the current
-     hour's sticker as a small corner badge (image + digital time) that opens the
-     full sticker in a lightbox — keeping the tight card layout untouched. */
+     hour's sticker big — the time-appropriate meme reacting to your score, next
+     to Nazan's taunt — and tapping it opens the full sticker in a lightbox. */
   const MunClock = (function(){
     const CLOCK_DIR = STICKER_DIR + "/clock";
     const byHour = {};
@@ -3290,23 +3296,23 @@
       const h = new Date().getHours();
       const url = pickFor(h); if(!url) return;
       const img = $("#clockLbImg"), cap = $("#clockLbCap"), box = $("#clockLightbox");
-      img.src = url; img.alt = cap.textContent = "Nazan's honest " + label(h) + " reaction.";
+      img.src = url; img.alt = cap.textContent = "Our honest " + label(h) + " reaction.";
       box.classList.add("show");
     }
     function closeLightbox(){ $("#clockLightbox").classList.remove("show"); }
 
     function update(){
-      const badge = $("#clockBadge"); if(!badge) return;
+      const fig = $("#clockReaction"); if(!fig) return;
       const now = new Date(), h = now.getHours();
-      $("#clockBadgeTime").textContent =
-        String(h).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
       const url = ready ? pickFor(h) : undefined;
       if(url){
-        const img = $("#clockBadgeImg");
-        img.src = url; img.alt = "Nazan's honest " + label(h) + " reaction.";
-        badge.hidden = false;
+        const img = $("#clockReactionImg");
+        img.src = url; img.alt = "Our honest " + label(h) + " reaction.";
+        $("#clockReactionCap").textContent = "🕒 " +
+          String(h).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+        fig.hidden = false;
       }else{
-        badge.hidden = true;
+        fig.hidden = true;
       }
     }
     async function load(){
@@ -3319,8 +3325,14 @@
         if(hr>=0 && hr<=23 && byHour[hr]===undefined) byHour[hr] = encodeURI(f.path);
       });
       ready = Object.keys(byHour).length > 0;
-      // Wire the badge → lightbox once.
-      const badge = $("#clockBadge"); if(badge) badge.addEventListener("click", openLightbox);
+      // Wire the reaction sticker → lightbox once (click + keyboard activation).
+      const fig = $("#clockReaction");
+      if(fig){
+        fig.addEventListener("click", openLightbox);
+        fig.addEventListener("keydown", (e)=>{
+          if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openLightbox(); }
+        });
+      }
       const closeBtn = $("#clockLbClose"); if(closeBtn) closeBtn.addEventListener("click", closeLightbox);
       const box = $("#clockLightbox");
       if(box) box.addEventListener("click", (e)=>{ if(e.target === box) closeLightbox(); });
