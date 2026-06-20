@@ -1839,7 +1839,7 @@
     const EGAN_COMBO_STEP     = 0.25;    // each combo level beyond the first adds this to the multiplier
     const EGAN_COMBO_MAX_MUL  = 3;       // multiplier caps here so points stay sane
     // Per-round catch target — reaching it is celebrated on the end card.
-    const EGAN_TARGET         = 20;      // egans to catch in a round to hit the goal
+    const EGAN_TARGET         = 25;      // egans to catch in a round to hit the goal
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
 
@@ -2479,7 +2479,12 @@
             s.vy = sp * Math.sin(ang);
           }
           s.x += s.vx; s.y += s.vy; s.rot += s.vr;
-          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){ eganStickers.splice(i, 1); continue; }
+          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){
+            // A MISS breaks the streak: letting an egan sail fully off any edge uncaught
+            // resets the combo immediately (it no longer waits out the combo window).
+            eganCombo = 0; eganComboT = 0;
+            eganStickers.splice(i, 1); continue;
+          }
           // Catch: overlap the player to bank the points and pop it with a little burst.
           if(player){
             const dx = s.x - player.x, dy = s.y - player.y;
@@ -2538,9 +2543,10 @@
       eganPhase = null; eganStickers = []; eganPops = [];
       if(player){ player.x = W / 2; player.y = H * 0.72; }
       enemies = [];
-      // Re-seed a fraction of the crowd that was on screen, clamped to a calm-but-not-empty range.
-      const want = Math.max(EGAN_RESUME_MIN,
-                            Math.min(EGAN_RESUME_MAX, Math.round(eganPrevCount * EGAN_RESUME_KEEP)));
+      // Re-seed the SAME-sized crowd that was on screen when the round began, so the arena comes
+      // back as full as it was left — just a tad slower and (with the pre-roll below) spaced out
+      // before play resumes, rather than a thinned-out handful.
+      const want = Math.max(EGAN_RESUME_MIN, eganPrevCount);
       for(let i = 0; i < want; i++) spawnEnemy();   // spawnEnemy already drops them at the edges
       // Match roughly the pace they left — a touch calmer, and capped so an accelerated swarm
       // doesn't come straight back at full tilt. Fall back to a flat ease-off if we have no read.
@@ -2556,16 +2562,20 @@
       }
       spawnAcc = 0;
       held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
-      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb)
-      // dropped right beside the player almost immediately. Miss the target and there's no early
-      // freebie — pickups just resume on their normal cadence.
+      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb).
+      // It's dropped right beside the player RIGHT NOW so it's already on screen from the very start
+      // of the return (visible through the pre-roll), not after a short delay. Miss the target and
+      // pickups just resume on their normal cadence.
+      eganRewardType = null;
       if(eganTargetHit){
-        eganRewardType = Math.random() < 0.5 ? "eat" : "bomb";
-        pickupTimer = EGAN_REWARD_PICKUP;                         // super-short delay, then it lands by the player
+        spawnPickupNear(Math.random() < 0.5 ? "eat" : "bomb");   // present immediately, by the player
+        pickupTimer = 0;
       } else {
-        eganRewardType = null;
         pickupTimer = PICKUP_FIRST;                               // a regular pickup, on the normal schedule
       }
+      // Always ease back in with the frozen "3 · 2 · 1" pre-roll, so the returning crowd is held
+      // still and spaced out for a beat before everything starts moving again.
+      countdown = COUNTDOWN_TIME;
       last = performance.now();                                    // avoid a dt spike on the first frame back
       try{ music.setMode("default"); }catch(e){}
       try{ sfx.setVoiceMode("default"); }catch(e){}
