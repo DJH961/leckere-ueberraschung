@@ -1617,7 +1617,7 @@
     // feature is gated behind eganEnabled(): with the flag off NONE of this runs (no extra
     // GitHub fetch, no trigger checks, no UI) and the game plays exactly as before. Flip it
     // on either by setting EGAN_ENABLED below, or at runtime via window.__eganMode / ?egan=1.
-    const EGAN_ENABLED = false;      // master switch — leave OFF until the egan stickers are in
+    const EGAN_ENABLED = true;       // master switch — ON now that the egan stickers are in
     let eganPhase   = null;          // null | "intro" | "play" | "outro" while a round runs
     let eganT       = 0;             // seconds elapsed in the current egan sub-phase
     let eganRoundT  = 0;             // seconds elapsed in the egan PLAY phase (drives the speed ramp)
@@ -1630,6 +1630,11 @@
     let eganUrls    = [];            // image URLs from stickers/egans (loaded only when enabled)
     let eganImages  = [];            // preloaded egan Image objects
     let eganUrlsRequested = false;   // guard so the egans listing is fetched at most once
+    // Per-round "show each sticker once" bag: enterEgan() arms it, spawnEgan() draws from it
+    // without repeats, and the round winds down once it's empty (see eganStep()).
+    let eganBag      = [];           // egan Images still to show this round (shuffled, no repeats)
+    let eganBagReady = false;        // true once the bag has been filled (i.e. images had loaded)
+    let eganBagTotal = 0;            // size the bag was filled to (drives the speed ramp)
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
     const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "slipping away" countdown starts (matches the blink-out)
     // Across that window the vanish warning is an accelerating "last chance" countdown
@@ -1655,6 +1660,7 @@
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
     const EGAN_FIRST   = 1000;       // score that arms the FIRST egan round
+    const EGAN_TEST_FIRST = 1;       // bug-test backdoor (?egan=test): arm the first round almost instantly
     const EGAN_STEP    = 1500;       // gap between rounds after that (1000, 2500, 4000, …)
     const EGAN_INTRO_TIME = 2.2;     // seconds of the "EGAN MODE" title flourish
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
@@ -1805,7 +1811,8 @@
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganCaught = 0;
-      nextEganThreshold = EGAN_FIRST;
+      eganBag = []; eganBagReady = false; eganBagTotal = 0;
+      nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       try{ sfx.stopVoices(); }catch(e){}           // drop any chatter left over from the previous run
       try{ sfx.setVoiceMode("default"); }catch(e){}   // and Nazan's voice starts un-tinted
@@ -2119,8 +2126,17 @@
     // before; flip the const OR set window.__eganMode / append ?egan=1 to flick it on.
     function eganEnabled(){
       if(EGAN_ENABLED) return true;
+      if(eganTestMode()) return true;
       try{ if(window.__eganMode) return true; }catch(e){}
       try{ if(/[?&]egan=1(?:&|$)/.test(location.search)) return true; }catch(e){}
+      return false;
+    }
+    // Backdoor for bug-testing Egan Mode on its own, without grinding to the 1000 milestone.
+    // Append ?egan=test (or ?egan=now) to the URL and a round drops in almost immediately
+    // (reset() arms the first milestone at EGAN_TEST_FIRST instead of EGAN_FIRST).
+    function eganTestMode(){
+      try{ if(window.__eganTest) return true; }catch(e){}
+      try{ if(/[?&]egan=(?:test|now)(?:&|$)/.test(location.search)) return true; }catch(e){}
       return false;
     }
     // Egan stickers live in their OWN folder (stickers/egans) and a SEPARATE image list,
@@ -2144,6 +2160,7 @@
       ensureEganUrls(); loadEganImages();
       eganPhase = "intro"; eganT = 0; eganRoundT = 0; eganSpawnAcc = 0;
       eganStickers = []; eganPops = []; eganCaught = 0;
+      eganBag = []; eganBagReady = false; eganBagTotal = 0;   // fresh "show each egan once" bag
       enemies = [];                 // sweep the Nazans off for the bonus round
       pickup = null;                // and clear any uncollected pickup on screen
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; promptClass = promptText = ""; }
@@ -2164,7 +2181,7 @@
       const vx = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const totalDist = W + 2 * r;                       // left edge to right edge
       const vy = (endY - startY) * vx / totalDist;       // slope so it lands on endY as it exits
-      const img = eganImages.length ? eganImages[Math.floor(Math.random() * eganImages.length)] : null;
+      const img = eganBag.length ? eganBag.pop() : null;   // each sticker shown once per round
       eganStickers.push({ x: -r, y: startY, vx, vy, r, img,
                           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.05 });
     }
@@ -2176,12 +2193,29 @@
       } else if(eganPhase === "play"){
         eganRoundT += dt;
         updatePlayer(dt);                                // player stays fully steerable
-        const prog = Math.min(1, eganRoundT / EGAN_PLAY_TIME);
-        // Keep spawning until the round's time budget is up; afterwards just let the
-        // stragglers finish crossing so the screen empties cleanly before the end card.
-        if(eganRoundT < EGAN_PLAY_TIME){
+        // Fill the per-round bag once the egan images have loaded, so every sticker is
+        // shown exactly once this round (shuffled order, no repeats). The fetch/decode is
+        // lazy, so on the very first frames the bag may still be empty — we top it up here.
+        if(!eganBagReady && eganImages.length){
+          eganBag = eganImages.slice();
+          for(let i = eganBag.length - 1; i > 0; i--){    // Fisher–Yates shuffle
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = eganBag[i]; eganBag[i] = eganBag[j]; eganBag[j] = tmp;
+          }
+          eganBagTotal = eganBag.length; eganBagReady = true;
+        }
+        // Progress drives the speed ramp: by how much of the bag is spent when it's ready,
+        // otherwise fall back to elapsed time (the plain-badge case with no egan images).
+        const prog = eganBagTotal
+          ? (eganBagTotal - eganBag.length) / eganBagTotal
+          : Math.min(1, eganRoundT / EGAN_PLAY_TIME);
+        // Keep spawning while the bag still has stickers to show. Before the bag is ready
+        // (images not loaded yet) fall back to the old time-budgeted badge spawns so the
+        // round never hangs. Once the bag empties, stop and let the stragglers finish.
+        const spawning = eganBagReady ? eganBag.length > 0 : eganRoundT < EGAN_PLAY_TIME;
+        if(spawning){
           eganSpawnAcc += dt;
-          const interval = EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * prog;
+          const interval = EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog);
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
         // Fly each egan along its diagonal; no walls — one that sails off the right is gone.
@@ -2202,8 +2236,10 @@
             }
           }
         }
-        // Round ends once the spawn budget is spent AND the screen is clear of egans.
-        if(eganRoundT >= EGAN_PLAY_TIME && eganStickers.length === 0){ eganPhase = "outro"; eganT = 0; }
+        // Round ends once every sticker has been shown (bag empty, or the time fallback is
+        // spent when no images loaded) AND the screen is clear of egans.
+        const spent = eganBagReady ? eganBag.length === 0 : eganRoundT >= EGAN_PLAY_TIME;
+        if(spent && eganStickers.length === 0){ eganPhase = "outro"; eganT = 0; }
       } else if(eganPhase === "outro"){
         if(eganT >= EGAN_OUTRO_TIME){ exitEgan(); }
       }
