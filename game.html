@@ -2592,6 +2592,24 @@
       e.banished = false; e.returning = false; e.noWall = true;
     }
 
+    // Force Field catching a Nazan on its bubble: bank the push, play the springy deflect,
+    // and send it gently off-screen. Shared so it fires identically whether the Nazan is in
+    // normal play OR drifting back in from an earlier banish (a reappearing one is fair game
+    // again the moment it's visible, not stuck untouchable until it has fully re-entered).
+    function fieldRepel(e){
+      const dx = e.x - player.x, dy = e.y - player.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const nx = dx / d, ny = dy / d;
+      // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
+      // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
+      score += PUSH_POINTS;
+      bumpMomentum(1);
+      if(scoreEl) scoreEl.textContent = String(Math.floor(score));
+      try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
+      banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
+      haptic(8);   // an even subtler nudge as the Force Field deflects a Nazan off its skin
+    }
+
     // Blast every Nazan within reach with a hard outward shove. This is the Shove power-up's
     // banked effect: a genuine panic button. Each nearby Nazan is launched away (not
     // destroyed — Eating Mode does that); those driven onto an edge sail off the screen and
@@ -3672,6 +3690,15 @@
         // it has fully re-entered the arena does it rejoin normal play.
         if(e.banished){
           e.x += e.vx; e.y += e.vy; e.rot += e.vr;
+          // A RETURNING Nazan is reappearing in the arena — so it's no longer untouchable.
+          // The Force Field can catch it on its bubble and fling it straight back out again,
+          // exactly as it would a Nazan in normal play (an outbound one, still flying off-screen,
+          // is out of reach and left alone).
+          if(e.returning && repelOn && player){
+            const dx = e.x - player.x, dy = e.y - player.y;
+            const d = Math.hypot(dx, dy) || 1;
+            if(d < repelR + e.r){ fieldRepel(e); continue; }
+          }
           if(!e.returning){
             const fullyOut = e.x < -banishMargin || e.x > W + banishMargin ||
                              e.y < -banishMargin || e.y > H + banishMargin;
@@ -3733,15 +3760,7 @@
           const dx = e.x - player.x, dy = e.y - player.y;
           const d = Math.hypot(dx, dy) || 1;
           if(d < repelR + e.r){
-            const nx = dx / d, ny = dy / d;
-            // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
-            // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
-            score += PUSH_POINTS;
-            bumpMomentum(1);
-            if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-            try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
-            banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
-            haptic(8);   // an even subtler nudge as the Force Field deflects a Nazan off its skin
+            fieldRepel(e);
             continue;
           }
         }
@@ -3857,7 +3876,11 @@
       // Eating Mode devours the Nazan (for points!), Invisible lets them pass through.
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
-        if(e.banished) continue;                  // already flung off-screen, harmless in transit
+        // An OUTBOUND banished Nazan (still flying off-screen, not yet turned around) is far
+        // out of reach and inert. A RETURNING one drifting back in, though, is fair game for
+        // Eating Mode / Star Power again — it just can't kill you on plain contact until it has
+        // fully rejoined play (handled at the death check below).
+        if(e.banished && !e.returning) continue;
         // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
         // so it's harmless while it clears the player — otherwise you could die a frame after a
         // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
@@ -3892,6 +3915,10 @@
             continue;
           }
           if(activeEffect && activeEffect.type === "ghost") continue;
+          // A returning Nazan reappearing in the arena is harmless on plain contact — it can be
+          // eaten or barged aside above, but it won't kill you (or burn a death auto-fire) until
+          // it has fully rejoined play.
+          if(e.banished) continue;
           // Death auto-fire: about to die with a banked Shove or Boom in hand? Unleash it
           // in this final instant instead of dying. A panic-button reflex — the Shove
           // blasts the lethal Nazan (and its neighbours) away, the Boom pops the crowd
