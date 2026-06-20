@@ -2653,7 +2653,13 @@
         if(pickupTimer <= 0){
           // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
-          if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
+          if(eganPending){
+            // Egan Mode is already queued to start — it's only waiting for the current held /
+            // active power-up to clear before it arms. Don't drop a fresh pickup that would be
+            // swept off the board the instant the round begins; hold off and re-check shortly.
+            pickupTimer = PICKUP_RESPAWN;
+          }
+          else if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
           // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
           // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
           // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
