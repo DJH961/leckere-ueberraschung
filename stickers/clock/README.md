@@ -19,8 +19,9 @@ Each file is named `HH-label.webp`, where `HH` is the **two-digit 24-hour hour**
 
 The site parses the leading two digits to pick the right sticker for
 `new Date().getHours()`, so **the `HH-` prefix must stay** and exactly one file
-must exist per hour. Add a new reaction by dropping in a `HH-…webp` (any of
-`.png/.jpg/.jpeg/.webp/.gif`) that overrides the matching hour.
+must exist per hour. Add a new reaction by dropping in a `HH-label.<ext>` file,
+where `<ext>` can be any of `.png/.jpg/.jpeg/.webp/.gif`, that overrides the
+matching hour.
 
 These stickers are loaded **separately** from the loose Nazan stickers in `../`
 (the GitHub contents API only lists top-level files there, so this subfolder is

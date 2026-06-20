@@ -3279,6 +3279,7 @@
 
     function pickFor(h){
       let url = byHour[h];
+      // Walk backwards through the hours to find the closest earlier one we have.
       for(let d=1; url===undefined && d<24; d++) url = byHour[(h-d+24)%24];
       return url;
     }
