@@ -2551,12 +2551,13 @@
     // its final second. After that, up to 750 points Nico only gets spawned Tiny pickups, then
     // one spawned Bomb, then the normal rotation takes back over.
     const NICO_FULL_BOARD = 12;
+    // After this many completed Nico runs, the next run loops back to the spawn-kill intro.
     const NICO_DOOM_CYCLE = 10;
     const NICO_TINY_SCORE = 750;
     const NICO_INTRO_EAT_TRIGGER = 1;
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function shouldSpawnNicoIntroEat(){
-      return !!(nicoIntroEatPending && activeEffect && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup);
+      return nicoIntroEatPending && activeEffect && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup;
     }
     function nicoForcedPickupType(){
       if(!isNico()) return null;
