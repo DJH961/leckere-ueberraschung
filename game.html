@@ -1836,8 +1836,8 @@
     const EGAN_SIZE_END       = 0.82;    // …shrinking to this by the end
     // Combos: catches in quick succession build a points multiplier.
     const EGAN_COMBO_WINDOW   = 1.6;     // seconds within which the next catch keeps the combo alive
-    const EGAN_COMBO_STEP     = 0.5;     // each combo level beyond the first adds this to the multiplier
-    const EGAN_COMBO_MAX_MUL  = 5;       // multiplier caps here so points stay sane
+    const EGAN_COMBO_STEP     = 0.25;    // each combo level beyond the first adds this to the multiplier
+    const EGAN_COMBO_MAX_MUL  = 3;       // multiplier caps here so points stay sane
     // Per-round catch target — reaching it is celebrated on the end card.
     const EGAN_TARGET         = 20;      // egans to catch in a round to hit the goal
     const keys = Object.create(null);
@@ -2503,7 +2503,7 @@
                 eganTargetHit = true;
                 try{ sfx.eganTarget(); }catch(err){}
                 achieve("egan_target", "🥚", "Egan Catcher",
-                        "You caught " + EGAN_TARGET + " Egans in a single Egan Mode round!");
+                        "You caught " + EGAN_TARGET + " Egans in a single Egan Mode round — a free power-up is waiting when you get back!");
               }
             }
           }
@@ -2663,7 +2663,7 @@
           ctx.fillStyle = "#3d5076";
           ctx.font = "bold " + (base() * 0.04).toFixed(0) + "px system-ui, sans-serif";
           const sub = eganPhase === "intro"
-            ? "Catch the Egans! Chain catches for combos · Target " + EGAN_TARGET
+            ? "Catch the Egans! Chain catches for combos · Catch " + EGAN_TARGET + " for a free power-up back home"
             : "+" + eganRoundPoints + " points · " + eganCaught + " caught" +
               (eganComboBest >= 2 ? " · best combo x" + eganComboBest : "");
           ctx.fillText(sub, cx, cy + base() * 0.11);
