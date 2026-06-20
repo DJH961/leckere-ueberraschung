@@ -52,12 +52,14 @@
   #gameExit:active{transform:scale(.96);}
   /* Right-hand HUD button cluster (music toggle + back). */
   #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 0 auto; pointer-events:none;}
-  #gameMusic{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
+  #gameMusic, #gameHaptics{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
     color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
     border-radius:30px; padding:8px 14px; font-size:1rem; line-height:1;
     box-shadow:0 4px 12px rgba(61,80,118,.18); backdrop-filter:blur(4px);}
-  #gameMusic:hover{border-color:var(--navy);}
-  #gameMusic:active{transform:scale(.96);}
+  #gameMusic:hover, #gameHaptics:hover{border-color:var(--navy);}
+  #gameMusic:active, #gameHaptics:active{transform:scale(.96);}
+  /* Haptics toggle only matters on devices that can actually vibrate — hidden until enabled. */
+  #gameHaptics{display:none;}
   /* Sticker picker — click ‹ / › to choose which Nazan you play as. */
   .stickerPick{display:flex; flex-direction:column; align-items:center; gap:8px; margin:14px 0 4px;}
   .stickerPick .spLabel{font-weight:800; color:var(--navy); font-size:.82rem;
@@ -376,6 +378,7 @@
       <div class="score">Score <span id="gameScore">0</span></div>
       <div class="hudBtns">
         <button id="gameMusic" type="button" aria-label="Mute sound">🔊</button>
+        <button id="gameHaptics" type="button" aria-label="Turn off vibration">📳</button>
         <button id="gameExit" type="button">✕ Back</button>
       </div>
     </div>
@@ -1575,6 +1578,10 @@
     // Background-music preference (on by default), persisted across visits.
     let musicEnabled = LS.get("nazanDodgeMusic", true);
     setAudioMuted(!musicEnabled);   // honour the saved choice for ALL game audio
+    // Haptics (vibration) preference (on by default), persisted across visits. Only ever
+    // does anything on touch devices that support navigator.vibrate; the HUD toggle is
+    // hidden everywhere else (see initHapticsBtn).
+    let hapticsEnabled = LS.get("nazanDodgeHaptics", true);
     let running = false, raf = null;
     // Restart freeze: on a Play-again, the arena is shown frozen for a short COUNTDOWN before
     // the action resumes, easing the player back in rather than dropping them straight into a
@@ -1943,9 +1950,53 @@
       syncMusicBtn();
       if(musicEnabled) startMusicIfEnabled(); else { try{ music.stop(); }catch(e){} }
     }
+    // ----- Haptics (vibration) helpers -----
+    // The phone can vibrate, so a vibration toggle is worth showing.
+    function hapticsSupported(){ return !!(navigator && navigator.vibrate); }
+    function syncHapticsBtn(){
+      const b = $("#gameHaptics"); if(!b) return;
+      b.textContent = hapticsEnabled ? "📳" : "📴";
+      b.setAttribute("aria-label", hapticsEnabled ? "Turn off vibration" : "Turn on vibration");
+    }
+    // Reveal the haptics toggle only on devices that can actually vibrate.
+    function initHapticsBtn(){
+      const b = $("#gameHaptics"); if(!b) return;
+      if(hapticsSupported()){ b.style.display = ""; syncHapticsBtn(); }
+      else { b.style.display = "none"; }
+    }
+    function toggleHaptics(){
+      hapticsEnabled = !hapticsEnabled;
+      LS.set("nazanDodgeHaptics", hapticsEnabled);
+      syncHapticsBtn();
+      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate(20); }catch(e){} }   // a confirming tick when switched on
+    }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
-    function naturalPlayerR(){ return Math.max(20, base() * 0.05); }   // player's full size
+    // How portrait/tall the arena is: 0 on a square-or-wider screen, ramping to 1 on a
+    // narrow phone held upright (aspect ratio W/H ≈ 0.55 or tighter). Used to give the
+    // cramped portrait arena a little mercy — a slightly bigger player and slightly
+    // smaller Nazans, so there's room to thread between a bouncing pack.
+    function tallness(){
+      const ar = W / Math.max(1, H);
+      return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
+    }
+    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's
+    // eganDiff): a tall/narrow portrait phone has far less room to dodge, so Nazans move
+    // slower and arrive less often there; a wide desktop nudges the other way. The enemy
+    // COUNT cap is deliberately left out of this (tuned separately).
+    const ARENA_DIFF_MIN = 0.75;   // portrait phones: gentler pace, more breathing room
+    const ARENA_DIFF_MAX = 1.12;   // wide desktops: a touch livelier
+    function arenaDiff(){
+      const ar = W / Math.max(1, H);
+      return Math.max(ARENA_DIFF_MIN, Math.min(ARENA_DIFF_MAX, ar));
+    }
+    // A short haptic buzz on touch devices (desktops/unsupported browsers no-op). Used
+    // for the moments that matter — death, firing a power-up, grabbing a pickup, and the
+    // accelerating wind-down warning before a timed power-up lapses — so the smaller phone
+    // screen gets a little physical feedback to lean on. Honours the player's haptics
+    // toggle so it can be silenced on mobile.
+    function haptic(pattern){ try{ if(hapticsEnabled && navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+    function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
     function resize(){
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1962,7 +2013,7 @@
     }
 
     function spawnEnemy(){
-      const r = Math.max(22, base() * 0.055);
+      const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));   // slightly smaller on tall phones so there's room to weave
       // Spawn at a random edge so nothing lands right on the player.
       let x, y;
       if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
@@ -1970,7 +2021,9 @@
       // New Nazans always arrive GENTLY — no more screaming in at full pace. The
       // danger of each one builds from its own time on screen (see the per-enemy
       // acceleration in step()), not from how late in the round it spawned.
-      const speed = base() * (0.004 + Math.random() * 0.0015);
+      // The arena's aspect ratio also tempers the pace: a cramped portrait phone gets
+      // slower Nazans (see arenaDiff), a wide desktop a touch faster.
+      const speed = base() * (0.004 + Math.random() * 0.0015) * arenaDiff();
       const ang = Math.random() * Math.PI * 2;
       // Never reuse the player's own sticker as an enemy — that's confusing. Pick
       // from the remaining images when more than one is available.
@@ -2163,6 +2216,7 @@
       if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
       else if(type === "shove" || type === "bomb" || type === "zap"){ try{ sfx.powerFire(type); }catch(e){} }
       else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
+      haptic(25);   // a little kick the moment a banked power-up goes off
       return true;
     }
 
@@ -2206,6 +2260,7 @@
           const type = pickup.type;
           held = type; pickup = null;
           try{ sfx.powerGrab(); }catch(e){}
+          haptic(15);   // a soft tick when you scoop up a pickup
           // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
@@ -2782,6 +2837,7 @@
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
           activeEffect = null;
           try{ sfx.expireEnd(); }catch(err){}
+          haptic([50, 40, 70]);   // a firm down-buzz that lands with the "time's up!" cue
           updatePrompt();
         } else {
           // Enter the wind-down WARNING window a little over a second before it lapses: the
@@ -2790,6 +2846,7 @@
           // player's own visual cue stay fully live right up to the end.
           if(!activeEffect.warning && activeEffect.time <= EFFECT_WARN){
             activeEffect.warning = true;
+            haptic([30, 50, 30]);   // a firm double-buzz the instant the wind-down begins — "heads up, it's running out"
             updatePrompt();
           }
           // Through that final window, an accelerating countdown "beep beep": the cadence
@@ -2798,7 +2855,9 @@
             activeEffect.beepT = (activeEffect.beepT || 0) - dt;
             if(activeEffect.beepT <= 0){
               const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
-              try{ sfx.expireBeep(1 - frac); }catch(err){}
+              const intensity = 1 - frac;                                  // 0 → 1 as zero nears
+              try{ sfx.expireBeep(intensity); }catch(err){}
+              haptic(Math.round(14 + intensity * 30));   // each buzz lengthens in step with the beep so the phone "feels" the countdown
               activeEffect.beepT = BEEP_INTERVAL_MIN + BEEP_INTERVAL_RANGE * frac;   // ~0.34s apart easing down to ~0.16s
             }
           }
@@ -2842,7 +2901,10 @@
       const SPAWN_BASELINE = 4.5;     // Nazan count the base interval is tuned for
       const SPAWN_PER_NAZAN = 0.5;    // seconds added/removed per Nazan off the baseline
       const crowdAdj = (enemies.length - SPAWN_BASELINE) * SPAWN_PER_NAZAN;
-      const interval = Math.max(1.4, (5 - elapsed * 0.035) + crowdAdj);
+      // Stretch the gap on cramped portrait screens and tighten it on wide ones, so the
+      // arena fills toward its sweet spot at a pace that suits the space (arenaDiff). The
+      // on-screen COUNT cap below is intentionally left as-is.
+      const interval = Math.max(1.4, ((5 - elapsed * 0.035) + crowdAdj) / arenaDiff());
       if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
@@ -2908,7 +2970,7 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025);
+            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
@@ -3435,6 +3497,7 @@
     }
     function gameOver(){
       running = false;
+      haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
@@ -3583,6 +3646,7 @@
       if(startName) startName.value = LS.get("playerName", "");
       updateStartValidity();
       syncMusicBtn();
+      initHapticsBtn();
       renderPickers();
       resize();
       renderBoard("#startLbList");
@@ -3607,8 +3671,15 @@
     function wire(){
       if(!root || !ctx) return;
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
-      // Pointer (mouse + touch) — track position over the canvas.
-      const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
+      // Pointer (mouse + touch) — track position over the canvas. On TOUCH we steer the
+      // Nazan to a point lifted above the finger, so your thumb never sits on top of the
+      // character and hides the very Nazans closing in on it. Mouse steering is unchanged.
+      const TOUCH_LIFT = ()=> base() * 0.10;
+      const setP = (e)=>{
+        pointer.active = true;
+        pointer.x = e.clientX;
+        pointer.y = e.clientY - (e.pointerType === "touch" ? TOUCH_LIFT() : 0);
+      };
       // Firing a banked power-up is a quick press-and-release tap on your OWN Nazan. Shove and
       // Boom are both positional / auto-targeting — neither needs aiming — so they go off the
       // same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
@@ -3619,7 +3690,12 @@
         downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnPlayer = false;
         if(running && player && held){
           const dx = e.clientX - player.x, dy = e.clientY - player.y;
-          const reach = Math.max(player.r, base() * 0.05);   // must land on the Nazan itself
+          // On touch the Nazan rides a fixed lift above the finger, so a tap aimed at it
+          // lands roughly TOUCH_LIFT below the sprite — widen the hit target there so
+          // firing a banked power-up by tapping your Nazan still reads reliably.
+          const reach = e.pointerType === "touch"
+            ? Math.max(player.r * 2, base() * 0.16)   // covers the lift + the sprite
+            : Math.max(player.r, base() * 0.05);      // mouse: tight, unchanged
           downOnPlayer = (dx * dx + dy * dy <= reach * reach);
         }
         setP(e);
@@ -3689,6 +3765,8 @@
       sp("spPrevOver", -1);  sp("spNextOver", 1);
       // Music mute toggle.
       const musicBtn = $("#gameMusic"); if(musicBtn) musicBtn.addEventListener("click", toggleMusic);
+      // Vibration (haptics) toggle — only visible on devices that can vibrate.
+      const hapticsBtn = $("#gameHaptics"); if(hapticsBtn) hapticsBtn.addEventListener("click", toggleHaptics);
       // Browsers block audio until the first user gesture; once one happens, kick the
       // lobby music in if the player hasn't muted it.
       const kickMusic = ()=>{ startMusicIfEnabled(); };
