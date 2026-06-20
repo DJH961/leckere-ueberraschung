@@ -50,8 +50,12 @@
     backdrop-filter:blur(4px);}
   #gameExit:hover{border-color:var(--navy);}
   #gameExit:active{transform:scale(.96);}
-  /* Right-hand HUD button cluster (music toggle + back). */
-  #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 0 auto; pointer-events:none;}
+  /* Right-hand HUD button cluster (music + vibration toggles + back). On a narrow phone the
+     score + three buttons can be wider than the screen; allow the cluster to WRAP onto further
+     lines (right-aligned) so no control — in particular the vibration toggle — is ever pushed
+     off the edge and out of reach. */
+  #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:1 1 auto;
+    flex-wrap:wrap; justify-content:flex-end; pointer-events:none;}
   #gameMusic, #gameHaptics{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
     color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
     border-radius:30px; padding:8px 14px; font-size:1rem; line-height:1;
@@ -1713,6 +1717,13 @@
     // stay fully active until the very end, so the cue vanishes EXACTLY when the power does.
     // This way you can never, say, eat a Nazan without the eating still being visually clear.
     const EFFECT_WARN = 1.1;        // seconds of audible/ambient wind-down before a timed effect lapses
+    // ...with ONE deliberate exception: Eating Mode keeps a whisper-thin grace tail after it
+    // lapses, so a Nazan you reach at the very last instant is still devoured instead of killing
+    // you. It's barely a couple of frames — long enough to feel fair, too short to lean on — and
+    // it carries its own fading cues (a quickly-dimming hungry ring + the normal devour sound and
+    // buzz on any last-gasp catch) so a grace eat still reads, sounds and feels exactly like a
+    // proper one rather than a silent freebie.
+    const EAT_GRACE = 0.16;        // seconds Eating Mode still devours on contact after its timer hits zero
     // The countdown "beep beep" through that window accelerates: the gap between beeps eases
     // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
     const BEEP_INTERVAL_MIN   = 0.16;  // shortest gap between beeps (right at expiry)
@@ -1778,6 +1789,7 @@
     let heldBeepT = 0;               // countdown to the next banked auto-fire "arming" pulse while in the warning window
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
+    let eatGrace = 0;                // seconds of Eating Mode's last-instant devour grace still left (see EAT_GRACE)
     let pickupTimer = 0;             // counts down to the next pickup appearing
     let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (eat/bomb) spawned right by the player
     // ----- Egan Mode (a milestone minigame; ships toggled OFF) -----
@@ -2031,7 +2043,10 @@
       hapticsEnabled = !hapticsEnabled;
       LS.set("nazanDodgeHaptics", hapticsEnabled);
       syncHapticsBtn();
-      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate(20); }catch(e){} }   // a confirming tick when switched on
+      // A clear confirming double-buzz the instant it's switched ON — fired straight from this
+      // tap (a user gesture, which some mobile browsers require) and deliberately longer than the
+      // subtle in-game ticks so there's no doubt the vibrations actually came back on.
+      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate([30, 40, 30]); }catch(e){} }
     }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
@@ -2074,6 +2089,19 @@
       const p = [];
       for(let i = 0; i < n; i++){ if(i) p.push(22); p.push(10); }
       return p;
+    }
+    // Egan Mode catch buzz: a soft tick that LENGTHENS with the combo, so a hot catching
+    // streak builds in the hand the same way it climbs in pitch (sfx.eganCatch) — capped so
+    // it stays a tick and never a rumble. Golden egans and the catch target get their own
+    // distinctive patterns below (EGAN_GOLD_BUZZ / EGAN_TARGET_BUZZ).
+    const EGAN_CATCH_BUZZ_MIN  = 12;   // ms for a lone (combo x1) catch
+    const EGAN_CATCH_BUZZ_STEP = 5;    // each extra combo level adds this…
+    const EGAN_CATCH_BUZZ_MAX  = 45;   // …up to this ceiling
+    const EGAN_GOLD_BUZZ   = [16, 28, 44];          // a richer rising triple-pulse for a prized golden egan
+    const EGAN_TARGET_BUZZ = [45, 55, 45, 55, 75];  // a triumphant little roll the instant you hit the round's target
+    function eganComboBuzz(combo){
+      const n = Math.max(1, combo | 0);
+      return Math.min(EGAN_CATCH_BUZZ_MAX, EGAN_CATCH_BUZZ_MIN + (n - 1) * EGAN_CATCH_BUZZ_STEP);
     }
     function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
@@ -2135,7 +2163,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST; eganRewardType = null;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; eatGrace = 0; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
@@ -2342,6 +2370,19 @@
       try{ sfx.powerAppear(); }catch(e){}
     }
 
+    // Roughly how many seconds until the next Egan round arms, based on the steady survival
+    // score drip (step() adds ~SCORE_SURVIVAL_RATE points/second; power-up bonuses only make it
+    // arrive SOONER, so this is a safe upper bound). Infinity when Egan Mode is off or a round
+    // is already running. Used to avoid dangling a power-up the player can't reach before Egan
+    // Mode sweeps it away (see updatePickups()).
+    const SCORE_SURVIVAL_RATE = 10;   // must match the `score += dt * 10` survival drip in step()
+    function secondsToEgan(){
+      if(!eganEnabled() || eganPhase) return Infinity;
+      const outsideScore = score - eganPointsTotal;
+      const remaining = nextEganThreshold - outsideScore;
+      if(remaining <= 0) return 0;
+      return remaining / SCORE_SURVIVAL_RATE;
+    }
     // Advance the pickup lifecycle each frame: let the player collect the on-screen
     // pickup by touching it, expire it if ignored too long, and time the next spawn.
     function updatePickups(dt){
@@ -2399,6 +2440,11 @@
           // The Egan catch-target reward is a specific eat/bomb placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
           if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
+          // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
+          // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
+          // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
+          // power-up simply appears once the player is back rather than being missed on entry.
+          else if(secondsToEgan() < PICKUP_LIFE){ pickupTimer = PICKUP_RESPAWN; }
           else spawnPickup();
         }
       }
@@ -2526,7 +2572,7 @@
       pickup = null;                // and clear any uncollected pickup on screen
       // Wipe any leftover power-up state AND its lingering visual fragments (blast rings, boom
       // puffs, zap arcs/sparks, the star trail) so none of it bleeds into the clean Egan backdrop.
-      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null;
+      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; eatGrace = 0;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = [];
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; promptClass = promptText = ""; }
       // Egan Mode gets its OWN look and music so it reads as a separate minigame, not the
@@ -2668,10 +2714,14 @@
               // Escalating catch sound: golden ones get a richer flourish, normal ones a
               // blip that climbs in pitch with the combo.
               try{ if(s.gold) sfx.eganGold(); else sfx.eganCatch(eganCombo); }catch(err){}
+              // ...and a matching buzz on touch: golden egans get an unmistakable triple-pulse,
+              // ordinary catches a tick that lengthens with the combo so a streak builds in the hand.
+              haptic(s.gold ? EGAN_GOLD_BUZZ : eganComboBuzz(eganCombo));
               // Hitting the round's catch target is celebrated once, with a fanfare + badge.
               if(!eganTargetHit && eganCaught >= EGAN_TARGET){
                 eganTargetHit = true;
                 try{ sfx.eganTarget(); }catch(err){}
+                haptic(EGAN_TARGET_BUZZ);   // a triumphant roll the moment you bag the 25th
                 achieve("egan_target", "🥚", "Egan Catcher",
                         "You caught " + EGAN_TARGET + " Egans in a single Egan Mode round — a free power-up is waiting when you get back!");
               }
@@ -2736,7 +2786,7 @@
         for(const e of enemies){ e.vx *= EGAN_RESUME_SPEED_MUL; e.vy *= EGAN_RESUME_SPEED_MUL; e.age = 0; }
       }
       spawnAcc = 0;
-      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
+      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; eatGrace = 0; pickup = null;
       // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb).
       // It's dropped right beside the player RIGHT NOW so it's already on screen from the very start
       // of the return (visible through the pre-roll), not after a short delay. Miss the target and
@@ -2933,6 +2983,10 @@
         if(activeEffect.time <= 0){
           // The power lapses NOW — its protective effect and its on-screen cue end together
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
+          // Eating Mode is the lone exception: arm a whisper-thin devour grace (EAT_GRACE) so a
+          // Nazan reached at the very last instant is still eaten, not fatal (see the collision
+          // loop + draw()). Every other effect ends hard, exactly as before.
+          if(activeEffect.type === "eat") eatGrace = EAT_GRACE;
           activeEffect = null;
           try{ sfx.expireEnd(); }catch(err){}
           haptic([36, 40, 50]);   // a firm down-buzz that lands with the "time's up!" cue
@@ -2965,6 +3019,8 @@
           }
         }
       }
+      // Run down Eating Mode's last-instant devour grace (armed when eat lapses, above).
+      if(eatGrace > 0) eatGrace = Math.max(0, eatGrace - dt);
       // Keep the background music in step with the active power-up (eat / star).
       syncMusicMode();
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
@@ -3233,11 +3289,11 @@
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
-          if(activeEffect && activeEffect.type === "eat"){
+          if((activeEffect && activeEffect.type === "eat") || eatGrace > 0){
             enemies.splice(i, 1); score += KILL_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
-            haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode
+            haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode (incl. the grace tail)
             continue;
           }
           // Star Power: invincible like Mario Kart's star — barge straight through any
@@ -3528,6 +3584,16 @@
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
         } else if(activeEffect && activeEffect.type === "eat"){
           drawSticker(player, true, "#e8743b");   // hungry golden ring
+        } else if(eatGrace > 0){
+          // Eating Mode's whisper-thin grace tail: keep the Nazan fully solid but let its hungry
+          // ring linger and dim fast over the few frames the last-instant devour stays live, so
+          // the eat reads as "just barely" carrying over rather than a fresh power-up.
+          drawSticker(player, false);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, eatGrace / EAT_GRACE);
+          ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 4, 0, Math.PI * 2);
+          ctx.lineWidth = 5; ctx.strokeStyle = "#e8743b"; ctx.stroke();
+          ctx.restore();
         } else if(activeEffect && activeEffect.type === "star"){
           // Mario Kart star: a shimmering rainbow halo that cycles colour fast, plus a
           // ring of twinkling sparkles, so invincibility reads instantly.
@@ -3633,6 +3699,7 @@
     function gameOver(){
       running = false;
       haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
+      eatGrace = 0;
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
@@ -3789,6 +3856,7 @@
     }
     function close(){
       running = false;
+      eatGrace = 0;
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}
