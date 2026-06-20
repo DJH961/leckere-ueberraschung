@@ -159,6 +159,26 @@
   .clockReaction:hover img{transform:scale(1.03);}
   .clockReaction:focus-visible{outline:none;}
   .clockReaction:focus-visible img{outline:2px solid var(--navy); outline-offset:3px; transform:scale(1.03);}
+  /* Game-over layout: meme sits beside the score/quote, and the sticker picker sits
+     beside the name + edit controls, so the whole card fits one screen without scroll. */
+  .overTop{display:flex; align-items:center; justify-content:center; gap:16px;
+    flex-wrap:wrap; margin:2px 0 6px; width:100%;}
+  .overTop .clockReaction{margin:0; flex:0 0 auto;}
+  .overTop .clockReaction img{max-width:min(170px,42vw); max-height:190px;}
+  .overScore{display:flex; flex-direction:column; align-items:center; min-width:0;}
+  .overScore .nazanQuote{margin:2px auto 8px;}
+  .overScore .big{margin:2px 0;}
+  .overControls{display:flex; align-items:center; justify-content:center;
+    gap:12px; flex-wrap:wrap; margin:6px 0 2px; width:100%;}
+  #gameOver .overControls .stickerPick{margin:0; gap:6px;}
+  #gameOver .overControls .spRow{gap:8px;}
+  #gameOver .overControls .spArrow{width:34px; height:34px; font-size:1.2rem;}
+  #gameOver .overControls .spPreview{width:62px; height:62px; border-radius:14px;}
+  #gameOver .overControls .spPreview img{max-width:56px; max-height:56px;}
+  #gameOver .overControls .nameRow{display:flex; flex-direction:column; gap:8px;
+    margin:0; flex:0 1 180px; min-width:0;}
+  #gameOver .overControls .nameRow input{width:100%; min-width:0;}
+  #gameOver .overControls .nameRow .gameBtn{padding:10px 14px; font-size:.95rem;}
   .clockLightbox{position:absolute; inset:0; z-index:9; display:none;
     align-items:center; justify-content:center; padding:76px 20px 20px;
     background:rgba(20,28,46,.6); backdrop-filter:blur(3px); touch-action:pan-y;}
@@ -269,7 +289,8 @@
       gap:4px; min-width:0; grid-column:1; grid-row:1;}
     #gameStart .cardMain > p, #gameOver .cardMain > p{margin:5px 0;}
     /* Action buttons live under the left column. */
-    #gameStart .gameBtns, #gameOver .gameBtns{grid-column:1; grid-row:2; margin-top:18px;}
+    #gameStart .gameBtns, #gameOver .gameBtns{grid-column:1; grid-row:2; margin-top:18px;
+      flex-wrap:nowrap;}
     /* Right column: the leaderboard, spanning the full height of the card. */
     #gameStart .cardBoard, #gameOver .cardBoard{display:flex; flex-direction:column;
       min-width:0; min-height:0; grid-column:2; grid-row:1 / span 2;}
@@ -318,7 +339,7 @@
     .nameField label{font-size:.78rem;}
     .nameRow{width:100%; gap:8px; margin:7px 0 2px;}
     .nameRow input{width:100%; min-width:0; padding:10px 12px;}
-    #gameOver .nameRow{display:grid; grid-template-columns:1fr; align-items:stretch;}
+    #gameOver .overControls .nameRow{margin:0;}
     .nameHint{font-size:.78rem; line-height:1.25; min-height:auto;}
     .lbBox{margin:6px 0 4px; padding:10px; border:1px solid var(--card-border);
       border-radius:16px; background:rgba(255,255,255,.66);
@@ -332,8 +353,12 @@
       padding-top:4px; flex:0 0 auto;}
     .gameBtn{width:100%; padding:11px 12px; font-size:.94rem;}
     .gameCard .nazanQuote{font-size:clamp(.95rem,4.8vw,1.2rem); margin:2px auto 4px; padding:7px 13px;}
-    /* Keep the big reaction sticker prominent but height-capped so the score,
-       picker, name field and leaderboard all still fit on one screen. */
+    /* Keep the reaction meme prominent but height-capped, and beside the score, so the
+       quote, picker, name field and leaderboard all still fit on one screen. */
+    .overTop{gap:10px; margin:2px 0 4px;}
+    .overTop .clockReaction img{max-width:34vw; max-height:19vh;}
+    .overControls{gap:10px; margin:4px 0 2px;}
+    #gameOver .overControls .nameRow{flex:1 1 130px;}
     .clockReaction{margin:5px auto 3px; gap:4px;}
     .clockReaction img{max-width:60vw; max-height:24vh;}
   }
@@ -405,28 +430,36 @@
              mobile, split into score-details + tall leaderboard on desktop. -->
         <div class="cardMain">
           <h2>Caught!</h2>
-          <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
-          <!-- MUN clock: the current hour's "honest reaction" sticker, shown right beneath
-               Nazan's parting quip (the two read as one gag). Tap to enlarge. -->
-          <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
-                  aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
-            <img id="clockReactionImg" alt="" />
-          </figure>
-          <div class="big" id="gameFinalScore">0</div>
-          <p class="best" id="gameBestLine">Best: 0</p>
           <button class="helpBtn" id="gameHelpOver" type="button" aria-label="How to play and power-ups"><span class="helpIco" aria-hidden="true">❔</span><span class="helpTxt">How to play &amp; power-ups</span></button>
-          <div class="stickerPick">
-            <span class="spLabel">Your Nazan</span>
-            <div class="spRow">
-              <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
-              <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
-              <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+          <!-- Score read-out sits NEXT to the MUN clock reaction meme (they read as one gag),
+               so the card stays short enough to fit on one screen without scrolling. -->
+          <div class="overTop">
+            <!-- MUN clock: the current hour's "honest reaction" sticker. Tap to enlarge. -->
+            <figure class="clockReaction" id="clockReaction" hidden role="button" tabindex="0"
+                    aria-label="The MUN clock — the current hour's honest reaction. Activate to enlarge.">
+              <img id="clockReactionImg" alt="" />
+            </figure>
+            <div class="overScore">
+              <p class="nazanQuote" id="gameNazanQuote" aria-live="polite"></p>
+              <div class="big" id="gameFinalScore">0</div>
+              <p class="best" id="gameBestLine">Best: 0</p>
             </div>
           </div>
-          <div class="nameRow">
-            <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
-                   placeholder="Type your name" aria-label="Your name for the leaderboard" />
-            <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
+          <!-- Sticker picker and name/edit controls sit side by side, condensed. -->
+          <div class="overControls">
+            <div class="stickerPick">
+              <span class="spLabel">Your Nazan</span>
+              <div class="spRow">
+                <button class="spArrow" id="spPrevOver" type="button" aria-label="Previous sticker">‹</button>
+                <div class="spPreview"><img id="spImgOver" alt="Your chosen Nazan sticker" /></div>
+                <button class="spArrow" id="spNextOver" type="button" aria-label="Next sticker">›</button>
+              </div>
+            </div>
+            <div class="nameRow">
+              <input id="gameName" type="text" maxlength="16" autocomplete="off" readonly
+                     placeholder="Type your name" aria-label="Your name for the leaderboard" />
+              <button class="gameBtn secondary" id="gameEditName" type="button">✏️ Edit name</button>
+            </div>
           </div>
           <p class="nameHint" id="gameNameHint">Posting your score to the global board…</p>
         </div>
