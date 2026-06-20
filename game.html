@@ -3952,9 +3952,9 @@
           const f = 1 - e.spawnT / SPAWN_GRACE;          // 0 (just spawned) → 1 (fully arrived)
           ctx.save();
           ctx.globalAlpha = 0.25 + 0.75 * f;
-          const r0 = e.r; e.r = r0 * (0.6 + 0.4 * f);    // grow in from 60% to full size
-          drawSticker(e, false);
-          e.r = r0;
+          // Draw a scaled-in clone (grow from 60% to full) rather than mutating the live enemy,
+          // so a stray throw could never leave its real radius shrunk.
+          drawSticker({ x: e.x, y: e.y, rot: e.rot, img: e.img, r: e.r * (0.6 + 0.4 * f) }, false);
           ctx.restore();
         } else {
           drawSticker(e, false);
