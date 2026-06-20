@@ -2001,7 +2001,7 @@
     // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
     // / golden egans ⇒ more points ⇒ faster, tighter rounds). The very first round is always at 0
     // (no Egan points yet), so it opens gently and each later round ramps from your own Egan skill.
-    const EGAN_PERF_RATE = 1 / 600;      // egan intensity gained per Egan point banked this run
+    const EGAN_PERF_RATE = 1 / 600;      // egan intensity per Egan point banked (≈600 pts ⇒ +1 unit; a strong round banks ~150–250)
     const EGAN_INTENSITY_SPEED = 0.10;   // egan flight speed grows by this fraction per egan-intensity unit
     const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per egan-intensity unit
     function eganIntensity(){ return Math.min(INTENSITY_MAX, Math.max(0, eganPointsTotal) * EGAN_PERF_RATE); }
