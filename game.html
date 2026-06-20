@@ -1736,6 +1736,7 @@
     const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
     const EGAN_GOLD_POINTS    = 50;      // base points for catching a golden egan (before combo)
     const EGAN_GOLD_TINT      = "#ffcf33"; // golden recolour painted over the sticker
+    const EGAN_GOLD_SIZE_MUL  = 1.12;    // golden egans are a touch bigger so they stand out / stay catchable
     const EGAN_GOLD_AT        = [0.3, 0.62]; // round-progress points at which the golden egans launch
     // Curved flight: each egan slowly turns, so it sweeps an arc instead of a straight line.
     const EGAN_CURVE_TURN     = 0.011;   // max per-frame heading turn (radians)
@@ -2260,7 +2261,7 @@
     function spawnEgan(prog, gold){
       const p = Math.min(1, Math.max(0, prog));
       const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * p;
-      const r = Math.max(16, base() * 0.05 * sizeMul * (gold ? 1.12 : 1));   // golden ones a touch bigger
+      const r = Math.max(16, base() * 0.05 * sizeMul * (gold ? EGAN_GOLD_SIZE_MUL : 1));   // golden ones a touch bigger
       const slow = base() * EGAN_SPEED_SLOW, fast = base() * EGAN_SPEED_FAST;
       let baseSpeed = slow + (fast - slow) * p;
       baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * p;   // late-round bite
