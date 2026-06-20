@@ -1913,12 +1913,15 @@
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
     const EGAN_PLAY_TIME  = 12;      // seconds egans keep spawning before the round winds down
     const EGAN_CATCH_POINTS = 5;     // points banked per egan caught (before combo)
-    const EGAN_SPAWN_MAX = 1.1;      // longest gap between egans (early, calmer part of the round)
-    const EGAN_SPAWN_MIN = 0.45;     // shortest gap between egans (late, busier part of the round)
-    const EGAN_SPEED_SLOW = 0.006;   // per-frame travel (fraction of base()) early in the round
-    const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
+    // Pace is set by egan-INTENSITY (the egans you've CAUGHT this run), not by how many have been
+    // thrown — see eganIntensity(). These are the calm intensity-0 anchors; intensity tightens them.
+    const EGAN_SPAWN_GAP  = 0.9;     // base gap between egans (seconds) at egan-intensity 0
+    const EGAN_SPEED_BASE = 0.011;   // per-frame travel (fraction of base()) at egan-intensity 0
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
-    const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
+    // Early-throw mercy: the first few egans of a round fly a touch slower / sparser so a round
+    // (especially a high-intensity RE-ENTRY) eases into its pace instead of opening at full tilt.
+    const EGAN_EASE_IN      = 0.7;   // speed/cadence multiplier on the very first throw of a round...
+    const EGAN_EASE_IN_PROG = 0.3;   // ...climbing back to full by this fraction of the round's throws
     // Wider arenas give egans far more room to cross, so the round is tuned to the screen's
     // aspect ratio: difficulty scales DOWN on narrow/portrait phones and UP on wide desktops
     // (faster egans AND tighter spawn gaps), keeping the catch challenge consistent everywhere.
@@ -2005,14 +2008,24 @@
     // ---- Egan-mode INTENSITY (driven ONLY by Egan performance) -------------------------------
     // Egan rounds get tougher the BETTER you are at Egan — never because the main score is high.
     // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
-    // / golden egans ⇒ more points ⇒ faster, tighter rounds). The very first round is always at 0
-    // (no Egan points yet), so it opens gently and each later round ramps from your own Egan skill.
-    const EGAN_PERF_RATE = 1 / 600;      // egan intensity per Egan point banked (≈600 pts ⇒ +1 unit; a strong round banks ~150–250)
-    const EGAN_INTENSITY_SPEED = 0.10;   // egan flight speed grows by this fraction per egan-intensity unit
-    const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per egan-intensity unit
-    function eganIntensity(){ return Math.min(INTENSITY_MAX, Math.max(0, eganPointsTotal) * EGAN_PERF_RATE); }
+    // / golden egans ⇒ more points ⇒ faster, tighter, smaller rounds). It climbs WITHIN a round as
+    // you catch and carries ACROSS rounds, so it — not the number of egans thrown — is the single
+    // driver of difficulty: a struggling player keeps slow, big egans; a strong run has to chase
+    // fast, small ones to reach the target. The very first throws are always at 0 (no points yet).
+    const EGAN_PERF_RATE = 1 / 180;      // egan intensity per Egan point banked (a strong round of ~180–220 pts ⇒ ~+1 unit)
+    const EGAN_INTENSITY_MAX   = 3.0;    // egan-intensity cap — keeps a veteran's rounds fast-but-fair
+    const EGAN_INTENSITY_SPEED = 0.30;   // egan flight speed grows by this fraction per egan-intensity unit
+    const EGAN_INTENSITY_RATE  = 0.22;   // egan spawn cadence tightens by this fraction per egan-intensity unit
+    function eganIntensity(){ return Math.min(EGAN_INTENSITY_MAX, Math.max(0, eganPointsTotal) * EGAN_PERF_RATE); }
+    function eganIntensity01(){ return EGAN_INTENSITY_MAX ? eganIntensity() / EGAN_INTENSITY_MAX : 0; }
     function eganSpeedMul(){ return 1 + eganIntensity() * EGAN_INTENSITY_SPEED; }
     function eganRateMul(){  return 1 + eganIntensity() * EGAN_INTENSITY_RATE; }
+    // Minor early-throw bonus: the first throws of a round run at EGAN_EASE_IN of full pace,
+    // climbing back to 1 by EGAN_EASE_IN_PROG so a high-intensity re-entry never opens at full tilt.
+    function eganEaseIn(prog){
+      const p = Math.min(1, Math.max(0, prog));
+      return EGAN_EASE_IN + (1 - EGAN_EASE_IN) * Math.min(1, p / EGAN_EASE_IN_PROG);
+    }
     // Egans no longer launch at a generated ANGLE; instead each picks a launch point on one side
     // and a destination point on the OPPOSITE side, and flies the straight line between them. That
     // way an egan can stream clear ACROSS the whole screen (corner-to-corner if it wants), instead of
@@ -2052,9 +2065,10 @@
     const EGAN_GOLD_AT        = [0.3, 0.62]; // round-progress points at which the golden egans launch
     // Curved flight: each egan slowly turns, so it sweeps an arc instead of a straight line.
     const EGAN_CURVE_TURN     = 0.011;   // max per-frame heading turn (radians)
-    // Size scales across the round: bigger/easier at the start, smaller/harder by the end.
-    const EGAN_SIZE_START     = 1.25;    // egan size multiplier at the round's start
-    const EGAN_SIZE_END       = 0.82;    // …shrinking to this by the end
+    // Size scales with INTENSITY (how well you're doing), not with how many egans have flown: a
+    // struggling player keeps big, catchable egans, a strong run shrinks them down.
+    const EGAN_SIZE_START     = 1.25;    // egan size multiplier at egan-intensity 0 (big, easy)
+    const EGAN_SIZE_END       = 0.82;    // …shrinking to this at full egan-intensity (small, hard)
     // Combos: catches in quick succession build a points multiplier.
     const EGAN_COMBO_WINDOW   = 1.6;     // seconds within which the next catch keeps the combo alive
     const EGAN_COMBO_STEP     = 0.25;    // each combo level beyond the first adds this to the multiplier
@@ -2774,20 +2788,20 @@
       try{ sfx.starPower(); }catch(e){}   // a celebratory "new mode!" sting
     }
     // Send one egan flying in from a random side edge toward the opposite side, on a gently
-    // CURVING line at its own pitched angle. Speed climbs across the round (prog 0→1), is
-    // always jittered, and gets an extra kick on the closing stretch so the last egans bite.
-    // Each egan picks a side, a steeper/more varied angle AND a slow turn so it sweeps an arc.
-    // Size scales down across the round (bigger/easier early, smaller/harder late), and a
-    // `gold` egan is a recoloured bonus catch worth far more.
+    // CURVING line at its own pitched angle. Speed and size are set by egan-INTENSITY (the egans
+    // you've CAUGHT this run) — not by how many have been thrown — so a strong run faces faster,
+    // smaller egans. A minor early-throw ease lets each round build up to that pace instead of
+    // opening at full tilt. Each egan picks a side, a steeper/more varied angle AND a slow turn so
+    // it sweeps an arc, and a `gold` egan is a recoloured bonus catch worth far more.
     function spawnEgan(prog, gold){
       const p = Math.min(1, Math.max(0, prog));
-      const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * p;
+      const easeMul = eganEaseIn(p);                 // minor early-throw bonus
+      const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * eganIntensity01();
       const r = Math.max(16, base() * 0.05 * sizeMul * (gold ? EGAN_GOLD_SIZE_MUL : 1));   // golden ones a touch bigger
-      const slow = base() * EGAN_SPEED_SLOW, fast = base() * EGAN_SPEED_FAST;
-      let baseSpeed = slow + (fast - slow) * p;
-      baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * p;   // late-round bite
+      let baseSpeed = base() * EGAN_SPEED_BASE;
       baseSpeed *= eganDiff();                        // wider screens → faster egans (harder), narrow → calmer
-      baseSpeed *= eganSpeedMul();                     // high-score intensity: later Egan rounds fly faster (first round = 0)
+      baseSpeed *= eganSpeedMul();                    // MAIN driver: more catches / bigger combos ⇒ faster
+      baseSpeed *= easeMul;                           // minor early-throw bonus so a round never opens at full tilt
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
@@ -2859,7 +2873,9 @@
         const spawning = eganBagReady ? eganBag.length > 0 : eganRoundT < EGAN_PLAY_TIME;
         if(spawning){
           eganSpawnAcc += dt;
-          const interval = (EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog)) / (eganDiff() * eganRateMul());
+          // Cadence rides on egan-intensity (catches), with the same minor early-throw ease so a
+          // round opens a touch sparser instead of at its tightest spacing.
+          const interval = EGAN_SPAWN_GAP / (eganDiff() * eganRateMul() * eganEaseIn(prog));
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
         // Golden egans: launch each armed bonus egan once the round reaches its scheduled
