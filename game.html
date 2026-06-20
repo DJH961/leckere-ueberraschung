@@ -1049,6 +1049,21 @@
           t += 0.09;
         }
       },
+      // Combo BREAK — a deflating downward "womp" the instant a streak you'd built up snaps. It
+      // scales with `sev` (0…1, how big the loss was — callers gate the tiny ones to 0): a modest
+      // break gives the gentlest little dip, while a hot-streak break falls deeper, longer and
+      // louder, with a noisy crack on top, so losing a long streak really lands.
+      eganBreak(sev){
+        sev = Math.max(0, Math.min(1, sev || 0));
+        if(sev <= 0) return;
+        const dur = 0.18 + 0.24 * sev;                  // a bigger loss falls for longer
+        const vol = 0.06 + 0.08 * sev;                  // …and louder
+        const top = 520 - 120 * sev;                    // a bigger streak starts lower and
+        const bot = Math.max(40, top * (0.5 - 0.18 * sev)); // …falls further: a deeper womp
+        tone({ type:"sawtooth", f0:top,       f1:bot,       dur:dur, vol:vol,       wobble:8 + 16 * sev, wobbleRate:17 });
+        tone({ type:"square",   f0:top * 0.5, f1:bot * 0.5, dur:dur, vol:vol * 0.6 });            // body underneath
+        if(sev > 0.5) noise({ f0:360, f1:120, dur:0.1 + 0.08 * sev, vol:0.04 + 0.05 * sev, q:5 }); // a crack on a big break
+      },
       // A warm, gently resolving wind-down to round off Egan Mode — a soft
       // descending three-note cadence (G6 E6 C6) that lands on a held, glowing
       // chord, so leaving the bonus feels like a satisfying exhale rather than a
@@ -1818,6 +1833,8 @@
     let eganSpawnAcc = 0;            // accumulator timing the next flying egan
     let eganStickers = [];           // the catchable egans currently flying across
     let eganPops    = [];            // quick catch-burst rings, fade out
+    let eganBreaks  = [];            // combo-break flashes (snap ring + falling "COMBO LOST" label), fade out
+    let eganBreakFlash = 0;          // brief full-screen red flash on a BIG combo break (decays), scaled by lost streak
     let eganCaught  = 0;             // how many egans were caught this round (for the end card)
     let eganPending = false;         // a milestone was crossed; waiting for any power-up to clear
     let nextEganThreshold = 0;       // next score that arms an egan round (set in reset())
@@ -1972,6 +1989,19 @@
     const EGAN_COMBO_WINDOW   = 1.6;     // seconds within which the next catch keeps the combo alive
     const EGAN_COMBO_STEP     = 0.25;    // each combo level beyond the first adds this to the multiplier
     const EGAN_COMBO_MAX_MUL  = 3;       // multiplier caps here so points stay sane
+    // Losing a combo should be FELT — but only in proportion to what you lost. Snapping a long,
+    // hard-won streak deserves a real jolt (animation + sound + vibration); fumbling a measly
+    // two-in-a-row should barely register, so casual catching never feels nagged. These bound the
+    // scaling: streaks shorter than MIN snap silently, and the feedback ramps to full by FULL.
+    const EGAN_BREAK_MIN  = 3;           // streaks shorter than this break with NO fuss (e.g. a lost x2)
+    const EGAN_BREAK_FULL = 9;           // a streak this long (or longer) gets the full, unmistakable break
+    // 0 below the threshold, then a gentle floor at MIN ramping up to 1 by FULL — drives how loud,
+    // long and big every part of the break feedback is.
+    function eganBreakStrength(lost){
+      if((lost | 0) < EGAN_BREAK_MIN) return 0;
+      const k = Math.min(1, (lost - EGAN_BREAK_MIN) / Math.max(1, EGAN_BREAK_FULL - EGAN_BREAK_MIN));
+      return 0.3 + 0.7 * k;              // 0.3 at x3 … 1 at x9+
+    }
     // Per-round catch target — reaching it is celebrated on the end card.
     const EGAN_TARGET         = 25;      // egans to catch in a round to hit the goal
     const keys = Object.create(null);
@@ -2064,7 +2094,12 @@
                (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
       }catch(e){ return false; }
     }
-    function hapticsSupported(){ return isTouchDevice() || !!(navigator && navigator.vibrate); }
+    // The toggle is only meaningful where the player can actually FEEL a buzz: a real touch device
+    // (phone/tablet). We key its visibility off isTouchDevice() ALONE and deliberately do NOT fall
+    // back to navigator.vibrate — that API is present (as a silent no-op) on desktop Chrome, which
+    // is exactly what leaked the toggle onto desktops where it makes no sense. isTouchDevice() still
+    // covers phones whose navigator.vibrate is unreliable/missing, so mobile never loses the control.
+    function hapticsSupported(){ return isTouchDevice(); }
     function syncHapticsBtn(){
       const b = $("#gameHaptics"); if(!b) return;
       b.textContent = hapticsEnabled ? "📳" : "📴";
@@ -2146,6 +2181,33 @@
       const n = Math.max(1, combo | 0);
       return Math.min(EGAN_CATCH_BUZZ_MAX, EGAN_CATCH_BUZZ_MIN + (n - 1) * EGAN_CATCH_BUZZ_STEP);
     }
+    // Combo BREAK buzz: the physical counterpart to losing a streak. Scaled by how big the loss was
+    // (eganBreakStrength gates the tiny ones to nothing), it grows from a single short thud for a
+    // modest break into a heavier double- then triple-pulse for a long, hard-won streak — so a big
+    // loss is unmistakable in the hand while a fumbled x2 doesn't even buzz.
+    function eganBreakBuzz(lost){
+      const sev = eganBreakStrength(lost);
+      if(sev <= 0) return 0;                       // a tiny streak snaps silently
+      const main = Math.round(24 + 96 * sev);      // ~24ms … ~120ms thud
+      if(sev < 0.5) return main;                   // modest loss: one short thud
+      if(sev < 0.85) return [main, 45, Math.round(main * 0.6)];                 // bigger: a double thud
+      return [main, 55, Math.round(main * 0.7), 55, Math.round(main * 0.5)];    // long streak: a heavy triple
+    }
+    // Snap the current Egan combo, with feedback PROPORTIONAL to what was lost. A short streak just
+    // fizzles out quietly; a long, hard-won one gets a real jolt — a falling "COMBO LOST" flash, a
+    // deflating womp and a buzz, plus a brief red screen flash on the biggest breaks. Used both when
+    // the combo window lapses and when an egan sails past uncaught, so every way of losing a streak
+    // feels the same and scales the same.
+    function breakCombo(){
+      const lost = eganCombo;
+      eganCombo = 0; eganComboT = 0;
+      const sev = eganBreakStrength(lost);
+      if(sev <= 0) return;                         // losing a measly x2 shouldn't nag you
+      eganBreaks.push({ t: 0, dur: 0.5 + 0.4 * sev, combo: lost, sev });
+      eganBreakFlash = Math.max(eganBreakFlash, sev);   // a big break also flashes the screen (decays in eganStep)
+      try{ sfx.eganBreak(sev); }catch(err){}
+      haptic(eganBreakBuzz(lost));
+    }
     function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
     function resize(){
@@ -2210,7 +2272,7 @@
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
-      eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganCaught = 0;
+      eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0; eganCaught = 0;
       eganBag = []; eganBagReady = false; eganBagTotal = 0;
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;
       eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
@@ -2601,7 +2663,7 @@
     function enterEgan(){
       ensureEganUrls(); loadEganImages();
       eganPhase = "intro"; eganT = 0; eganRoundT = 0; eganSpawnAcc = 0;
-      eganStickers = []; eganPops = []; eganCaught = 0;
+      eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0; eganCaught = 0;
       eganBag = []; eganBagReady = false; eganBagTotal = 0;   // fresh "show each egan once" bag
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;       // fresh combo streak
       eganGoldLeft = EGAN_GOLD_PER_ROUND; eganGoldAt = EGAN_GOLD_AT.slice();   // golden egans armed
@@ -2709,7 +2771,7 @@
         // Combo decay: a streak only survives if the next catch lands inside the window.
         if(eganCombo > 0){
           eganComboT += dt;
-          if(eganComboT >= EGAN_COMBO_WINDOW) eganCombo = 0;
+          if(eganComboT >= EGAN_COMBO_WINDOW) breakCombo();
         }
         // Fly each egan along its gently CURVING line; no walls — once one sails fully off
         // any edge it's gone. The per-egan `turn` rotates its velocity a touch each frame.
@@ -2738,7 +2800,7 @@
           if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){
             // A MISS breaks the streak: letting an egan sail fully off any edge uncaught
             // resets the combo immediately (it no longer waits out the combo window).
-            eganCombo = 0; eganComboT = 0;
+            breakCombo();
             eganStickers.splice(i, 1); continue;
           }
           // Catch: overlap the player to bank the points and pop it with a little burst.
@@ -2791,6 +2853,12 @@
         eganPops[i].t += dt;
         if(eganPops[i].t >= eganPops[i].dur) eganPops.splice(i, 1);
       }
+      // Age out the combo-break flashes too, and let the big-break screen flash decay quickly.
+      for(let i = eganBreaks.length - 1; i >= 0; i--){
+        eganBreaks[i].t += dt;
+        if(eganBreaks[i].t >= eganBreaks[i].dur) eganBreaks.splice(i, 1);
+      }
+      if(eganBreakFlash > 0) eganBreakFlash = Math.max(0, eganBreakFlash - dt / 0.35);
       draw();
     }
     // Hand control back to the normal game in a gently COOLED-DOWN arena that lands on a MIDDLE
@@ -2800,7 +2868,7 @@
     // the normal rotation) pops in right next to them the moment they're back. Otherwise pickups
     // simply resume on their normal schedule (no early freebie).
     function exitEgan(){
-      eganPhase = null; eganStickers = []; eganPops = [];
+      eganPhase = null; eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0;
       // Completing an Egan round steps the difficulty up a notch: the next stretch of normal
       // play arrives a tad harder (faster starting Nazans, quicker refills) and a touch more
       // intense (music tempo + a warmer screen). This discrete bump is the "feels harder after
@@ -2923,6 +2991,16 @@
       if(line) lines.push(line);
       return lines;
     }
+    // Where the centred Egan HUD (egg tally / combo / break flash) starts vertically: BELOW the DOM
+    // HUD bar (the "Score" chip on the left and the sound + vibration buttons on the right). Measuring
+    // the live bar height — which already grows with the safe-area inset and any button wrapping —
+    // means the round's centred scoreboard is always clear of those top buttons, so on a narrow phone
+    // the sound/vibration controls can never sit on top of it.
+    function eganHudTop(){
+      let hudH = 0;
+      try{ const h = document.getElementById("gameHud"); if(h) hudH = h.getBoundingClientRect().height; }catch(e){}
+      return (hudH || base() * 0.09) + base() * 0.012;
+    }
     // Draw the flying egans, catch bursts, the combo/target HUD and the title / end card.
     function drawEgan(){
       // Flying egans. Golden ones get a glow, a gold sheen and a bright ring so they
@@ -2967,11 +3045,58 @@
         }
         ctx.restore();
       }
+      // A BIG combo break briefly washes the screen edges red — a visual jolt that, like the sound
+      // and buzz, only shows up for a streak worth mourning (eganBreakFlash is set in breakCombo()
+      // and decays in eganStep), so a long lost streak is felt across the whole screen while a small
+      // one is left alone. Drawn as an edge vignette so the centre stays readable.
+      if(eganBreakFlash > 0.01){
+        ctx.save();
+        const f = Math.min(1, eganBreakFlash);
+        const inner = Math.min(W, H) * 0.30, outer = Math.max(W, H) * 0.80;
+        const vg = ctx.createRadialGradient(W / 2, H / 2, inner, W / 2, H / 2, outer);
+        vg.addColorStop(0, "rgba(214,64,46,0)");
+        vg.addColorStop(1, "rgba(214,64,46," + (0.34 * f).toFixed(3) + ")");
+        ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
+      // Combo-break flashes: a snapping ring bursting outward and a falling, shaking "COMBO LOST ×N"
+      // label, both sitting where the combo counter was and both scaled by how big the loss was — so
+      // breaking a long streak is unmistakable while a small one barely whispers.
+      if(eganBreaks.length){
+        ctx.save();
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const py = eganHudTop();
+        const tallySize = base() * 0.05;
+        const cx = W / 2, cyBase = py + tallySize * 1.3;
+        for(const b of eganBreaks){
+          const k = Math.min(1, b.t / b.dur);            // 0 → 1 over its life
+          const ease = 1 - (1 - k) * (1 - k);            // ease-out
+          const fade = 1 - k;
+          // the snapping ring
+          const rr = base() * (0.04 + 0.16 * ease) * (0.7 + 0.8 * b.sev);
+          ctx.globalAlpha = fade * (0.45 + 0.4 * b.sev);
+          ctx.lineWidth = Math.max(2, base() * 0.01 * (0.6 + b.sev));
+          ctx.strokeStyle = "#d64545";
+          ctx.beginPath(); ctx.arc(cx, cyBase, rr, 0, Math.PI * 2); ctx.stroke();
+          // the falling, shaking label — shakes harder and drops further for a bigger loss
+          const shake = fade * base() * 0.012 * b.sev * Math.sin(b.t * 55);
+          const drop = ease * base() * 0.05 * (0.5 + b.sev);
+          const sz = base() * 0.05 * (0.75 + 0.55 * b.sev);
+          ctx.font = "bold " + sz.toFixed(0) + "px system-ui, sans-serif";
+          ctx.globalAlpha = fade;
+          ctx.lineWidth = Math.max(2, sz * 0.1); ctx.strokeStyle = "rgba(61,80,118,.85)";
+          ctx.fillStyle = "#d64545";
+          const label = "COMBO LOST ×" + b.combo;
+          ctx.strokeText(label, cx + shake, cyBase + drop);
+          ctx.fillText(label, cx + shake, cyBase + drop);
+        }
+        ctx.restore();
+      }
       // Live HUD while catching: a catch-target tally and, on a hot streak, the combo.
       if(eganPhase === "play"){
         ctx.save();
         ctx.textAlign = "center"; ctx.textBaseline = "top";
-        const py = base() * 0.03;
+        const py = eganHudTop();
         const tallySize = base() * 0.05;
         ctx.font = "bold " + tallySize.toFixed(0) + "px system-ui, sans-serif";
         ctx.lineWidth = Math.max(2, tallySize * 0.12); ctx.strokeStyle = "rgba(255,255,255,.85)";
@@ -3804,7 +3929,7 @@
       running = false;
       haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
       eatGrace = 0;
-      eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
+      eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
       try{ sfx.stopVoices(); }catch(e){}          // cut any Nazan chatter still ringing out so it never lingers past death
@@ -3961,7 +4086,7 @@
     function close(){
       running = false;
       eatGrace = 0;
-      eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
+      eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganBreaks = []; eganBreakFlash = 0;
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}
       // This is a standalone page now: "Back" returns to the main site. The
