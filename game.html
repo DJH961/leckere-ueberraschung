@@ -2575,6 +2575,11 @@
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = [];
       if(player){ player.x = W / 2; player.y = H * 0.72; }
+      // Drop the steering pointer onto the re-centred player so the resume doesn't FLING the
+      // Nazan back to wherever the finger last caught an egan — that instant jump could pass it
+      // straight through the re-seeded crowd and auto-kill it on mobile. Play stays put until
+      // the next deliberate move (mirrors reset()).
+      pointer.active = false; pointer.x = player.x; pointer.y = player.y;
       enemies = [];
       // Re-seed the SAME-sized crowd that was on screen when the round began, so the arena comes
       // back as full as it was left — just a tad slower and (with the pre-roll below) spaced out
@@ -2613,6 +2618,19 @@
       try{ music.setMode("default"); }catch(e){}
       try{ sfx.setVoiceMode("default"); }catch(e){}
       updatePrompt();
+    }
+    // Word-wrap `text` into lines no wider than maxWidth, measured with the CURRENT ctx.font.
+    function wrapText(text, maxWidth){
+      const words = String(text).split(" ");
+      const lines = [];
+      let line = "";
+      for(const w of words){
+        const test = line ? line + " " + w : w;
+        if(line && ctx.measureText(test).width > maxWidth){ lines.push(line); line = w; }
+        else { line = test; }
+      }
+      if(line) lines.push(line);
+      return lines;
     }
     // Draw the flying egans, catch bursts, the combo/target HUD and the title / end card.
     function drawEgan(){
@@ -2690,26 +2708,35 @@
         if(alpha > 0.01){
           const cx = W / 2, cy = H * 0.4;
           const scale = 0.7 + 0.35 * alpha;
+          const maxW = W * 0.9;          // keep the card within the (possibly narrow) screen
           ctx.save();
           ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          const titleSize = base() * 0.13 * scale;
+          const title = eganPhase === "intro"
+            ? "EGAN MODE"
+            : (eganTargetHit ? "TARGET SMASHED!" : "EGANS CLEARED");
+          // Fit the title to the screen so a longer title never runs off a narrow (mobile) edge.
+          let titleSize = base() * 0.13 * scale;
           ctx.font = "bold " + titleSize.toFixed(0) + "px system-ui, sans-serif";
+          const titleW = ctx.measureText(title).width;
+          if(titleW > maxW){ titleSize *= maxW / titleW; ctx.font = "bold " + titleSize.toFixed(0) + "px system-ui, sans-serif"; }
           const grad = ctx.createLinearGradient(0, cy - titleSize, 0, cy + titleSize);
           grad.addColorStop(0, "#f7c948"); grad.addColorStop(1, "#e8743b");
           ctx.fillStyle = grad;
           ctx.strokeStyle = "rgba(61,80,118,.9)"; ctx.lineWidth = Math.max(2, titleSize * 0.04);
-          const title = eganPhase === "intro"
-            ? "EGAN MODE"
-            : (eganTargetHit ? "TARGET SMASHED!" : "EGANS CLEARED");
           ctx.strokeText(title, cx, cy); ctx.fillText(title, cx, cy);
           ctx.fillStyle = "#3d5076";
-          ctx.font = "bold " + (base() * 0.04).toFixed(0) + "px system-ui, sans-serif";
+          const subSize = base() * 0.04;
+          ctx.font = "bold " + subSize.toFixed(0) + "px system-ui, sans-serif";
           const sub = eganPhase === "intro"
             ? "Catch the Egans! Chain catches for combos · Catch " + EGAN_TARGET + " for a free power-up back home"
             : "+" + eganRoundPoints + " points · " + eganCaught + " caught" +
               (eganComboBest >= 2 ? " · best combo x" + eganComboBest : "");
-          ctx.fillText(sub, cx, cy + base() * 0.11);
+          // Wrap the subtitle so the long intro line never gets cut off on a narrow (mobile) screen.
+          const subLines = wrapText(sub, maxW);
+          const lineH = subSize * 1.32;
+          let sy = cy + base() * 0.11;
+          for(const ln of subLines){ ctx.fillText(ln, cx, sy); sy += lineH; }
           ctx.restore();
         }
       }
@@ -3399,16 +3426,13 @@
         updateStartValidity();
         return;
       }
-      // A RESTART comes from the game-over card (which is still up); the very first play comes
-      // from the start card. Only restarts get the frozen countdown pre-roll.
-      const isRestart = !!(overPane && !overPane.classList.contains("hidden"));
       syncName(name);
       loadImages(); resize(); reset();
       closeHelp();
       startPane.classList.add("hidden");
       overPane.classList.add("hidden");
       updatePrompt();
-      countdown = isRestart ? COUNTDOWN_TIME : 0;   // freeze + ease back in on a restart only
+      countdown = 0;   // a fresh round (first play OR a restart after game over) starts straight away — no pre-roll
       running = true; last = performance.now();
       try{ sfx.gameStart(); }catch(e){}
       try{ music.setMode("default"); }catch(e){}   // begin each round on the default gameplay theme
