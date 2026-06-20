@@ -1781,7 +1781,7 @@
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
     const MIN_SPAWN_DUR = 0.001;  // guard against divide-by-zero if a custom spawn duration is ever zeroed out
     const NICO_DOOM_SPAWN = 1.15; // first-run nico gag: a longer, fully readable materialise-in before the loss lands
-    const NICO_DOOM_HOLD  = 0.28; // and a tiny fully-formed beat so the reveal actually registers
+    const NICO_DOOM_HOLD  = 0.55; // and a fully-formed beat that lingers so the gotcha reveal actually lands
     const SPAWN_AIM_CONE = Math.PI / 5;  // a new Nazan's heading is kept at least this far off a straight line at the player
     // The countdown "beep beep" through that window accelerates: the gap between beeps eases
     // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
@@ -2548,12 +2548,12 @@
     // Every 10 Nico games, the cycle resets to that spawn-kill intro again. In between, they
     // open boxed in by a full board of 12 Nazans plus a spawned Tiny
     // Mode pickup by their feet; that opening Tiny run then spawns one Eating Mode pickup in
-    // its final second. After that, up to 750 points Nico only gets spawned Tiny pickups, then
+    // its final second. After that, up to 500 points Nico only gets spawned Tiny pickups, then
     // one spawned Bomb, then the normal rotation takes back over.
     const NICO_FULL_BOARD = 12;
     // After this many completed Nico runs, the next run loops back to the spawn-kill intro.
     const NICO_DOOM_CYCLE = 10;
-    const NICO_TINY_SCORE = 750;
+    const NICO_TINY_SCORE = 500;
     const NICO_INTRO_EAT_TRIGGER = 1;
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function shouldSpawnNicoIntroEat(){
