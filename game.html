@@ -1996,6 +1996,11 @@
     // sits HIGHER (calmer) below 1000, and keeps dropping above it.
     const INTENSITY_INTERVAL_GAIN = 3.5; // how much the spawn-interval base term swings per intensity unit
     function spawnIntervalBase(){ return 1.5 - INTENSITY_INTERVAL_GAIN * intensity(); }
+    // Maturity (age → speed) acceleration also follows intensity, but only SUBTLY: at the 1000
+    // anchor (intensity 0) Nazans speed up at exactly the old rate, a hot run nudges them to mature
+    // a touch faster, and the gentle opening lets them build up fractionally slower. Anchored at 0
+    // like the rest of the model so 1000 still feels identical.
+    const INTENSITY_MATURE_GAIN = 0.06; // share of the age→speed rate added/removed per intensity unit
     // ---- Egan-mode INTENSITY (driven ONLY by Egan performance) -------------------------------
     // Egan rounds get tougher the BETTER you are at Egan — never because the main score is high.
     // eganIntensity() rides purely on the Egan points banked this run (more catches / bigger combos
@@ -3442,7 +3447,10 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * 0.00025) * arenaDiff();
+            // The per-age acceleration follows intensity too, but only subtly (anchored so it's
+            // the old rate at the 1000 mark — see INTENSITY_MATURE_GAIN).
+            const matureRate = 0.00025 * Math.max(0, 1 + inten * INTENSITY_MATURE_GAIN);
+            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * matureRate) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
