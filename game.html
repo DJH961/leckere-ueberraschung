@@ -1776,7 +1776,7 @@
     // behind the safe-distance spawn check — even if a spawn lands near a cornered player, the
     // player still gets a reaction window instead of an instant, unavoidable death.
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
-    const MIN_SPAWN_DUR = 0.001;  // guard against divide-by-zero if a custom spawn telegraph duration is ever zeroed out
+    const MIN_SPAWN_DUR = 0.001;  // guard against divide-by-zero if a custom spawn duration is ever zeroed out
     const NICO_DOOM_SPAWN = 1.15; // first-run nico gag: a longer, fully readable materialise-in before the loss lands
     const NICO_DOOM_HOLD  = 0.28; // and a tiny fully-formed beat so the reveal actually registers
     const SPAWN_AIM_CONE = Math.PI / 5;  // a new Nazan's heading is kept at least this far off a straight line at the player
@@ -2493,7 +2493,7 @@
       if(fresh.length) voicePool = fresh;
       const img = voicePool.length ? voicePool[Math.floor(Math.random() * voicePool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
-                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0, spawnT: SPAWN_GRACE, spawnDur: SPAWN_GRACE, noWall: false });
+                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0, spawnT: SPAWN_GRACE, noWall: false });
       // A new Nazan joining the fray gives a little goofy blip — keyed by its image
       // so each one has its own consistent voice, matching the page's button blips.
       if(running){ try{ sfx.blip(img ? img.src : "nazan-dodge-spawn"); }catch(err){} }
@@ -2744,11 +2744,10 @@
     }
     function startTimedEffect(type){
       const def = POWERUPS[type];
-      if(!def || !def.dur) return false;
+      if(!def || !def.dur) return;
       activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur };
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
       updatePrompt();
-      return true;
     }
     function tickSpawnGrace(e, dt){
       if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
