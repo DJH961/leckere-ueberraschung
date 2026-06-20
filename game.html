@@ -2582,7 +2582,10 @@
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         if(e.banished) continue;                  // already flung off-screen, harmless in transit
-        if(e.shoveT > 0) continue;                // freshly shoved/star-barged: being carried off, harmless while it clears the player (otherwise you could die a frame after a banked Shove fires, before the pushed Nazan has actually moved out of your hitbox)
+        // A freshly shoved / star-barged Nazan (shoveT > 0) is mid-flight being carried off,
+        // so it's harmless while it clears the player — otherwise you could die a frame after a
+        // banked Shove auto-fires, before the pushed Nazan has actually moved out of your hitbox.
+        if(e.shoveT > 0) continue;
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
