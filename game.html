@@ -1987,7 +1987,7 @@
     // numbers stay directly comparable.
     const INTENSITY_MIN   = -1.0;  // value at score 0 — reproduces the old slow, gentle opening
     const INTENSITY_MAX   =  4.5;  // overall cap so it stays fast-but-fair, never impossible
-    const INTENSITY_EASE  =  0.65; // <1 → concave road to 1000: the early stretch is the calmest
+    const INTENSITY_EASE  =  0.5;  // <1 → concave road to 1000: the early stretch is the calmest (lower ⇒ gentler ramp)
     const INTENSITY_ABOVE_SLOPE = 1.0; // intensity gained per 1000 TOTAL score above the 1000 anchor
     function intensity(){
       const p = Math.max(0, score) / EGAN_FIRST;   // total-score progress; 1.0 at the 1000 anchor
@@ -2022,7 +2022,7 @@
     // you catch and carries ACROSS rounds, so it — not the number of egans thrown — is the single
     // driver of difficulty: a struggling player keeps slow, big egans; a strong run has to chase
     // fast, small ones to reach the target. The very first throws are always at 0 (no points yet).
-    const EGAN_PERF_RATE = 1 / 180;      // egan intensity per Egan point banked (a strong round of ~180–220 pts ⇒ ~+1 unit)
+    const EGAN_PERF_RATE = 1 / 240;      // egan intensity per Egan point banked — gentler ramp (a strong round of ~240–290 pts ⇒ ~+1 unit)
     const EGAN_INTENSITY_MAX   = 3.0;    // egan-intensity cap — keeps a veteran's rounds fast-but-fair
     const EGAN_INTENSITY_SPEED = 0.30;   // egan flight speed grows by this fraction per egan-intensity unit
     const EGAN_INTENSITY_RATE  = 0.22;   // egan spawn cadence tightens by this fraction per egan-intensity unit
@@ -2050,6 +2050,15 @@
     // full-screen crossing instead of every egan drifting across near-horizontally.
     const EGAN_DIAG_CHANCE = 0.4;    // chance an egan crosses to the opposite vertical half
     const EGAN_ANG_CAP = Math.PI / 2 - 0.02;   // absolute pitch limit (±~89°): a launch/curve can't reach straight up/down
+    // On WIDE screens an egan launches near-horizontal, so the same curl that reads as a gentle arc on
+    // a phone bends it steeply DOWN/UP and sails it off the top/bottom long before it crosses. Restrict
+    // the per-egan turn AND the stray band on wide formats (flat 1.0 at 16:9 and narrower, easing down
+    // toward ultra-wide) so wide-screen egans stay close to their straight launch line.
+    const EGAN_CURL_PTS = [[1.7778, 1.0], [3.5556, 0.4]];   // curl multiplier: full at 16:9, restricted ultra-wide
+    function eganCurlMul(){
+      const ar = W / Math.max(1, H);
+      return arMap(ar, EGAN_CURL_PTS);
+    }
     const EGAN_RESUME_KEEP      = 0.6;   // on resume, re-seed ~this fraction of the crowd that was on screen before the round
     const EGAN_RESUME_MIN       = 2;     // ...but always at least a couple, so the arena is never bone-empty
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
@@ -2841,9 +2850,10 @@
       // The band is capped just shy of straight up/down (±~89°) so even a steep launch can't curve
       // far enough to reverse course back toward the side it came from.
       const angCap = EGAN_ANG_CAP;
-      const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND);
-      const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND);
-      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
+      const curl = eganCurlMul();                                   // wide screens → tighter band & slower turn
+      const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND * curl);
+      const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND * curl);
+      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN * curl;   // gentle per-egan arc, restricted on wide screens
       // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
       // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
       const img = gold
