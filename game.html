@@ -963,6 +963,38 @@
         tone({ type:"triangle", f0:660, f1:660, dur:0.09, vol:0.12 });
         tone({ type:"triangle", f0:990, f1:990, dur:0.14, vol:0.12, t0:0.09, wobble:18 });
       },
+      // Egan-catch "blip!" — a bright two-note pop whose pitch CLIMBS with the combo,
+      // so a hot streak audibly rises note-by-note (a coin-grab that keeps getting
+      // higher). `combo` is the 1-based streak length; it tops out so it never shrieks.
+      eganCatch(combo){
+        const c = Math.max(1, Math.min(12, combo || 1));
+        const semis = (c - 1) * 1.5;                       // climb ~1.5 semitones per combo step
+        const k = Math.pow(2, semis / 12);                 // …as a frequency multiplier
+        tone({ type:"triangle", f0:680 * k, dur:0.07, vol:0.12 });
+        tone({ type:"square",   f0:1020 * k, dur:0.1,  vol:0.10, t0:0.06, wobble:16 });
+      },
+      // A richer, shinier flourish for catching a GOLDEN egan — a quick rising
+      // three-note sparkle with a shimmer octave, clearly fancier than a normal catch.
+      eganGold(){
+        const seq = [783.99, 1046.5, 1318.51];             // G5 C6 E6
+        let t = 0;
+        for(const f of seq){
+          tone({ type:"triangle", f0:f,     dur:0.12, vol:0.13, t0:t });
+          tone({ type:"square",   f0:f * 2, dur:0.09, vol:0.05, t0:t });   // shimmer octave
+          t += 0.06;
+        }
+      },
+      // A triumphant little fanfare when the round's catch target is reached — a
+      // bright ascending major run so hitting the goal feels like a win.
+      eganTarget(){
+        const seq = [523.25, 659.25, 783.99, 1046.5];      // C5 E5 G5 C6
+        let t = 0;
+        for(const f of seq){
+          tone({ type:"square",   f0:f, dur:0.12, vol:0.12, t0:t });
+          tone({ type:"triangle", f0:f * 2, dur:0.1, vol:0.05, t0:t });
+          t += 0.09;
+        }
+      },
       // cheery ascending "ta-da-daa!" fanfare to kick off a minigame round.
       gameStart(){
         tone({ type:"square", f0:392, dur:0.1, vol:0.1 });
@@ -1204,6 +1236,15 @@
         { root:50, tones:[0,3,7,10] },   // Dm7
         { root:45, tones:[0,4,7,12] },   // A
         { root:43, tones:[0,5,7,12] }    // G
+      ]},
+      // Egan Mode: a bright, bouncy carnival "bonus round" jingle — fast and major
+      // with a skippy, game-show-prize lilt, deliberately set apart from the normal
+      // bounce so the minigame instantly sounds like its own little event.
+      egan: { bpm:138, style:"bonus", prog:[
+        { root:60, tones:[0,4,7,12] },   // C
+        { root:65, tones:[0,4,7,12] },   // F
+        { root:67, tones:[0,4,7,12] },   // G
+        { root:64, tones:[0,3,7,12] }    // Em
       ]}
     };
     let curName = "default", cur = THEMES.default, pendingName = "default";
@@ -1268,8 +1309,15 @@
         // sway — heavy-lidded and in no hurry at all.
         if(within % 4 === 0) note(midiHz(chord.root - 12), sd * 2.6, 0.16, "triangle", t);
         if(within % 2 === 0) note(midiHz(chord.root + tone) * 0.997, sd * 1.6, 0.07, "sine", t);
+      } else if(cur.style === "bonus"){
+        // Egan bonus round: a bouncy carnival skip — a hopping bass on the beat,
+        // a bright plucked melody up top and a sparkly off-beat twinkle, so the
+        // minigame reads as a cheery prize round all its own.
+        if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.1, 0.16, "square", t);
+        note(midiHz(chord.root + tone + 12), sd * 0.55, 0.10, "triangle", t);
+        note(midiHz(chord.root + tone + 24), sd * 0.32, 0.05, "square", t + sd * 0.5);   // off-beat sparkle
+        if(within === 0 || within === 4) note(midiHz(chord.root + 7), sd * 0.9, 0.06, "triangle", t);
       } else {
-        // Default quiz-show bounce: bouncy bass on every beat, a climbing arpeggio,
         // and a sparkly high accent for that game-show lift.
         if(within % 2 === 0) note(midiHz(chord.root - 12), sd * 1.6, 0.16, "square", t);
         note(midiHz(chord.root + tone + 12), sd * 0.9, 0.09, "triangle", t);
@@ -1678,6 +1726,14 @@
     let eganBag      = [];           // egan Images still to show this round (shuffled, no repeats)
     let eganBagReady = false;        // true once the bag has been filled (i.e. images had loaded)
     let eganBagTotal = 0;            // size the bag was filled to (drives the speed ramp)
+    // Combo / golden / target state (all per-round; reset in enterEgan()).
+    let eganCombo     = 0;          // current consecutive-catch combo length
+    let eganComboT    = 0;          // seconds since the last catch (combo lapses past the window)
+    let eganComboBest = 0;          // best combo reached this round (for the end card)
+    let eganGoldLeft  = 0;          // golden egans still to launch this round
+    let eganGoldAt    = [];         // round-progress thresholds at which the next golden egans launch
+    let eganTargetHit = false;      // the per-round catch target has been reached
+    let eganRoundPoints = 0;        // points banked this round (varies with combos/golden), for the end card
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
     const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "slipping away" countdown starts (matches the blink-out)
     // Across that window the vanish warning is an accelerating "last chance" countdown
@@ -1712,11 +1768,30 @@
     const EGAN_SPAWN_MAX = 1.1;      // longest gap between egans (early, calmer part of the round)
     const EGAN_SPAWN_MIN = 0.45;     // shortest gap between egans (late, busier part of the round)
     const EGAN_SPEED_SLOW = 0.006;   // per-frame travel (fraction of base()) early in the round
-    const EGAN_SPEED_FAST = 0.020;   // per-frame travel (fraction of base()) by the end of the round
+    const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
+    const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
+    const EGAN_MAX_ANGLE = 1.05;     // steepest launch angle off horizontal (~60°); each egan picks its own
     const EGAN_RESUME_ENEMIES   = 3;     // Nazans re-seeded into the cooled-down arena on resume
     const EGAN_RESUME_SPEED_MUL = 0.6;   // knock the re-seeded Nazans a tad slower than a fresh spawn
     const EGAN_RESUME_PICKUP    = 1.5;   // serve a power-up this soon after the round ends
+    // Golden egans: a couple of special, recoloured egans worth a fat bonus.
+    const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
+    const EGAN_GOLD_POINTS    = 50;      // base points for catching a golden egan (before combo)
+    const EGAN_GOLD_TINT      = "#ffcf33"; // golden recolour painted over the sticker
+    const EGAN_GOLD_SIZE_MUL  = 1.12;    // golden egans are a touch bigger so they stand out / stay catchable
+    const EGAN_GOLD_AT        = [0.3, 0.62]; // round-progress points at which the golden egans launch
+    // Curved flight: each egan slowly turns, so it sweeps an arc instead of a straight line.
+    const EGAN_CURVE_TURN     = 0.011;   // max per-frame heading turn (radians)
+    // Size scales across the round: bigger/easier at the start, smaller/harder by the end.
+    const EGAN_SIZE_START     = 1.25;    // egan size multiplier at the round's start
+    const EGAN_SIZE_END       = 0.82;    // …shrinking to this by the end
+    // Combos: catches in quick succession build a points multiplier.
+    const EGAN_COMBO_WINDOW   = 1.6;     // seconds within which the next catch keeps the combo alive
+    const EGAN_COMBO_STEP     = 0.5;     // each combo level beyond the first adds this to the multiplier
+    const EGAN_COMBO_MAX_MUL  = 5;       // multiplier caps here so points stay sane
+    // Per-round catch target — reaching it is celebrated on the end card.
+    const EGAN_TARGET         = 20;      // egans to catch in a round to hit the goal
     const keys = Object.create(null);
     const pointer = { active:false, x:0, y:0 };
 
@@ -1855,6 +1930,8 @@
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = []; eganCaught = 0;
       eganBag = []; eganBagReady = false; eganBagTotal = 0;
+      eganCombo = 0; eganComboT = 0; eganComboBest = 0;
+      eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0;
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       try{ sfx.stopVoices(); }catch(e){}           // drop any chatter left over from the previous run
@@ -2204,28 +2281,48 @@
       eganPhase = "intro"; eganT = 0; eganRoundT = 0; eganSpawnAcc = 0;
       eganStickers = []; eganPops = []; eganCaught = 0;
       eganBag = []; eganBagReady = false; eganBagTotal = 0;   // fresh "show each egan once" bag
+      eganCombo = 0; eganComboT = 0; eganComboBest = 0;       // fresh combo streak
+      eganGoldLeft = EGAN_GOLD_PER_ROUND; eganGoldAt = EGAN_GOLD_AT.slice();   // golden egans armed
+      eganTargetHit = false; eganRoundPoints = 0;
       enemies = [];                 // sweep the Nazans off for the bonus round
       pickup = null;                // and clear any uncollected pickup on screen
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; promptClass = promptText = ""; }
-      try{ music.setMode("default"); }catch(e){}
+      // Egan Mode gets its OWN look and music so it reads as a separate minigame, not the
+      // main game with a few extra stickers: a distinct bonus-round theme plays here and a
+      // dedicated backdrop is painted while the round runs (see draw()).
+      try{ music.setMode("egan"); }catch(e){}
       try{ sfx.setVoiceMode("default"); }catch(e){}
       try{ sfx.stopVoices(); }catch(e){}
       try{ sfx.starPower(); }catch(e){}   // a celebratory "new mode!" sting
     }
-    // Send one egan flying in from the left edge to a random exit height on the right, on a
-    // straight diagonal. Speed climbs across the round (prog 0→1) but is always jittered, so
-    // they start slower and get faster while never marching in at a uniform pace.
-    function spawnEgan(prog){
-      const r = Math.max(20, base() * 0.05);
-      const startY = r + Math.random() * Math.max(1, H - 2 * r);
-      const endY   = r + Math.random() * Math.max(1, H - 2 * r);
+    // Send one egan flying in from a random side edge toward the opposite side, on a gently
+    // CURVING line at its own pitched angle. Speed climbs across the round (prog 0→1), is
+    // always jittered, and gets an extra kick on the closing stretch so the last egans bite.
+    // Each egan picks a side, a steeper/more varied angle AND a slow turn so it sweeps an arc.
+    // Size scales down across the round (bigger/easier early, smaller/harder late), and a
+    // `gold` egan is a recoloured bonus catch worth far more.
+    function spawnEgan(prog, gold){
+      const p = Math.min(1, Math.max(0, prog));
+      const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * p;
+      const r = Math.max(16, base() * 0.05 * sizeMul * (gold ? EGAN_GOLD_SIZE_MUL : 1));   // golden ones a touch bigger
       const slow = base() * EGAN_SPEED_SLOW, fast = base() * EGAN_SPEED_FAST;
-      const baseSpeed = slow + (fast - slow) * Math.min(1, prog);
-      const vx = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
-      const totalDist = W + 2 * r;                       // left edge to right edge
-      const vy = (endY - startY) * vx / totalDist;       // slope so it lands on endY as it exits
-      const img = eganBag.length ? eganBag.pop() : null;   // each sticker shown once per round
-      eganStickers.push({ x: -r, y: startY, vx, vy, r, img,
+      let baseSpeed = slow + (fast - slow) * p;
+      baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * p;   // late-round bite
+      const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
+      const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
+      const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
+      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // radians: steeper, more diverse pitch
+      const vx = dir * speed * Math.cos(angle);
+      const vy = speed * Math.sin(angle);
+      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN;      // gentle per-egan arc
+      const startX = fromLeft ? -r : W + r;
+      const startY = r + Math.random() * Math.max(1, H - 2 * r);
+      // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
+      // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
+      const img = gold
+        ? (eganImages.length ? eganImages[Math.floor(Math.random() * eganImages.length)] : null)
+        : (eganBag.length ? eganBag.pop() : null);   // normal egans: each sticker shown once per round
+      eganStickers.push({ x: startX, y: startY, vx, vy, turn, r, img, gold: !!gold,
                           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.05 });
     }
     // The minigame's own per-frame tick: title → catching → end card, then hand back.
@@ -2261,27 +2358,62 @@
           const interval = EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog);
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
-        // Fly each egan along its diagonal; no walls — one that sails off the right is gone.
+        // Golden egans: launch each armed bonus egan once the round reaches its scheduled
+        // progress point. They're extra (not from the once-each bag) and worth a fat bonus.
+        if(eganBagReady && eganGoldLeft > 0 && eganGoldAt.length && prog >= eganGoldAt[0]){
+          eganGoldAt.shift(); eganGoldLeft--;
+          spawnEgan(prog, true);
+        }
+        // Combo decay: a streak only survives if the next catch lands inside the window.
+        if(eganCombo > 0){
+          eganComboT += dt;
+          if(eganComboT >= EGAN_COMBO_WINDOW) eganCombo = 0;
+        }
+        // Fly each egan along its gently CURVING line; no walls — once one sails fully off
+        // any edge it's gone. The per-egan `turn` rotates its velocity a touch each frame.
         for(let i = eganStickers.length - 1; i >= 0; i--){
           const s = eganStickers[i];
+          if(s.turn){
+            const c = Math.cos(s.turn), sn = Math.sin(s.turn);
+            const nvx = s.vx * c - s.vy * sn, nvy = s.vx * sn + s.vy * c;
+            s.vx = nvx; s.vy = nvy;
+          }
           s.x += s.vx; s.y += s.vy; s.rot += s.vr;
-          if(s.x > W + s.r){ eganStickers.splice(i, 1); continue; }
+          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){ eganStickers.splice(i, 1); continue; }
           // Catch: overlap the player to bank the points and pop it with a little burst.
           if(player){
             const dx = s.x - player.x, dy = s.y - player.y;
             const rr = (s.r + player.r) * 0.8;
             if(dx * dx + dy * dy < rr * rr){
               eganStickers.splice(i, 1);
-              score += EGAN_CATCH_POINTS; eganCaught++;
+              // Combo builds with each quick catch and scales the points (capped).
+              eganCombo++; eganComboT = 0;
+              if(eganCombo > eganComboBest) eganComboBest = eganCombo;
+              const mul = Math.min(EGAN_COMBO_MAX_MUL, 1 + (eganCombo - 1) * EGAN_COMBO_STEP);
+              const basePts = s.gold ? EGAN_GOLD_POINTS : EGAN_CATCH_POINTS;
+              const gained = Math.round(basePts * mul);
+              score += gained; eganRoundPoints += gained; eganCaught++;
               if(scoreEl) scoreEl.textContent = String(Math.floor(score));
-              eganPops.push({ x: s.x, y: s.y, r: s.r, t: 0, dur: 0.4 });
-              try{ sfx.point(); }catch(err){}
+              eganPops.push({ x: s.x, y: s.y, r: s.r, t: 0, dur: 0.4, gold: !!s.gold, combo: eganCombo });
+              // Escalating catch sound: golden ones get a richer flourish, normal ones a
+              // blip that climbs in pitch with the combo.
+              try{ if(s.gold) sfx.eganGold(); else sfx.eganCatch(eganCombo); }catch(err){}
+              // Hitting the round's catch target is celebrated once, with a fanfare + badge.
+              if(!eganTargetHit && eganCaught >= EGAN_TARGET){
+                eganTargetHit = true;
+                try{ sfx.eganTarget(); }catch(err){}
+                achieve("egan_target", "🥚", "Egan Catcher",
+                        "You caught " + EGAN_TARGET + " Egans in a single Egan Mode round!");
+              }
             }
           }
         }
         // Round ends once every sticker has been shown (bag empty, or the time fallback is
-        // spent when no images loaded) AND the screen is clear of egans.
-        const spent = eganBagReady ? eganBag.length === 0 : eganRoundT >= EGAN_PLAY_TIME;
+        // spent when no images loaded), all golden egans have launched, AND the screen is clear.
+        // In the image-less fallback there's no bag/gold to wait on, so the time budget alone ends it.
+        const spent = eganBagReady
+          ? (eganBag.length === 0 && eganGoldLeft === 0)
+          : eganRoundT >= EGAN_PLAY_TIME;
         if(spent && eganStickers.length === 0){ eganPhase = "outro"; eganT = 0; }
       } else if(eganPhase === "outro"){
         if(eganT >= EGAN_OUTRO_TIME){ exitEgan(); }
@@ -2310,17 +2442,72 @@
       try{ sfx.setVoiceMode("default"); }catch(e){}
       updatePrompt();
     }
-    // Draw the flying egans, catch bursts and the title / end card over the playfield.
+    // Draw the flying egans, catch bursts, the combo/target HUD and the title / end card.
     function drawEgan(){
-      for(const s of eganStickers) drawSticker(s, false);
+      // Flying egans. Golden ones get a glow, a gold sheen and a bright ring so they
+      // clearly read as the special bonus catch.
+      for(const s of eganStickers){
+        if(s.gold){
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          const glow = ctx.createRadialGradient(0, 0, s.r * 0.4, 0, 0, s.r + 14);
+          glow.addColorStop(0, "rgba(255,210,60,0)");
+          glow.addColorStop(0.65, "rgba(255,205,51,.45)");
+          glow.addColorStop(1, "rgba(255,170,40,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(0, 0, s.r + 14, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+          drawSticker(s, false);                       // the egan itself
+          ctx.save();                                  // recolour it gold within its disc
+          ctx.translate(s.x, s.y);
+          ctx.beginPath(); ctx.arc(0, 0, s.r, 0, Math.PI * 2); ctx.clip();
+          ctx.globalCompositeOperation = "multiply";
+          ctx.globalAlpha = 0.5; ctx.fillStyle = EGAN_GOLD_TINT;
+          ctx.fillRect(-s.r, -s.r, s.r * 2, s.r * 2);
+          ctx.restore();
+          drawSticker(s, true, EGAN_GOLD_TINT);        // bright gold ring on top
+        } else {
+          drawSticker(s, false);
+        }
+      }
       if(eganPops.length){
         ctx.save();
         for(const p of eganPops){
           const k = p.t / p.dur;                       // 0 → 1 over the burst's life
           const rr = p.r * (0.6 + 1.4 * k);
           ctx.globalAlpha = 0.7 * (1 - k);
-          ctx.lineWidth = 4; ctx.strokeStyle = "#f7c948";
+          ctx.lineWidth = p.gold ? 6 : 4;
+          ctx.strokeStyle = p.gold ? "#ffcf33" : "#f7c948";
           ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, Math.PI * 2); ctx.stroke();
+          if(p.gold){                                  // a second, brighter ring for golden catches
+            ctx.globalAlpha = 0.5 * (1 - k);
+            ctx.beginPath(); ctx.arc(p.x, p.y, rr * 1.4, 0, Math.PI * 2); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+      // Live HUD while catching: a catch-target tally and, on a hot streak, the combo.
+      if(eganPhase === "play"){
+        ctx.save();
+        ctx.textAlign = "center"; ctx.textBaseline = "top";
+        const py = base() * 0.03;
+        const tallySize = base() * 0.05;
+        ctx.font = "bold " + tallySize.toFixed(0) + "px system-ui, sans-serif";
+        ctx.lineWidth = Math.max(2, tallySize * 0.12); ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.fillStyle = eganTargetHit ? "#1f9d55" : "#3d5076";
+        const tally = "🥚 " + Math.min(eganCaught, EGAN_TARGET) + " / " + EGAN_TARGET +
+                      (eganTargetHit ? "  ✓" : "");
+        ctx.strokeText(tally, W / 2, py); ctx.fillText(tally, W / 2, py);
+        if(eganCombo >= 2){
+          const comboSize = base() * 0.06;
+          ctx.font = "bold " + comboSize.toFixed(0) + "px system-ui, sans-serif";
+          const grad = ctx.createLinearGradient(0, py + tallySize, 0, py + tallySize + comboSize * 1.4);
+          grad.addColorStop(0, "#f7c948"); grad.addColorStop(1, "#e8743b");
+          ctx.lineWidth = Math.max(2, comboSize * 0.1); ctx.strokeStyle = "rgba(61,80,118,.9)";
+          ctx.fillStyle = grad;
+          const combo = "COMBO x" + eganCombo;
+          const cy2 = py + tallySize * 1.3;
+          ctx.strokeText(combo, W / 2, cy2); ctx.fillText(combo, W / 2, cy2);
         }
         ctx.restore();
       }
@@ -2340,13 +2527,16 @@
           grad.addColorStop(0, "#f7c948"); grad.addColorStop(1, "#e8743b");
           ctx.fillStyle = grad;
           ctx.strokeStyle = "rgba(61,80,118,.9)"; ctx.lineWidth = Math.max(2, titleSize * 0.04);
-          const title = eganPhase === "intro" ? "EGAN MODE" : "EGANS CLEARED";
+          const title = eganPhase === "intro"
+            ? "EGAN MODE"
+            : (eganTargetHit ? "TARGET SMASHED!" : "EGANS CLEARED");
           ctx.strokeText(title, cx, cy); ctx.fillText(title, cx, cy);
           ctx.fillStyle = "#3d5076";
           ctx.font = "bold " + (base() * 0.04).toFixed(0) + "px system-ui, sans-serif";
           const sub = eganPhase === "intro"
-            ? "Catch the Egans! +" + EGAN_CATCH_POINTS + " each"
-            : "+" + (eganCaught * EGAN_CATCH_POINTS) + " points · " + eganCaught + " caught";
+            ? "Catch the Egans! Chain catches for combos · Target " + EGAN_TARGET
+            : "+" + eganRoundPoints + " points · " + eganCaught + " caught" +
+              (eganComboBest >= 2 ? " · best combo x" + eganComboBest : "");
           ctx.fillText(sub, cx, cy + base() * 0.11);
           ctx.restore();
         }
@@ -2746,6 +2936,27 @@
     }
     function draw(){
       ctx.clearRect(0, 0, W, H);
+      // Egan Mode gets its OWN backdrop so the minigame looks distinct from the normal arena
+      // (which is just the page background): a warm sunrise gradient with slow drifting
+      // diagonal "bunting" stripes, painted first so everything else sits on top of it.
+      if(eganPhase){
+        ctx.save();
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, "#fff3d6"); bg.addColorStop(0.55, "#ffe1a8"); bg.addColorStop(1, "#ffcf8f");
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+        // Drifting candy stripes for a fairground "bonus round" feel.
+        const t = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+        const band = Math.max(40, base() * 0.14);
+        const off = (t * 26) % (band * 2);
+        ctx.globalAlpha = 0.06; ctx.fillStyle = "#e8743b";
+        for(let x = -H - band * 2; x < W + band * 2; x += band * 2){
+          ctx.beginPath();
+          ctx.moveTo(x + off, 0); ctx.lineTo(x + off + band, 0);
+          ctx.lineTo(x + off + band + H, H); ctx.lineTo(x + off + H, H);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
       // Full-screen colour wash while a timed power-up runs, so its effect is obvious. As the
       // effect winds down it eases back to normal, so the AMBIENT background returns to rest a
       // beat before the power lapses — while the player's own cue (below) stays solid to the end.
