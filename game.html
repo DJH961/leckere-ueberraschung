@@ -1590,6 +1590,11 @@
   /* ---------- Nazan Dodge: a tiny, responsive dodge-em-up ---------- */
   const Game = (function(){
     const HS_KEY = "nazanDodgeHigh";
+    // "nico" easter egg: counts how many rounds someone has played under a name that
+    // contains "nico" (so "Nico", "not nico", "nicolas"... all qualify), so the very
+    // first one can spawn-kill them and every one after can hand them a packed board +
+    // an escape power-up (see nicoEasterEgg()).
+    const NICO_KEY = "nazanDodgeNicoGames";
     // Random things Nazan says when you get caught — shown big and loud on game over.
     const NAZAN_QUOTES = [
       "You need to blow not suck",
@@ -1611,6 +1616,7 @@
     const startPane = $("#gameStart");
     const overPane  = $("#gameOver");
     let promptClass = "", promptText = "";
+    let nicoDoom = false;   // set when nico's first game spawn-kills him, for a tailored game-over line
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
@@ -2521,8 +2527,38 @@
                      + (Math.random() - 0.5) * 0.25;   // a touch of jitter so it isn't perfectly mechanical
         spawnEnemy({ slotAng: spawnAngle, engage: true });
       }
+      nicoEasterEgg();
       if(scoreEl) scoreEl.textContent = "0";
       updatePrompt();
+    }
+
+    // === "nico" easter egg ===
+    // A personal welcome for anyone cheeky enough to play under a name containing "nico"
+    // (including playful variants like "not nico"). The FIRST time
+    // they play, a Nazan materialises right inside them for an instant spawn kill.
+    // EVERY game after, they open boxed in by a full board of 12 Nazans — but with an
+    // Eating Mode power-up dropped right beside them so they can chomp their way clear.
+    const NICO_FULL_BOARD = 12;
+    function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
+    function nicoEasterEgg(){
+      if(!isNico()) return;
+      const games = LS.get(NICO_KEY, 0);
+      LS.set(NICO_KEY, games + 1);
+      enemies = [];   // intentional: discard the normal START_NAZANS opening so nico gets his own bespoke board
+      if(games === 0){
+        // First game ever as nico: a Nazan spawns straight on top of him (no grace),
+        // so the very first collision check ends the round on the spot. Radius mirrors
+        // spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
+        const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));
+        const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
+        enemies.push({ x: player.x, y: player.y, vx: 0, vy: 0, r, img,
+                       rot: Math.random() * Math.PI * 2, vr: 0, age: 0, shoveT: 0, spawnT: 0, noWall: false });
+        nicoDoom = true;
+        return;
+      }
+      // Returning nico: a packed opening board, plus an Eating Mode escape hatch beside him.
+      for(let i = 0; i < NICO_FULL_BOARD; i++) spawnEnemy();
+      spawnPickupNear("eat");
     }
 
     // Send a single Nazan clean off the screen along the (nx, ny) outward direction.
@@ -4277,10 +4313,13 @@
       }
     }
     // Pick a random Nazan taunt and pop it in, restarting the entry animation each
-    // time so a fresh line still draws the eye even on repeated deaths.
+    // time so a fresh line still draws the eye even on repeated deaths. nico gets a
+    // tailored sign-off the first time he's spawn-killed (see nicoEasterEgg()).
     function showNazanQuote(){
       const el = $("#gameNazanQuote"); if(!el) return;
-      el.textContent = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      let line = NAZAN_QUOTES[Math.floor(Math.random() * NAZAN_QUOTES.length)];
+      if(nicoDoom){ nicoDoom = false; line = "Not today, nico."; }
+      el.textContent = line;
       el.style.animation = "none";
       void el.offsetWidth;          // force reflow so the pop animation replays
       el.style.animation = "";
