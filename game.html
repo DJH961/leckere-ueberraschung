@@ -3907,10 +3907,11 @@
           "tallness  " + tallness().toFixed(3),
         ];
         const pad = base() * 0.02, lh = Math.max(14, base() * 0.028);
+        const top = eganHudTop() + pad * 0.5;
         ctx.fillStyle = "rgba(15,21,38,.6)";
-        ctx.fillRect(pad * 0.5, pad * 0.5, base() * 0.34, lh * lines.length + pad);
+        ctx.fillRect(pad * 0.5, top, base() * 0.34, lh * lines.length + pad);
         ctx.fillStyle = "#fff";
-        lines.forEach((ln, i) => ctx.fillText(ln, pad, pad + i * lh));
+        lines.forEach((ln, i) => ctx.fillText(ln, pad, top + pad * 0.5 + i * lh));
         ctx.restore();
       }
     }
