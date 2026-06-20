@@ -3962,15 +3962,11 @@
         ctx.font = "bold " + Math.max(11, base() * 0.022).toFixed(0) + "px ui-monospace, monospace";
         ctx.textAlign = "left"; ctx.textBaseline = "top";
         const lines = [
-          "ar       " + ar.toFixed(3),
-          "arenaDiff " + arenaDiff().toFixed(3),
-          "eganDiff  " + eganDiff().toFixed(3),
-          "tallness  " + tallness().toFixed(3),
-          "score     " + Math.floor(score),
-          "outside   " + Math.floor(score - eganPointsTotal),
-          "intensity " + intensity().toFixed(3),
-          "eganInten " + eganIntensity().toFixed(3),
+          "ar " + ar.toFixed(2) + "  tall " + tallness().toFixed(2),
+          "diff  ar " + arenaDiff().toFixed(2) + "  eg " + eganDiff().toFixed(2),
+          "inten ar " + intensity().toFixed(2) + "  eg " + eganIntensity().toFixed(2),
           // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena | egan difficulty.
+          "       arena|egan",
           "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
           "16:9   " + arMap(1.7778, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(1.7778, EGAN_DIFF_PTS).toFixed(2),
           "32:9   " + arMap(3.5556, FORMAT_DIFF_PTS).toFixed(2) + " | " + arMap(3.5556, EGAN_DIFF_PTS).toFixed(2),
