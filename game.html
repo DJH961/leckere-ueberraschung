@@ -1779,7 +1779,7 @@
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
     let pickupTimer = 0;             // counts down to the next pickup appearing
-    let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (eat/bomb) spawned right by the player
+    let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (any power-up) spawned right by the player
     // ----- Egan Mode (a milestone minigame; ships toggled OFF) -----
     // A small bonus round that breaks into the normal game at score milestones. The whole
     // feature is gated behind eganEnabled(): with the flag off NONE of this runs (no extra
@@ -1818,6 +1818,9 @@
     let eganPointsTotal = 0;        // ALL egan-earned points this run; subtracted from score so only OUTSIDE-egan points pace the next round
     let eganPrevCount  = 0;         // how many Nazans were on screen when the round began (for a middle-ground resume)
     let eganPrevSpeed  = 0;         // their average pace at that moment (so the resume roughly matches what was left)
+    let eganPrevEnemies = [];       // a snapshot of the actual Nazans on screen when the round began, so the resume can
+                                    // recreate the board roughly as it was (positions and all) rather than re-seed a thin
+                                    // handful of fresh edge-spawns (which made the post-Egan restart feel too simple)
     const PICKUP_LIFE    = 7;        // seconds an uncollected pickup lingers before vanishing
     const PICKUP_LEAVE_WARN = 1.6;   // seconds of life left when the "slipping away" countdown starts (matches the blink-out)
     // Across that window the vanish warning is an accelerating "last chance" countdown
@@ -1907,6 +1910,10 @@
     const EGAN_RESUME_MAX       = 9;     // ...and cap it so a packed screen doesn't dump a swarm straight back
     const EGAN_RESUME_SPEED_MUL = 0.85;  // re-seeded Nazans land a touch calmer than the pace just left (was a too-slow flat 0.6)
     const EGAN_RESUME_SPEED_MAX = 0.0075;// ...but ceiling their pace (fraction of base()) so an accelerated swarm doesn't return at full tilt
+    // On resume we recreate the board as it was when the round began (see eganPrevEnemies), then
+    // carve a circle of clear space around the re-centred player so they don't materialise inside
+    // the crowd. Any Nazan that lands inside this radius is shifted straight outward to its rim.
+    const EGAN_RESUME_CLEAR_R   = 0.28;  // radius of the cleared bubble around the player, as a fraction of base()
     const EGAN_REWARD_PICKUP    = 0.6;   // hitting the catch target: serve the bonus power-up this soon after the round ends
     // Golden egans: a couple of special, recoloured egans worth a fat bonus.
     const EGAN_GOLD_PER_ROUND = 2;       // golden egans per round
@@ -2055,11 +2062,14 @@
     }
     // Radius-based area power-ups (Shove, Boom, Force Field) reach a fixed fraction of
     // base() = min(W, H). On a tall portrait phone base() is the *narrow* width, so the same
-    // fraction sweeps a much smaller slice of the tall arena than it does on a near-square
-    // desktop — which is why the Boom (and Shove / Force Field) feel weaker on mobile. Scale
-    // their reach up with how portrait the arena is so they clear a comparable share of the
-    // crowd on any screen, keeping the power-ups consistent across mobile and desktop.
-    const AOE_TALL_BOOST = 0.4;   // extra reach at full portrait (ar ≤ 0.55), as a fraction
+    // fraction sweeps a smaller slice of the tall arena than it does on a near-square desktop —
+    // which is why the Boom (and Shove / Force Field) felt weaker on mobile. We nudge their reach
+    // up a touch on portrait so they stay format-aware, but only PARTIALLY: matching the crowd's
+    // area-share exactly (boost ≈ sqrt(H/W)-1 ≈ 0.35 at full portrait) makes the radius span the
+    // entire narrow width, so a single Boom/Shove clears almost the whole board — far too strong
+    // on mobile. A gentler compensation keeps portrait from being penalised without turning every
+    // power-up into a full-board wipe.
+    const AOE_TALL_BOOST = 0.18;  // extra reach at full portrait (ar ≤ 0.55), as a fraction — partial, not full area-parity
     function aoeReach(frac){ return base() * frac * (1 + AOE_TALL_BOOST * tallness()); }
     // A short haptic buzz on touch devices (desktops/unsupported browsers no-op). Used
     // for the moments that matter — death, firing a power-up, grabbing a pickup, and the
@@ -2144,6 +2154,7 @@
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;
       eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
       eganTier = 0; eganArmed = 0; eganStageStart = 0;   // fresh run: no high-score pressure yet
+      eganPrevEnemies = [];                              // drop any board snapshot left from a previous run
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
       try{ music.setTempo(1); }catch(e){}                // and the music tempo starts un-pressured
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
@@ -2329,7 +2340,7 @@
     }
 
     // Drop a SPECIFIC power-up right next to the player — used for the Egan Mode catch-target
-    // reward, which earns the player an instant, well-placed eat/bomb the moment they're back.
+    // reward, which earns the player an instant, well-placed power-up the moment they're back.
     function spawnPickupNear(type){
       const r = Math.max(20, base() * 0.045);
       const ang = Math.random() * Math.PI * 2;
@@ -2396,7 +2407,7 @@
       } else if(!held && pickupTimer > 0){
         pickupTimer -= dt;
         if(pickupTimer <= 0){
-          // The Egan catch-target reward is a specific eat/bomb placed right by the player; any
+          // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
           if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
           else spawnPickup();
@@ -2522,7 +2533,8 @@
       eganPrevCount = enemies.length;
       let spSum = 0; for(const e of enemies) spSum += Math.hypot(e.vx, e.vy);
       eganPrevSpeed = enemies.length ? spSum / enemies.length : 0;
-      enemies = [];                 // sweep the Nazans off for the bonus round
+      eganPrevEnemies = enemies;    // keep the actual Nazan objects so the resume can recreate the board as it was
+      enemies = [];                 // sweep the Nazans off for the bonus round (new array; the snapshot is untouched)
       pickup = null;                // and clear any uncollected pickup on screen
       // Wipe any leftover power-up state AND its lingering visual fragments (blast rings, boom
       // puffs, zap arcs/sparks, the star trail) so none of it bleeds into the clean Egan backdrop.
@@ -2701,9 +2713,9 @@
     // Hand control back to the normal game in a gently COOLED-DOWN arena that lands on a MIDDLE
     // GROUND: the player is re-centred, and we re-seed a crowd roughly matching (but calmer and
     // less packed than) the one the round interrupted — never a dead-empty, crawling restart.
-    // If the player HIT the catch target this round, they're owed a bonus: a strong eat/bomb
-    // power-up pops in right next to them a beat after they're back. Otherwise pickups simply
-    // resume on their normal schedule (no early freebie).
+    // If the player HIT the catch target this round, they're owed a bonus: a power-up (drawn from
+    // the normal rotation) pops in right next to them the moment they're back. Otherwise pickups
+    // simply resume on their normal schedule (no early freebie).
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = [];
       // Completing an Egan round steps the difficulty up a notch: the next stretch of normal
@@ -2717,33 +2729,73 @@
       // straight through the re-seeded crowd and auto-kill it on mobile. Play stays put until
       // the next deliberate move (mirrors reset()).
       pointer.active = false; pointer.x = player.x; pointer.y = player.y;
-      enemies = [];
-      // Re-seed the SAME-sized crowd that was on screen when the round began, so the arena comes
-      // back as full as it was left — just a tad slower and (with the pre-roll below) spaced out
-      // before play resumes, rather than a thinned-out handful.
-      const want = Math.max(EGAN_RESUME_MIN, eganPrevCount);
-      for(let i = 0; i < want; i++) spawnEnemy();   // spawnEnemy already drops them at the edges
-      // Match roughly the pace they left — a touch calmer, and capped so an accelerated swarm
-      // doesn't come straight back at full tilt. Fall back to a flat ease-off if we have no read.
-      if(eganPrevSpeed > 0){
-        const target = Math.min(eganPrevSpeed * EGAN_RESUME_SPEED_MUL, base() * EGAN_RESUME_SPEED_MAX);
+      // Recreate the board roughly AS IT WAS when the round began, rather than re-seeding a
+      // thinned-out handful of fresh edge-spawns (which made the post-Egan restart feel too
+      // simple). We restore the actual Nazans that were on screen, then carve a circle of clear
+      // space around the re-centred player — a "radius he gains for the restart" — by shifting any
+      // Nazan that sits inside it straight outward to the rim. Returning to a packed-but-fair board
+      // keeps the step-up reading like the game it interrupted.
+      const restored = (eganPrevEnemies && eganPrevEnemies.length) ? eganPrevEnemies : [];
+      eganPrevEnemies = [];
+      if(restored.length){
+        enemies = restored;
+        // Match roughly the pace they left — a touch calmer, and capped so an accelerated swarm
+        // doesn't come straight back at full tilt, while keeping each Nazan's own relative speed.
+        const cap = base() * EGAN_RESUME_SPEED_MAX;
         for(const e of enemies){
-          const cur = Math.hypot(e.vx, e.vy) || 1;
-          const k = target / cur;
-          e.vx *= k; e.vy *= k; e.age = 0;
+          let vx = e.vx * EGAN_RESUME_SPEED_MUL, vy = e.vy * EGAN_RESUME_SPEED_MUL;
+          const sp = Math.hypot(vx, vy);
+          if(sp > cap){ const k = cap / sp; vx *= k; vy *= k; }
+          e.vx = vx; e.vy = vy; e.age = 0;
+          // Drop any mid-flight push/banish state so every restored Nazan comes back as a plain bouncer.
+          e.shoveT = 0; e.noWall = false; e.banished = false; e.returning = false;
+          // Keep everyone safely on screen (a banished one may have been snapshotted off the edge).
+          e.x = Math.max(e.r, Math.min(W - e.r, e.x));
+          e.y = Math.max(e.r, Math.min(H - e.r, e.y));
+        }
+        // Carve the cleared radius around the player: shift any Nazan inside it straight out to the rim.
+        const clearR = base() * EGAN_RESUME_CLEAR_R;
+        for(const e of enemies){
+          let dx = e.x - player.x, dy = e.y - player.y;
+          let d = Math.hypot(dx, dy);
+          const need = clearR + e.r;
+          if(d < need){
+            if(d < 1e-3){ const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
+            const nx = dx / d, ny = dy / d;
+            e.x = player.x + nx * need;
+            e.y = player.y + ny * need;
+            // If pushing it out runs into a wall, slide it back along the rim onto the open floor.
+            e.x = Math.max(e.r, Math.min(W - e.r, e.x));
+            e.y = Math.max(e.r, Math.min(H - e.r, e.y));
+          }
         }
       } else {
-        for(const e of enemies){ e.vx *= EGAN_RESUME_SPEED_MUL; e.vy *= EGAN_RESUME_SPEED_MUL; e.age = 0; }
+        // No read on the prior board (e.g. it was empty): fall back to a couple of fresh edge-spawns.
+        enemies = [];
+        const want = Math.max(EGAN_RESUME_MIN, eganPrevCount);
+        for(let i = 0; i < want; i++) spawnEnemy();
+        if(eganPrevSpeed > 0){
+          const target = Math.min(eganPrevSpeed * EGAN_RESUME_SPEED_MUL, base() * EGAN_RESUME_SPEED_MAX);
+          for(const e of enemies){
+            const cur = Math.hypot(e.vx, e.vy) || 1;
+            const k = target / cur;
+            e.vx *= k; e.vy *= k; e.age = 0;
+          }
+        } else {
+          for(const e of enemies){ e.vx *= EGAN_RESUME_SPEED_MUL; e.vy *= EGAN_RESUME_SPEED_MUL; e.age = 0; }
+        }
       }
       spawnAcc = 0;
       held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
-      // Reward for clearing the catch target: a strong, well-placed power-up (always eat or bomb).
-      // It's dropped right beside the player RIGHT NOW so it's already on screen from the very start
-      // of the return (visible through the pre-roll), not after a short delay. Miss the target and
-      // pickups just resume on their normal cadence.
+      // Reward for clearing the catch target: a well-placed power-up drawn from the SAME regular
+      // rotation as any normal pickup (rollPickupType) — so it can be ANY power-up, not the
+      // guaranteed eat/bomb kill it used to always be. That kept the step-up from feeling too
+      // samey (a killer every time). It's dropped right beside the player RIGHT NOW so it's already
+      // on screen from the very start of the return (visible through the pre-roll), not after a
+      // short delay. Miss the target and pickups just resume on their normal cadence.
       eganRewardType = null;
       if(eganTargetHit){
-        spawnPickupNear(Math.random() < 0.5 ? "eat" : "bomb");   // present immediately, by the player
+        spawnPickupNear(rollPickupType());   // present immediately, by the player — any power-up, normal rotation
         pickupTimer = 0;
       } else {
         pickupTimer = PICKUP_FIRST;                               // a regular pickup, on the normal schedule
