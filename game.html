@@ -2515,11 +2515,11 @@
       // and each one drifts ENGAGINGLY toward the player's side — close enough to make you dodge from
       // the very first second, but kicked off a direct line so none of them lands straight on you
       // (they still arrive slow and young like any spawn — lively, not lethal).
-      const seedSpread = 1.45;   // arc (radians) the opening Nazans fan across, centred on "straight up"
+      const seedSpread = 1.45;   // arc (~83°) the opening Nazans fan across, centred on "straight up"
       for(let i = 0; i < START_NAZANS; i++){
-        const slot = -Math.PI / 2 + (i - (START_NAZANS - 1) / 2) * seedSpread
+        const spawnAngle = -Math.PI / 2 + (i - (START_NAZANS - 1) / 2) * seedSpread
                      + (Math.random() - 0.5) * 0.25;   // a touch of jitter so it isn't perfectly mechanical
-        spawnEnemy({ slotAng: slot, engage: true });
+        spawnEnemy({ slotAng: spawnAngle, engage: true });
       }
       if(scoreEl) scoreEl.textContent = "0";
       updatePrompt();
