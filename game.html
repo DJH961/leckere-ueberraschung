@@ -50,8 +50,12 @@
     backdrop-filter:blur(4px);}
   #gameExit:hover{border-color:var(--navy);}
   #gameExit:active{transform:scale(.96);}
-  /* Right-hand HUD button cluster (music toggle + back). */
-  #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 0 auto; pointer-events:none;}
+  /* Right-hand HUD button cluster (music + vibration toggles + back). On a narrow phone the
+     score + three buttons can be wider than the screen; allow the cluster to WRAP onto further
+     lines (right-aligned) so no control — in particular the vibration toggle — is ever pushed
+     off the edge and out of reach. */
+  #gameHud .hudBtns{display:flex; gap:8px; align-items:flex-start; flex:0 1 auto;
+    flex-wrap:wrap; justify-content:flex-end; pointer-events:none;}
   #gameMusic, #gameHaptics{pointer-events:auto; cursor:pointer; font:inherit; font-weight:700; flex:0 0 auto;
     color:var(--navy); background:rgba(255,255,255,.92); border:1px solid var(--card-border);
     border-radius:30px; padding:8px 14px; font-size:1rem; line-height:1;
@@ -487,22 +491,36 @@
         <p>Move with your <strong>mouse</strong>, <strong>finger</strong>, or the <strong>arrow keys / WASD</strong>.</p>
         <p>Fire a banked power-up (Shove / Boom) by <strong>tapping your own Nazan</strong> or pressing <strong>Space</strong> — no aiming needed. Banked power-ups <strong>auto-fire</strong> if you hold them too long. Press <strong>Esc</strong> to leave the game.</p>
         <h3>Power-ups</h3>
-        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans off-screen without destroying them — Shove and Star knock them out only when you drive them onto an edge, while the Force Field gently sends any Nazan that touches it on its way.</p>
+        <p>Only one appears at a time, and the next won't show up until you've spent the last. Shove, Star and the Force Field <em>push</em> Nazans off-screen without destroying them — and every Nazan you shove away still <strong>banks points</strong>, so a push is never wasted. They always wander back in (a little slower than they left), so a push buys space and a few points rather than a permanent kill.</p>
         <ul class="puList">
           <li><span class="puIco">😋</span><span><span class="puName">Eating Mode</span><span class="puDesc">Devour Nazans on contact — they flee, so chase them down.</span></span></li>
           <li><span class="puIco">👻</span><span><span class="puName">Invisible</span><span class="puDesc">Nazans pass straight through you for a few seconds.</span></span></li>
           <li><span class="puIco">🤏</span><span><span class="puName">Tiny Mode</span><span class="puDesc">Shrink down and slip through the crowd.</span></span></li>
           <li><span class="puIco">🐌</span><span><span class="puName">Snail Mode</span><span class="puDesc">Every other Nazan crawls in slow motion.</span></span></li>
-          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that gently pushes any Nazan that touches it clean off the screen. You slow to a crawl while it's up, so it's a defensive shield, not a free clear.</span></span></li>
-          <li><span class="puIco">⭐</span><span><span class="puName">Star Power</span><span class="puDesc">Invincible <em>and faster</em>, with a sparkling trail — barge straight through Nazans for points.</span></span></li>
-          <li><span class="puIco">💨</span><span><span class="puName">Shove</span><span class="puDesc">Banked. Blasts nearby Nazans away. Tap your Nazan or press Space.</span></span></li>
+          <li><span class="puIco">🛡️</span><span><span class="puName">Force Field</span><span class="puDesc">A bubble that gently pushes any Nazan that touches it clean off the screen — and scores a few points each time. You slow to a crawl while it's up, so it's a defensive shield, not a free clear.</span></span></li>
+          <li><span class="puIco">⭐</span><span><span class="puName">Star Power</span><span class="puDesc">Invincible <em>and faster</em>, with a sparkling trail — barge straight through Nazans to shove them aside for points.</span></span></li>
+          <li><span class="puIco">💨</span><span><span class="puName">Shove</span><span class="puDesc">Banked. Blasts nearby Nazans away and banks points for every one it catches. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">💥</span><span><span class="puName">Boom</span><span class="puDesc">Banked. Pops the whole crowd around you for points. Tap your Nazan or press Space.</span></span></li>
           <li><span class="puIco">⚡</span><span><span class="puName">Chain Zap</span><span class="puDesc">Fires the instant you grab it, forking lightning to the nearest Nazans and vaporising them.</span></span></li>
         </ul>
+        <h3>Egan Mode</h3>
+        <p>Once you've banked around <strong>1,000 points</strong> of normal play, the screen clears for a bonus round: <strong>Egan Mode</strong>. After that it returns every so often, but the gap between rounds widens each time (1,000, then +1,500, +2,000…), so the deeper you push the rarer — and more precious — they get.</p>
+        <ul class="puList">
+          <li><span class="puIco">🥚</span><span><span class="puName">Catch the Egans</span><span class="puDesc">Egans fly across the arena in curving arcs — sweep your Nazan over them to catch them. They start big and slow and turn smaller and faster as the round goes on.</span></span></li>
+          <li><span class="puIco">🔗</span><span><span class="puName">Chain for combos</span><span class="puDesc">Catch Egans in quick succession to build a points multiplier (up to 3&times;). Let too long pass between catches and the combo resets.</span></span></li>
+          <li><span class="puIco">🌟</span><span><span class="puName">Golden Egans</span><span class="puDesc">Two special Golden Egans appear each round, worth a fat bonus — grab them while your combo is hot.</span></span></li>
+          <li><span class="puIco">🎁</span><span><span class="puName">Catch target</span><span class="puDesc">Net 25 Egans in a single round and a free power-up is waiting for you the moment you're back in the game.</span></span></li>
+        </ul>
+        <h3>Difficulty &amp; intensity</h3>
+        <p>Sub-1,000 play is gentle and unchanged. But every time you <strong>complete an Egan round</strong> the game steps up a notch — Nazans arrive faster and more often, the board holds a few more of them, and the music quickens — with a subtle further creep as you climb through each stage. The further you get, the more relentless it becomes, so lean on your power-ups and Egan rounds to keep up.</p>
+        <h3>On mobile</h3>
+        <p>On phones and tablets your Nazan <strong>vibrates</strong> at the moments that matter — firing a power-up, grabbing a pickup, getting a warning buzz as a timed power-up runs low, and dying — so you get a little physical feedback to play by. Use the <span aria-hidden="true">📳</span> button to switch the vibration on or off.</p>
+        <h3>Make it yours</h3>
+        <p>Tap the <strong>‹ ›</strong> arrows on the start and game-over cards to <strong>pick which Nazan you play as</strong> — your choice is remembered for next time. Each Nazan even has their own voice, so they pipe up as they bounce. Prefer to play in peace? The <span aria-hidden="true">🔊</span> button mutes every sound, including the procedural background music.</p>
         <h3>Tips &amp; tricks</h3>
         <ul class="tipList">
           <li><span class="tipIco" aria-hidden="true">🎯</span><span><strong>Hug the middle.</strong> Nazans spawn from the edges, so the centre gives you the most reaction time — and keeps you within reach of whichever power-up pops up.</span></li>
-          <li><span class="tipIco" aria-hidden="true">🌀</span><span><strong>Shoving buys room, not a kill.</strong> Knocking Nazans out of bounds with Shove, Star or the Force Field clears space fast, but they always wander back — treat it as a reset, not a finisher.</span></li>
+          <li><span class="tipIco" aria-hidden="true">🌀</span><span><strong>Shoving scores — and buys room.</strong> Knocking Nazans out of bounds with Shove, Star or the Force Field banks points for every one you displace and clears space fast. They always wander back, though, so treat it as points-plus-a-reset rather than a finisher.</span></li>
           <li><span class="tipIco" aria-hidden="true">🚗</span><span><strong>Don't bother aiming.</strong> A banked Shove or Boom auto-fires the instant a Nazan would hit you, so just barrel into a crowd — it doubles as a free panic button that saves you from an otherwise lethal touch.</span></li>
           <li><span class="tipIco" aria-hidden="true">🍽️</span><span><strong>Grab everything, even the gentle buffs.</strong> Every non-killer you collect quietly raises the odds that a board-clearing Eating Mode, Boom or Chain Zap shows up next, so keep eating power-ups instead of dodging them.</span></li>
           <li><span class="tipIco" aria-hidden="true">🔁</span><span><strong>No back-to-back repeats.</strong> A power-up sits out the next two pickups after you grab it, so don't count on Eating Mode twice in a row — spend what you have while you have it.</span></li>
@@ -1713,6 +1731,13 @@
     // stay fully active until the very end, so the cue vanishes EXACTLY when the power does.
     // This way you can never, say, eat a Nazan without the eating still being visually clear.
     const EFFECT_WARN = 1.1;        // seconds of audible/ambient wind-down before a timed effect lapses
+    // ...with ONE deliberate exception: Eating Mode keeps a whisper-thin grace tail after it
+    // lapses, so a Nazan you reach at the very last instant is still devoured instead of killing
+    // you. It's barely a couple of frames — long enough to feel fair, too short to lean on — and
+    // it carries its own fading cues (a quickly-dimming hungry ring + the normal devour sound and
+    // buzz on any last-gasp catch) so a grace eat still reads, sounds and feels exactly like a
+    // proper one rather than a silent freebie.
+    const EAT_GRACE = 0.16;        // seconds Eating Mode still devours on contact after its timer hits zero
     // The countdown "beep beep" through that window accelerates: the gap between beeps eases
     // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
     const BEEP_INTERVAL_MIN   = 0.16;  // shortest gap between beeps (right at expiry)
@@ -1778,6 +1803,7 @@
     let heldBeepT = 0;               // countdown to the next banked auto-fire "arming" pulse while in the warning window
     let pickup = null;               // the lone uncollected pickup on screen, or null
     let activeEffect = null;         // { type, time, max } while a timed power-up is running
+    let eatGrace = 0;                // seconds of Eating Mode's last-instant devour grace still left (see EAT_GRACE)
     let pickupTimer = 0;             // counts down to the next pickup appearing
     let eganRewardType = null;       // if set, the next pickup is the egan-target bonus (any power-up) spawned right by the player
     // ----- Egan Mode (a milestone minigame; ships toggled OFF) -----
@@ -1837,10 +1863,19 @@
     // earlier than 4s in, sometimes right at the end, sometimes a few seconds later.
     const PICKUP_AFTER_MIN    = 2;   // soonest a fresh pickup may reappear after one is spent
     const PICKUP_AFTER_WINDOW = 8;   // random spread added on top of the earliest moment
+    // Each COMPLETED Egan round stretches the wait between power-ups a little further, so
+    // pickups grow scarcer the deeper a run goes (capped so they never dry up entirely).
+    const PICKUP_EGAN_TIER_GAP = 1.6;   // extra seconds added to the floor per completed Egan round
+    const PICKUP_EGAN_TIER_MAX = 8;     // ceiling on that cumulative stretch (≈5 rounds in)
+    function eganPickupDelay(){
+      return Math.min(PICKUP_EGAN_TIER_MAX, Math.max(0, eganTier) * PICKUP_EGAN_TIER_GAP);
+    }
     function nextPickupGap(dur){
       // Hold off until the effect's final second at the earliest (instant power-ups, dur 0,
       // keep the plain 2s floor), then add a random slice so the exact moment still varies.
-      const earliest = Math.max(PICKUP_AFTER_MIN, (dur || 0) - 1);
+      // The per-Egan-round stretch pushes the whole window back so power-ups thin out as the
+      // run escalates.
+      const earliest = Math.max(PICKUP_AFTER_MIN, (dur || 0) - 1) + eganPickupDelay();
       return earliest + Math.random() * PICKUP_AFTER_WINDOW;
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
@@ -2035,17 +2070,23 @@
       b.textContent = hapticsEnabled ? "📳" : "📴";
       b.setAttribute("aria-label", hapticsEnabled ? "Turn off vibration" : "Turn on vibration");
     }
-    // Reveal the haptics toggle only on devices that can actually vibrate.
+    // Reveal the haptics toggle only on devices that can actually vibrate. The stylesheet
+    // hides #gameHaptics with `display:none`, so we must set an EXPLICIT display value to show
+    // it — clearing the inline style (display:"") would just fall back to that CSS rule and
+    // leave the button hidden, which is exactly why mobile players couldn't find the toggle.
     function initHapticsBtn(){
       const b = $("#gameHaptics"); if(!b) return;
-      if(hapticsSupported()){ b.style.display = ""; syncHapticsBtn(); }
+      if(hapticsSupported()){ b.style.display = "inline-block"; syncHapticsBtn(); }
       else { b.style.display = "none"; }
     }
     function toggleHaptics(){
       hapticsEnabled = !hapticsEnabled;
       LS.set("nazanDodgeHaptics", hapticsEnabled);
       syncHapticsBtn();
-      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate(20); }catch(e){} }   // a confirming tick when switched on
+      // A clear confirming double-buzz the instant it's switched ON — fired straight from this
+      // tap (a user gesture, which some mobile browsers require) and deliberately longer than the
+      // subtle in-game ticks so there's no doubt the vibrations actually came back on.
+      if(hapticsEnabled){ try{ if(navigator.vibrate) navigator.vibrate([30, 40, 30]); }catch(e){} }
     }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
@@ -2091,6 +2132,19 @@
       const p = [];
       for(let i = 0; i < n; i++){ if(i) p.push(22); p.push(10); }
       return p;
+    }
+    // Egan Mode catch buzz: a soft tick that LENGTHENS with the combo, so a hot catching
+    // streak builds in the hand the same way it climbs in pitch (sfx.eganCatch) — capped so
+    // it stays a tick and never a rumble. Golden egans and the catch target get their own
+    // distinctive patterns below (EGAN_GOLD_BUZZ / EGAN_TARGET_BUZZ).
+    const EGAN_CATCH_BUZZ_MIN  = 12;   // ms for a lone (combo x1) catch
+    const EGAN_CATCH_BUZZ_STEP = 5;    // each extra combo level adds this…
+    const EGAN_CATCH_BUZZ_MAX  = 45;   // …up to this ceiling
+    const EGAN_GOLD_BUZZ   = [16, 28, 44];          // a richer rising triple-pulse for a prized golden egan
+    const EGAN_TARGET_BUZZ = [45, 55, 45, 55, 75];  // a triumphant little roll the instant you hit the round's target
+    function eganComboBuzz(combo){
+      const n = Math.max(1, combo | 0);
+      return Math.min(EGAN_CATCH_BUZZ_MAX, EGAN_CATCH_BUZZ_MIN + (n - 1) * EGAN_CATCH_BUZZ_STEP);
     }
     function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
@@ -2152,7 +2206,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
-      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; pickupTimer = PICKUP_FIRST; eganRewardType = null;
+      blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; eatGrace = 0; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
       // Egan Mode: clear any live round and re-arm the first milestone for this run.
@@ -2360,6 +2414,19 @@
       try{ sfx.powerAppear(); }catch(e){}
     }
 
+    // Roughly how many seconds until the next Egan round arms, based on the steady survival
+    // score drip (step() adds ~SCORE_SURVIVAL_RATE points/second; power-up bonuses only make it
+    // arrive SOONER, so this is a safe upper bound). Infinity when Egan Mode is off or a round
+    // is already running. Used to avoid dangling a power-up the player can't reach before Egan
+    // Mode sweeps it away (see updatePickups()).
+    const SCORE_SURVIVAL_RATE = 10;   // must match the `score += dt * 10` survival drip in step()
+    function secondsToEgan(){
+      if(!eganEnabled() || eganPhase) return Infinity;
+      const outsideScore = score - eganPointsTotal;
+      const remaining = nextEganThreshold - outsideScore;
+      if(remaining <= 0) return 0;
+      return remaining / SCORE_SURVIVAL_RATE;
+    }
     // Advance the pickup lifecycle each frame: let the player collect the on-screen
     // pickup by touching it, expire it if ignored too long, and time the next spawn.
     function updatePickups(dt){
@@ -2417,6 +2484,11 @@
           // The Egan catch-target reward is a power-up placed right by the player; any
           // other timed spawn is a normal random pickup somewhere on the board.
           if(eganRewardType){ const t = eganRewardType; eganRewardType = null; spawnPickupNear(t); }
+          // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
+          // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
+          // off and re-check shortly. After Egan Mode the spawn timer is reset (exitEgan), so the
+          // power-up simply appears once the player is back rather than being missed on entry.
+          else if(secondsToEgan() < PICKUP_LIFE){ pickupTimer = PICKUP_RESPAWN; }
           else spawnPickup();
         }
       }
@@ -2545,7 +2617,7 @@
       pickup = null;                // and clear any uncollected pickup on screen
       // Wipe any leftover power-up state AND its lingering visual fragments (blast rings, boom
       // puffs, zap arcs/sparks, the star trail) so none of it bleeds into the clean Egan backdrop.
-      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null;
+      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; eatGrace = 0;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = [];
       if(promptEl){ promptEl.className = ""; promptEl.textContent = ""; promptClass = promptText = ""; }
       // Egan Mode gets its OWN look and music so it reads as a separate minigame, not the
@@ -2687,10 +2759,14 @@
               // Escalating catch sound: golden ones get a richer flourish, normal ones a
               // blip that climbs in pitch with the combo.
               try{ if(s.gold) sfx.eganGold(); else sfx.eganCatch(eganCombo); }catch(err){}
+              // ...and a matching buzz on touch: golden egans get an unmistakable triple-pulse,
+              // ordinary catches a tick that lengthens with the combo so a streak builds in the hand.
+              haptic(s.gold ? EGAN_GOLD_BUZZ : eganComboBuzz(eganCombo));
               // Hitting the round's catch target is celebrated once, with a fanfare + badge.
               if(!eganTargetHit && eganCaught >= EGAN_TARGET){
                 eganTargetHit = true;
                 try{ sfx.eganTarget(); }catch(err){}
+                haptic(EGAN_TARGET_BUZZ);   // a triumphant roll the moment you bag the 25th
                 achieve("egan_target", "🥚", "Egan Catcher",
                         "You caught " + EGAN_TARGET + " Egans in a single Egan Mode round — a free power-up is waiting when you get back!");
               }
@@ -2812,7 +2888,7 @@
         }
       }
       spawnAcc = 0;
-      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; pickup = null;
+      held = null; heldTimer = 0; heldBeepT = 0; activeEffect = null; eatGrace = 0; pickup = null;
       // Reward for clearing the catch target: a well-placed power-up drawn from the SAME regular
       // rotation as any normal pickup (rollPickupType) — so it can be ANY power-up, not the
       // guaranteed eat/bomb kill it used to always be. That kept the step-up from feeling too
@@ -3011,6 +3087,10 @@
         if(activeEffect.time <= 0){
           // The power lapses NOW — its protective effect and its on-screen cue end together
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
+          // Eating Mode is the lone exception: arm a whisper-thin devour grace (EAT_GRACE) so a
+          // Nazan reached at the very last instant is still eaten, not fatal (see the collision
+          // loop + draw()). Every other effect ends hard, exactly as before.
+          if(activeEffect.type === "eat") eatGrace = EAT_GRACE;
           activeEffect = null;
           try{ sfx.expireEnd(); }catch(err){}
           haptic([36, 40, 50]);   // a firm down-buzz that lands with the "time's up!" cue
@@ -3043,6 +3123,8 @@
           }
         }
       }
+      // Run down Eating Mode's last-instant devour grace (armed when eat lapses, above).
+      if(eatGrace > 0) eatGrace = Math.max(0, eatGrace - dt);
       // Keep the background music in step with the active power-up (eat / star).
       syncMusicMode();
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
@@ -3311,11 +3393,11 @@
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
-          if(activeEffect && activeEffect.type === "eat"){
+          if((activeEffect && activeEffect.type === "eat") || eatGrace > 0){
             enemies.splice(i, 1); score += KILL_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
-            haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode
+            haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode (incl. the grace tail)
             continue;
           }
           // Star Power: invincible like Mario Kart's star — barge straight through any
@@ -3606,6 +3688,16 @@
           ctx.save(); ctx.globalAlpha = 0.4; drawSticker(player, true); ctx.restore();
         } else if(activeEffect && activeEffect.type === "eat"){
           drawSticker(player, true, "#e8743b");   // hungry golden ring
+        } else if(eatGrace > 0){
+          // Eating Mode's whisper-thin grace tail: keep the Nazan fully solid but let its hungry
+          // ring linger and dim fast over the few frames the last-instant devour stays live, so
+          // the eat reads as "just barely" carrying over rather than a fresh power-up.
+          drawSticker(player, false);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, eatGrace / EAT_GRACE);
+          ctx.beginPath(); ctx.arc(player.x, player.y, player.r + 4, 0, Math.PI * 2);
+          ctx.lineWidth = 5; ctx.strokeStyle = "#e8743b"; ctx.stroke();
+          ctx.restore();
         } else if(activeEffect && activeEffect.type === "star"){
           // Mario Kart star: a shimmering rainbow halo that cycles colour fast, plus a
           // ring of twinkling sparkles, so invincibility reads instantly.
@@ -3711,6 +3803,7 @@
     function gameOver(){
       running = false;
       haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
+      eatGrace = 0;
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
@@ -3867,6 +3960,7 @@
     }
     function close(){
       running = false;
+      eatGrace = 0;
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}
