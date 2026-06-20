@@ -1138,6 +1138,14 @@
         tone({ type:"square",   f0:680,  dur:0.22, vol:0.32, t0:0.08 });
         tone({ type:"triangle", f0:340,  dur:0.26, vol:0.16, t0:0.08 });   // low body so it lands with weight
       },
+      // A subtle airy "swoosh" for when you flick your Nazan a long way across the arena
+      // with a single tap on touch — a quick band-passed noise sweep (a bright rush up with
+      // a softer body settling behind it) so the long dart carries a little air with it.
+      // Deliberately quiet: a satisfying whisper that rewards the gesture, never a honk.
+      swoosh(){
+        noise({ f0:360, f1:1700, dur:0.16, q:1.1, vol:0.06 });          // airy rush upward
+        noise({ f0:900, f1:300,  dur:0.18, q:0.9, vol:0.04, t0:0.02 }); // a softer body settling behind it
+      },
       // A bright, playful "a power-up appeared!" alert: a quick sparkling rising
       // arpeggio capped with a twinkling shimmer, so a fresh pickup grabs your
       // attention and feels like a fun invitation to go get it.
@@ -1952,7 +1960,18 @@
     }
     // ----- Haptics (vibration) helpers -----
     // The phone can vibrate, so a vibration toggle is worth showing.
-    function hapticsSupported(){ return !!(navigator && navigator.vibrate); }
+    // Whether this is a touch device (phone/tablet) — where a vibration toggle is meaningful
+    // and the player can actually feel the buzz. We key the toggle's visibility off this rather
+    // than off navigator.vibrate alone, because that feature check is unreliable: it's missing on
+    // some phones that DO buzz and present on desktop browsers that DON'T, which left mobile
+    // players unable to find the haptics control.
+    function isTouchDevice(){
+      try{
+        return ("ontouchstart" in window) || ((navigator && navigator.maxTouchPoints) > 0) ||
+               (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+      }catch(e){ return false; }
+    }
+    function hapticsSupported(){ return isTouchDevice() || !!(navigator && navigator.vibrate); }
     function syncHapticsBtn(){
       const b = $("#gameHaptics"); if(!b) return;
       b.textContent = hapticsEnabled ? "📳" : "📴";
@@ -1990,12 +2009,28 @@
       const ar = W / Math.max(1, H);
       return Math.max(ARENA_DIFF_MIN, Math.min(ARENA_DIFF_MAX, ar));
     }
+    // Radius-based area power-ups (Shove, Boom, Force Field) reach a fixed fraction of
+    // base() = min(W, H). On a tall portrait phone base() is the *narrow* width, so the same
+    // fraction sweeps a much smaller slice of the tall arena than it does on a near-square
+    // desktop — which is why the Boom (and Shove / Force Field) feel weaker on mobile. Scale
+    // their reach up with how portrait the arena is so they clear a comparable share of the
+    // crowd on any screen, keeping the power-ups consistent across mobile and desktop.
+    const AOE_TALL_BOOST = 0.4;   // extra reach at full portrait (ar ≤ 0.55), as a fraction
+    function aoeReach(frac){ return base() * frac * (1 + AOE_TALL_BOOST * tallness()); }
     // A short haptic buzz on touch devices (desktops/unsupported browsers no-op). Used
     // for the moments that matter — death, firing a power-up, grabbing a pickup, and the
     // accelerating wind-down warning before a timed power-up lapses — so the smaller phone
     // screen gets a little physical feedback to lean on. Honours the player's haptics
     // toggle so it can be silenced on mobile.
     function haptic(pattern){ try{ if(hapticsEnabled && navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+    // Chain Zap's kill buzz: one soft 10ms tick per Nazan vaporised (capped at 5) with brief
+    // gaps between, so a bigger zap feels bigger without ever becoming a long rumble.
+    function zapKillBuzz(kills){
+      const n = Math.max(1, Math.min(5, kills | 0));
+      const p = [];
+      for(let i = 0; i < n; i++){ if(i) p.push(22); p.push(10); }
+      return p;
+    }
     function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
     function resize(){
@@ -2112,7 +2147,7 @@
     // destroyed — Eating Mode does that); those driven onto an edge sail off the screen and
     // drift back in slowly a few seconds on, the rest just go careening through the crowd.
     function doShove(){
-      const R = base() * 0.62;
+      const R = aoeReach(0.62);
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
@@ -2129,7 +2164,7 @@
     // is deliberately modest, so it clears the cluster around you rather than half the
     // board — bank it, then unleash it right in the thick of the crowd to clear the most.
     function doBomb(){
-      const R = base() * 0.55;
+      const R = aoeReach(0.55);
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         const dx = e.x - player.x, dy = e.y - player.y;
@@ -2158,7 +2193,7 @@
     function doZap(){
       const n = enemies.length;
       zapArcs = null;
-      if(n === 0) return;
+      if(n === 0) return 0;
       const kills = zapCount(n);
       // Target the nearest Nazans to the player.
       const targets = enemies
@@ -2192,6 +2227,7 @@
       }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
       zapArcs = { from: { x: player.x, y: player.y }, pts, t: 0, dur: 0.4 };
+      return targets.length;
     }
 
 
@@ -2203,9 +2239,10 @@
       if(!running || !held) return false;
       const type = held; held = null; heldTimer = 0;
       const def = POWERUPS[type];
+      let zapKills = 0;
       if(type === "shove"){ doShove(); }
       else if(type === "bomb"){ doBomb(); }
-      else if(type === "zap"){ doZap(); }
+      else if(type === "zap"){ zapKills = doZap(); }
       else { activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur }; }
       pickup = null;
       pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
@@ -2216,7 +2253,11 @@
       if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
       else if(type === "shove" || type === "bomb" || type === "zap"){ try{ sfx.powerFire(type); }catch(e){} }
       else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
-      haptic(25);   // a little kick the moment a banked power-up goes off
+      // A little kick the moment a banked power-up goes off. The Chain Zap instead gets a
+      // subtle staccato — one soft tick per Nazan it vaporises (capped) — so a bigger zap
+      // genuinely feels bigger in the hand.
+      if(type === "zap" && zapKills > 0){ haptic(zapKillBuzz(zapKills)); }
+      else { haptic(25); }
       return true;
     }
 
@@ -2837,7 +2878,7 @@
           // (no silent grace tail). Stamp the moment with a clear "time's up!" marker.
           activeEffect = null;
           try{ sfx.expireEnd(); }catch(err){}
-          haptic([50, 40, 70]);   // a firm down-buzz that lands with the "time's up!" cue
+          haptic([36, 40, 50]);   // a firm down-buzz that lands with the "time's up!" cue
           updatePrompt();
         } else {
           // Enter the wind-down WARNING window a little over a second before it lapses: the
@@ -2846,7 +2887,7 @@
           // player's own visual cue stay fully live right up to the end.
           if(!activeEffect.warning && activeEffect.time <= EFFECT_WARN){
             activeEffect.warning = true;
-            haptic([30, 50, 30]);   // a firm double-buzz the instant the wind-down begins — "heads up, it's running out"
+            haptic([22, 50, 22]);   // a firm double-buzz the instant the wind-down begins — "heads up, it's running out"
             updatePrompt();
           }
           // Through that final window, an accelerating countdown "beep beep": the cadence
@@ -2857,7 +2898,7 @@
               const frac = Math.max(0, activeEffect.time / EFFECT_WARN);   // 1 → 0 across the window
               const intensity = 1 - frac;                                  // 0 → 1 as zero nears
               try{ sfx.expireBeep(intensity); }catch(err){}
-              haptic(Math.round(14 + intensity * 30));   // each buzz lengthens in step with the beep so the phone "feels" the countdown
+              haptic(Math.round(10 + intensity * 22));   // each buzz lengthens in step with the beep so the phone "feels" the countdown
               activeEffect.beepT = BEEP_INTERVAL_MIN + BEEP_INTERVAL_RANGE * frac;   // ~0.34s apart easing down to ~0.16s
             }
           }
@@ -2918,7 +2959,7 @@
       // — it shoves them off a bubble around the player (see below).
       const envMul = (activeEffect && activeEffect.type === "snail") ? 0.12 : 1;
       const repelOn = !!(activeEffect && activeEffect.type === "repel");
-      const repelR  = base() * REPEL_RADIUS;
+      const repelR  = aoeReach(REPEL_RADIUS);
       // While Eating Mode is running, Nazans skitter away from the player so hoovering up
       // the whole board takes a proper chase. The flee lasts as long as the eating itself
       // (and its visual ring) — they end together, never one without the other.
@@ -2992,6 +3033,7 @@
             const nx = dx / d, ny = dy / d;
             try{ sfx.bump(2, e.img ? e.img.src : "field"); }catch(err){}   // satisfying springy deflect
             banish(e, nx, ny, FIELD_BANISH_SPEED);        // gently sent off-screen, no wall bounce
+            haptic(8);   // an even subtler nudge as the Force Field deflects a Nazan off its skin
             continue;
           }
         }
@@ -3119,6 +3161,7 @@
             enemies.splice(i, 1); score += 10;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
+            haptic(12);   // a subtle tick each time you devour a Nazan in Eating Mode
             continue;
           }
           // Star Power: invincible like Mario Kart's star — barge straight through any
@@ -3132,6 +3175,7 @@
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.bump(3, "powerup-star-bump-" + (e.img ? e.img.src : i)); }catch(err){}   // satisfying barge-through smack
             try{ sfx.boing(4, "powerup-star-" + (e.img ? e.img.src : i)); }catch(err){}
+            haptic(8);   // an even subtler nudge as you barge a Nazan aside with Star Power
             continue;
           }
           if(activeEffect && activeEffect.type === "ghost") continue;
@@ -3227,7 +3271,7 @@
       // Expanding shockwave ring when a Shove just fired.
       if(blastFx > 0 && player){
         const k = 1 - blastFx / 0.45;            // 0 → 1 over the effect's life
-        const R = base() * 0.62 * (0.3 + 0.7 * k);
+        const R = aoeReach(0.62) * (0.3 + 0.7 * k);
         ctx.save();
         ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
         ctx.lineWidth = 4; ctx.strokeStyle = "rgba(61,80,118," + (0.6 * (1 - k)).toFixed(3) + ")";
@@ -3239,7 +3283,7 @@
       // so it reads as an explosion that wiped them out — not a Shove that pushed them.
       if(boomFx > 0 && player){
         const k = 1 - boomFx / 0.6;             // 0 → 1 over the effect's life
-        const R = base() * 0.55 * (0.25 + 0.85 * k);
+        const R = aoeReach(0.55) * (0.25 + 0.85 * k);
         ctx.save();
         const grad = ctx.createRadialGradient(player.x, player.y, R * 0.4, player.x, player.y, R);
         grad.addColorStop(0, "rgba(255,210,90," + (0.45 * (1 - k)).toFixed(3) + ")");
@@ -3335,7 +3379,7 @@
       // Force Field: a clearly visible energy bubble around the player, so the push
       // dome shoving Nazans off its skin is obvious at a glance.
       if(activeEffect && activeEffect.type === "repel" && player){
-        const R = base() * REPEL_RADIUS;
+        const R = aoeReach(REPEL_RADIUS);
         const t = elapsed;
         ctx.save();
         ctx.translate(player.x, player.y);
@@ -3699,6 +3743,14 @@
           downOnPlayer = (dx * dx + dy * dy <= reach * reach);
         }
         setP(e);
+        // A tap that lands far from where your Nazan currently sits sends it darting a long
+        // way across the arena — reward that satisfying long flick with a subtle airy swoosh
+        // (touch only; a tap right by your Nazan or to fire a power-up stays silent).
+        if(running && player && e.pointerType === "touch" && !downOnPlayer){
+          const jx = pointer.x - player.x, jy = pointer.y - player.y;
+          const flick = base() * 0.33;
+          if(jx * jx + jy * jy > flick * flick){ try{ sfx.swoosh(); }catch(err){} }
+        }
       });
       canvas.addEventListener("pointermove", (e)=>{ if(running){ e.preventDefault(); setP(e); } }, { passive:false });
       const endTap = (e)=>{
