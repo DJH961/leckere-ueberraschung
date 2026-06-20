@@ -1669,8 +1669,10 @@
     const EGAN_SPAWN_MAX = 1.1;      // longest gap between egans (early, calmer part of the round)
     const EGAN_SPAWN_MIN = 0.45;     // shortest gap between egans (late, busier part of the round)
     const EGAN_SPEED_SLOW = 0.006;   // per-frame travel (fraction of base()) early in the round
-    const EGAN_SPEED_FAST = 0.020;   // per-frame travel (fraction of base()) by the end of the round
+    const EGAN_SPEED_FAST = 0.024;   // per-frame travel (fraction of base()) by the end of the round
     const EGAN_SPEED_JITTER = 0.6;   // ±spread multiplier so each egan's speed is randomised
+    const EGAN_FINAL_BOOST = 1.18;   // extra speed kick on the closing stretch (prog→1) so the last egans bite
+    const EGAN_MAX_ANGLE = 1.05;     // steepest launch angle off horizontal (~60°); each egan picks its own
     const EGAN_RESUME_ENEMIES   = 3;     // Nazans re-seeded into the cooled-down arena on resume
     const EGAN_RESUME_SPEED_MUL = 0.6;   // knock the re-seeded Nazans a tad slower than a fresh spawn
     const EGAN_RESUME_PICKUP    = 1.5;   // serve a power-up this soon after the round ends
@@ -2169,20 +2171,25 @@
       try{ sfx.stopVoices(); }catch(e){}
       try{ sfx.starPower(); }catch(e){}   // a celebratory "new mode!" sting
     }
-    // Send one egan flying in from the left edge to a random exit height on the right, on a
-    // straight diagonal. Speed climbs across the round (prog 0→1) but is always jittered, so
-    // they start slower and get faster while never marching in at a uniform pace.
+    // Send one egan flying in from a random side edge toward the opposite side, on a straight
+    // line at its own pitched angle. Speed climbs across the round (prog 0→1), is always
+    // jittered, and gets an extra kick on the closing stretch so the last egans bite — and
+    // each egan now picks a side AND a steeper, more varied angle so they cut across the arena.
     function spawnEgan(prog){
       const r = Math.max(20, base() * 0.05);
-      const startY = r + Math.random() * Math.max(1, H - 2 * r);
-      const endY   = r + Math.random() * Math.max(1, H - 2 * r);
       const slow = base() * EGAN_SPEED_SLOW, fast = base() * EGAN_SPEED_FAST;
-      const baseSpeed = slow + (fast - slow) * Math.min(1, prog);
-      const vx = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
-      const totalDist = W + 2 * r;                       // left edge to right edge
-      const vy = (endY - startY) * vx / totalDist;       // slope so it lands on endY as it exits
+      let baseSpeed = slow + (fast - slow) * Math.min(1, prog);
+      baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * Math.min(1, prog);   // late-round bite
+      const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
+      const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
+      const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
+      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // steeper, more diverse pitch
+      const vx = dir * speed * Math.cos(angle);
+      const vy = speed * Math.sin(angle);
+      const startX = fromLeft ? -r : W + r;
+      const startY = r + Math.random() * Math.max(1, H - 2 * r);
       const img = eganBag.length ? eganBag.pop() : null;   // each sticker shown once per round
-      eganStickers.push({ x: -r, y: startY, vx, vy, r, img,
+      eganStickers.push({ x: startX, y: startY, vx, vy, r, img,
                           rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.05 });
     }
     // The minigame's own per-frame tick: title → catching → end card, then hand back.
@@ -2218,11 +2225,11 @@
           const interval = EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog);
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
-        // Fly each egan along its diagonal; no walls — one that sails off the right is gone.
+        // Fly each egan along its line; no walls — once one sails fully off any edge it's gone.
         for(let i = eganStickers.length - 1; i >= 0; i--){
           const s = eganStickers[i];
           s.x += s.vx; s.y += s.vy; s.rot += s.vr;
-          if(s.x > W + s.r){ eganStickers.splice(i, 1); continue; }
+          if(s.x > W + s.r || s.x < -s.r || s.y > H + s.r || s.y < -s.r){ eganStickers.splice(i, 1); continue; }
           // Catch: overlap the player to bank the points and pop it with a little burst.
           if(player){
             const dx = s.x - player.x, dy = s.y - player.y;
