@@ -1776,6 +1776,7 @@
     // behind the safe-distance spawn check — even if a spawn lands near a cornered player, the
     // player still gets a reaction window instead of an instant, unavoidable death.
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
+    const MIN_SPAWN_DUR = 0.001;  // guard against divide-by-zero if a custom spawn telegraph duration is ever zeroed out
     const NICO_DOOM_SPAWN = 1.15; // first-run nico gag: a longer, fully readable materialise-in before the loss lands
     const NICO_DOOM_HOLD  = 0.28; // and a tiny fully-formed beat so the reveal actually registers
     const SPAWN_AIM_CONE = Math.PI / 5;  // a new Nazan's heading is kept at least this far off a straight line at the player
@@ -2749,6 +2750,12 @@
       updatePrompt();
       return true;
     }
+    function tickSpawnGrace(e, dt){
+      if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
+    }
+    function spinEnemy(e, mul){
+      e.rot += e.vr * (mul == null ? 1 : mul);
+    }
 
     // Drop a single, visually distinct power-up somewhere open on the field. Only ever
     // one exists at a time, and never while the player is already holding one.
@@ -3535,8 +3542,8 @@
         elapsed += dt;
         nicoDoomTimer = Math.max(0, nicoDoomTimer - dt);
         for(const e of enemies){
-          if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
-          e.rot += e.vr * dt;
+          tickSpawnGrace(e, dt);
+          spinEnemy(e);
         }
         if(score !== 0){
           score = 0;
@@ -3772,7 +3779,7 @@
         if(e.shoveT > 0) e.shoveT -= dt;
         // Count down the materialise grace too (harmless + fading in while it lasts; see the
         // collision loop, which skips a Nazan with spawnT > 0, and draw()).
-        if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
+        tickSpawnGrace(e, dt);
         if(envMul > 0){
           // Each Nazan speeds up the longer it has been on screen: it eases toward a
           // target speed that climbs with its age (capped so it stays survivable).
@@ -3796,7 +3803,7 @@
             }
           }
         }
-        e.x += e.vx * envMul; e.y += e.vy * envMul; e.rot += e.vr * envMul;
+        e.x += e.vx * envMul; e.y += e.vy * envMul; spinEnemy(e, envMul);
         // Force Field: a planted DEFENSIVE bubble. Any Nazan that touches the bubble is GENTLY
         // pushed off the screen — no hard yeet, and no need to corner it against a wall. It's
         // banished outward straight away (FIELD_BANISH_SPEED) and coasts cleanly past the nearest
@@ -4167,7 +4174,7 @@
       // non-lethal grace window it is (see SPAWN_GRACE + the collision loop).
       for(const e of enemies){
         if(e.spawnT > 0){
-          const spawnDur = Math.max(0.001, e.spawnDur || SPAWN_GRACE);
+          const spawnDur = Math.max(MIN_SPAWN_DUR, e.spawnDur || SPAWN_GRACE);
           const f = 1 - e.spawnT / spawnDur;             // 0 (just spawned) → 1 (fully arrived)
           ctx.save();
           ctx.globalAlpha = 0.25 + 0.75 * f;
