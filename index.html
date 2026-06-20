@@ -117,6 +117,27 @@
     .sticker-row{display:none;}
   }
 
+  /* ===== MUN clock (the honest-reaction sticker for the current hour) ===== */
+  .mun-clock{display:flex; align-items:center; gap:22px; max-width:560px; margin:54px auto 0;
+    padding:18px 22px; border:1px solid var(--card-border); border-radius:20px;
+    background:linear-gradient(135deg, rgba(201,223,240,.45), rgba(255,255,255,.85));
+    box-shadow:0 12px 30px rgba(61,80,118,.14);}
+  .mun-clock[hidden]{display:none;}
+  .clock-sticker{margin:0; flex:0 0 auto; width:120px; height:150px; border-radius:14px;
+    overflow:hidden; background:#fff; border:1px solid var(--card-border);
+    box-shadow:0 6px 16px rgba(61,80,118,.18); display:flex; align-items:center; justify-content:center;}
+  .clock-sticker img{width:100%; height:100%; object-fit:contain; display:block;}
+  .clock-info{flex:1 1 auto; min-width:0; text-align:left;}
+  .clock-kicker{font-size:.78rem; font-weight:800; letter-spacing:.6px; text-transform:uppercase;
+    color:var(--accent2);}
+  .clock-time{font-size:clamp(2rem,8vw,2.8rem); font-weight:800; color:var(--navy);
+    line-height:1.05; margin:4px 0 6px; font-variant-numeric:tabular-nums;}
+  .clock-caption{color:var(--muted); font-size:.92rem; line-height:1.4;}
+  @media (max-width:560px){
+    .mun-clock{flex-direction:column; text-align:center; gap:14px; margin-top:40px; padding:16px;}
+    .clock-info{text-align:center;}
+  }
+
   /* ===== Footer ===== */
   footer{text-align:center; margin-top:80px; padding-top:30px; border-top:1px solid rgba(61,80,118,.18);}
   footer .lakemun img{width:140px; height:auto; transition:transform .2s ease;
@@ -175,6 +196,8 @@
     background:linear-gradient(180deg,#0a0f1a 0%,#0e1320 55%,#10182a 100%);
   }
   body.dark .track, body.dark .fun-btn{background:var(--card);}
+  body.dark .mun-clock{background:linear-gradient(135deg, rgba(40,53,82,.55), rgba(22,29,46,.75));}
+  body.dark .clock-sticker{background:var(--card);}
   body.dark #gate{background:radial-gradient(900px 500px at 50% 38%, #161d2e, #0a0f1a);}
   body.dark #victimCount{background:rgba(159,192,236,.12);}
 
@@ -315,6 +338,16 @@
       <div class="status">Summoning the legend from the archives…</div>
     </div>
     <div class="sticker-row" id="stickersBottom"></div>
+
+    <!-- ===== MUN clock: the "honest reaction" sticker for the current hour ===== -->
+    <section id="munClock" class="mun-clock" hidden aria-label="The MUN clock — current hour">
+      <figure class="clock-sticker"><img id="clockImg" alt="" /></figure>
+      <div class="clock-info">
+        <div class="clock-kicker">🕒 The MUN Clock</div>
+        <div class="clock-time" id="clockTime">--:--</div>
+        <div class="clock-caption" id="clockCaption">Nazan's honest reaction, hour by hour.</div>
+      </div>
+    </section>
 
     <footer>
       <a class="lakemun" href="https://www.lakemunconference.com/" target="_blank" rel="noopener">
@@ -887,6 +920,54 @@ async function loadStickers(){
 }
 
 loadAudio().then(loadStickers);
+
+/* ---------------- MUN clock ----------------
+   The stickers/clock/ folder holds one "honest <time> reaction" sticker per
+   hour, named HH-label (e.g. 21-9pm). We parse the HH prefix, then show the
+   sticker for the current hour next to a live digital clock. */
+const CLOCK_DIR = STICKER_DIR + "/clock";
+
+async function loadClock(){
+  if(REPO.startsWith("YOUR_GITHUB")) return;
+  let files = [];
+  try{ files = await listRepoFiles(CLOCK_DIR, [".png",".jpg",".jpeg",".webp",".gif"]); }catch(e){ return; }
+  if(!files.length) return;
+
+  // Map 24h hour → sticker URL via the leading "HH" in the filename.
+  const byHour = {};
+  files.forEach(f=>{
+    const m = /^(\d{1,2})/.exec(f.name);
+    if(!m) return;
+    const h = parseInt(m[1],10);
+    if(h>=0 && h<=23 && byHour[h]===undefined) byHour[h] = encodeURI(f.path);
+  });
+  if(!Object.keys(byHour).length) return;
+
+  const sec   = document.getElementById("munClock");
+  const img   = document.getElementById("clockImg");
+  const timeEl= document.getElementById("clockTime");
+  const capEl = document.getElementById("clockCaption");
+  const label = h => h===0 ? "midnight" : h===12 ? "noon" : (h%12 || 12) + (h<12 ? "am" : "pm");
+
+  let lastHour = -1;
+  function tick(){
+    const now = new Date();
+    const h = now.getHours();
+    timeEl.textContent = String(h).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+    if(h !== lastHour){
+      // Use the exact hour if present, else fall back to the nearest earlier one.
+      let pick = byHour[h];
+      for(let d=1; pick===undefined && d<24; d++) pick = byHour[(h-d+24)%24];
+      if(pick) img.src = pick;
+      img.alt = capEl.textContent = "Nazan's honest " + label(h) + " reaction.";
+      lastHour = h;
+    }
+  }
+  tick();
+  sec.hidden = false;
+  setInterval(tick, 20000);   // keep the digital time fresh; sticker swaps on the hour
+}
+loadClock();
 
 /* ---------------- Auto favicon ----------------
    Drop ANY image (any size, png/jpg/webp/gif/svg) into the /favicon folder.
