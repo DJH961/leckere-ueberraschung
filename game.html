@@ -1654,8 +1654,8 @@
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
-    const EGAN_FIRST   = 500;        // score that arms the FIRST egan round
-    const EGAN_STEP    = 1500;       // gap between rounds after that (500, 2000, 3500, …)
+    const EGAN_FIRST   = 1000;       // score that arms the FIRST egan round
+    const EGAN_STEP    = 1500;       // gap between rounds after that (1000, 2500, 4000, …)
     const EGAN_INTRO_TIME = 2.2;     // seconds of the "EGAN MODE" title flourish
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
     const EGAN_PLAY_TIME  = 12;      // seconds egans keep spawning before the round winds down
@@ -2582,6 +2582,7 @@
       for(let i = enemies.length - 1; i >= 0; i--){
         const e = enemies[i];
         if(e.banished) continue;                  // already flung off-screen, harmless in transit
+        if(e.shoveT > 0) continue;                // freshly shoved/star-barged: being carried off, harmless while it clears the player (otherwise you could die a frame after a banked Shove fires, before the pushed Nazan has actually moved out of your hitbox)
         const dx = e.x - player.x, dy = e.y - player.y;
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
