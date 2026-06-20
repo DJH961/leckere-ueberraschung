@@ -2183,7 +2183,7 @@
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
-      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // steeper, more diverse pitch
+      const angle = (Math.random() - 0.5) * 2 * EGAN_MAX_ANGLE;      // radians: steeper, more diverse pitch
       const vx = dir * speed * Math.cos(angle);
       const vy = speed * Math.sin(angle);
       const startX = fromLeft ? -r : W + r;
