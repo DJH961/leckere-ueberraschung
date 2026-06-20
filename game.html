@@ -2054,7 +2054,7 @@
     // a phone bends it steeply DOWN/UP and sails it off the top/bottom long before it crosses. Restrict
     // the per-egan turn AND the stray band on wide formats (flat 1.0 at 16:9 and narrower, easing down
     // toward ultra-wide) so wide-screen egans stay close to their straight launch line.
-    const EGAN_CURL_PTS = [[1.7778, 1.0], [3.5556, 0.4]];   // curl multiplier: full at 16:9, restricted ultra-wide
+    const EGAN_CURL_PTS = [[1.7778, 1.0], [3.5556, 0.4]];   // curl multiplier vs aspect ratio: full at 16:9 (1.7778), restricted at ~32:9 ultra-wide (3.5556)
     function eganCurlMul(){
       const ar = W / Math.max(1, H);
       return arMap(ar, EGAN_CURL_PTS);
