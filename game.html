@@ -1938,17 +1938,24 @@
       }
       return pts[pts.length - 1][1];
     }
-    // Egan Mode difficulty by aspect ratio (W/H), anchored to the THREE formats that actually
-    // matter: a 9:16 portrait phone (ar≈0.5625), a standard 16:9 screen (ar≈1.778) and an ultra-wide
-    // monitor (32:9, ar≈3.556). The 16:9 screen is the baseline at exactly 1.0; portrait is a touch
-    // harder (1.08, the cramped arena loses some catch room) and ultra-wide is slightly harder again,
-    // rising proportionally with width (32:9 → 1.10). This is a shallow VALLEY with its floor at 16:9,
-    // not a one-way ramp — both extremes sit a little above 1.0. arMap() interpolates the in-between
-    // formats (e.g. 21:9 → ≈1.03) and clamps flat past the first/last anchor.
-    const EGAN_DIFF_PTS = [[0.5625, 1.08], [1.7778, 1.00], [3.5556, 1.10]];
+    // ===== Unified per-screen (aspect-ratio) difficulty =======================================
+    // ONE shared curve drives BOTH the main game (arenaDiff) and Egan Mode (eganDiff), so the
+    // per-format difficulty story lives in a single place. It's anchored to the THREE formats that
+    // actually matter and that must "land" exactly: a 9:16 portrait phone (ar≈0.5625), a standard
+    // 16:9 screen (ar≈1.778) and a 32:9 ultra-wide monitor (ar≈3.556).
+    //   • 16:9 is the baseline at EXACTLY 1.00.
+    //   • A portrait phone has FAR less horizontal room to dodge, so it's the hardest format to
+    //     PLAY — it gets a difficulty advantage and sits a little BELOW 1.0 (0.94). It's easier than
+    //     16:9, but only a touch (deliberately NOT as easy as the old 0.85 arena / 0.70 egan floors).
+    //   • An ultra-wide monitor has the most dodging room, so it's nudged a little ABOVE 1.0 (1.09),
+    //     proportionally to how far its aspect ratio sits from 16:9 (the same per-ar slope as the
+    //     portrait drop, ≈0.05 per ar unit), keeping all three formats close together.
+    // arMap() linearly interpolates the in-between formats (e.g. 21:9 → ≈1.02) and clamps flat past
+    // the first/last anchor. The enemy COUNT cap and the tallness() mercies are tuned separately.
+    const FORMAT_DIFF_PTS = [[0.5625, 0.94], [1.7778, 1.00], [3.5556, 1.09]];
     function eganDiff(){
       const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
-      return arMap(ar, EGAN_DIFF_PTS);
+      return arMap(ar, FORMAT_DIFF_PTS);
     }
     // ---- High-score INTENSITY model ----------------------------------------------------------
     // Top players bomb/eat the board clear over and over; the old refill gave them the SAME slow
@@ -1973,6 +1980,14 @@
       const within = Math.max(0, Math.min(1, (outside - eganStageStart) / span));
       return Math.min(INTENSITY_MAX, eganTier * INTENSITY_TIER_STEP + within * INTENSITY_WITHIN_STAGE);
     }
+    // Egan Mode rides the SAME high-score intensity() as the main game, so a bonus round late in a
+    // strong run is tougher than an early one: faster flight and tighter spawns. Because intensity()
+    // only counts COMPLETED Egan rounds (eganTier), the VERY FIRST Egan round is always at intensity
+    // 0 (no boost) and each later round ramps up from there. Gains are gentle so it stays catchable.
+    const EGAN_INTENSITY_SPEED = 0.10;   // egan flight speed grows by this fraction per intensity unit
+    const EGAN_INTENSITY_RATE  = 0.10;   // egan spawn cadence tightens by this fraction per intensity unit
+    function eganSpeedMul(){ return 1 + intensity() * EGAN_INTENSITY_SPEED; }
+    function eganRateMul(){  return 1 + intensity() * EGAN_INTENSITY_RATE; }
     const EGAN_MAX_ANGLE = 0.42;     // max launch pitch off horizontal (~24°); each egan picks a random pitch up to this.
                                      // Kept low (and the heading is clamped each frame, see eganStep) so egans always
                                      // travel side-to-side and exit LEFT or RIGHT — never steeply off the top or bottom.
@@ -2161,17 +2176,13 @@
       const ar = W / Math.max(1, H);
       return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
     }
-    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's eganDiff),
-    // anchored to the same THREE formats that matter: 9:16 portrait (ar≈0.5625), standard 16:9
-    // (ar≈1.778) and 32:9 ultra-wide (ar≈3.556). 16:9 is the baseline at exactly 1.0; a portrait
-    // phone has far less room to dodge so it sits a touch higher (1.08), and an ultra-wide monitor's
-    // extra dodging room is offset by a slight, proportional bump (32:9 → 1.10). A shallow VALLEY
-    // with its floor at 16:9 — both extremes sit just above 1.0 — so the in-between formats (e.g.
-    // 21:9 → ≈1.03) are interpolated by arMap(). The enemy COUNT cap is tuned separately, not here.
-    const ARENA_DIFF_PTS = [[0.5625, 1.08], [1.7778, 1.00], [3.5556, 1.10]];
+    // Per-screen difficulty for the MAIN game. Shares the SAME unified curve (FORMAT_DIFF_PTS) as
+    // Egan Mode, so a given screen format reads the same difficulty in both modes: 9:16 portrait
+    // ≈0.94 (a small advantage for the cramped arena), 16:9 = 1.00 baseline, 32:9 ultra-wide ≈1.09
+    // (a touch harder for the extra dodging room). The enemy COUNT cap is tuned separately, not here.
     function arenaDiff(){
       const ar = W / Math.max(1, H);
-      return arMap(ar, ARENA_DIFF_PTS);
+      return arMap(ar, FORMAT_DIFF_PTS);
     }
     // Radius-based area power-ups (Shove, Boom, Force Field) reach a fixed fraction of
     // base() = min(W, H). On a tall portrait phone base() is the *narrow* width, so the same
@@ -2742,6 +2753,7 @@
       let baseSpeed = slow + (fast - slow) * p;
       baseSpeed *= 1 + (EGAN_FINAL_BOOST - 1) * p;   // late-round bite
       baseSpeed *= eganDiff();                        // wider screens → faster egans (harder), narrow → calmer
+      baseSpeed *= eganSpeedMul();                     // high-score intensity: later Egan rounds fly faster (first round = 0)
       const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans now come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
@@ -2797,7 +2809,7 @@
         const spawning = eganBagReady ? eganBag.length > 0 : eganRoundT < EGAN_PLAY_TIME;
         if(spawning){
           eganSpawnAcc += dt;
-          const interval = (EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog)) / eganDiff();
+          const interval = (EGAN_SPAWN_MAX - (EGAN_SPAWN_MAX - EGAN_SPAWN_MIN) * Math.min(1, prog)) / (eganDiff() * eganRateMul());
           if(eganSpawnAcc >= interval){ eganSpawnAcc = 0; spawnEgan(prog); }
         }
         // Golden egans: launch each armed bonus egan once the round reaches its scheduled
@@ -3905,10 +3917,11 @@
           "arenaDiff " + arenaDiff().toFixed(3),
           "eganDiff  " + eganDiff().toFixed(3),
           "tallness  " + tallness().toFixed(3),
-          // The three formats that must "land": 9:16 / 16:9 / 32:9 → arena|egan diff at each.
-          "9:16   " + arMap(0.5625, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(0.5625, EGAN_DIFF_PTS).toFixed(2),
-          "16:9   " + arMap(1.7778, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(1.7778, EGAN_DIFF_PTS).toFixed(2),
-          "32:9   " + arMap(3.5556, ARENA_DIFF_PTS).toFixed(2) + "|" + arMap(3.5556, EGAN_DIFF_PTS).toFixed(2),
+          "intensity " + intensity().toFixed(3),
+          // The three formats that must "land": 9:16 / 16:9 / 32:9 → unified format difficulty.
+          "9:16   " + arMap(0.5625, FORMAT_DIFF_PTS).toFixed(2),
+          "16:9   " + arMap(1.7778, FORMAT_DIFF_PTS).toFixed(2),
+          "32:9   " + arMap(3.5556, FORMAT_DIFF_PTS).toFixed(2),
         ];
         const pad = base() * 0.02, lh = Math.max(14, base() * 0.028);
         const top = eganHudTop() + pad * 0.5;
