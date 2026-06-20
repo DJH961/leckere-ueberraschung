@@ -1574,9 +1574,15 @@
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.7;      // Star Power makes the player dash noticeably faster, like a Mario Kart star
     const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
-    const STAR_POINTS = 3;           // points for barging a Nazan aside under Star Power (a PUSH — worth less than a kill)
-    const SHOVE_POINTS = 3;          // points per Nazan a Shove pushes (a PUSH — same as Star, less than a kill)
-    const BOMB_POINTS = 5;           // points per Nazan a Boom KILLS (consistent across the kill power-ups)
+    // Power-up scoring sits on TWO consistent tiers so every action of a kind is worth the same:
+    //   • KILL_POINTS — power-ups that REMOVE a Nazan for good (Eating Mode, Boom, Chain Zap)
+    //   • PUSH_POINTS — power-ups that only DISPLACE a Nazan (Shove, Star Power, Force Field).
+    // A push is worth LESS than a kill, but all pushes match each other and all kills match each other.
+    const KILL_POINTS = 5;
+    const PUSH_POINTS = 3;
+    const STAR_POINTS  = PUSH_POINTS;   // Star Power barges a Nazan aside — a push
+    const SHOVE_POINTS = PUSH_POINTS;   // Shove pushes Nazans away — a push
+    const BOMB_POINTS  = KILL_POINTS;   // Boom destroys Nazans — a kill
     // Banked power-ups (Shove, Boom) can't be hoarded forever: once collected they sit in
     // your hand for at most BANKED_HOLD_TIME seconds, easing into a gentle warning pulse over
     // the final BANKED_BLINK_TIME, then AUTOFIRE on their own if you never spent them.
@@ -1592,7 +1598,7 @@
     // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming and NO extra
     // tap: the moment you grab it, a fork of lightning leaps from the player to the NEAREST
     // Nazans and vaporises them. Like Boom it genuinely REMOVES Nazans.
-    const ZAP_POINTS = 5;            // points per Nazan a Chain Zap KILLS (consistent with the other kill power-ups)
+    const ZAP_POINTS = KILL_POINTS;  // Chain Zap vaporises Nazans — a kill (consistent with Eating Mode / Boom)
     // How many it kills scales with the crowd: always at least ZAP_MIN (when that many are
     // present), about ZAP_FRACTION of the board ("just over half"), capped at ZAP_MAX — so a
     // light board is cleared decisively while a packed one still loses a strong chunk, never all.
@@ -2948,6 +2954,10 @@
             // cornering a Nazan against a wall actually shoves it out of bounds.
             if(sx < e.r + m || sx > W - e.r - m || sy < e.r + m || sy > H - e.r - m){
               banish(e, nx, ny);                          // shoved toward an edge: out of bounds
+              // Force Field clearing a Nazan off-screen banks points too — a PUSH, so it scores
+              // the same as a Shove/Star barge (and less than a kill), keeping the model consistent.
+              score += PUSH_POINTS;
+              if(scoreEl) scoreEl.textContent = String(Math.floor(score));
               continue;
             }
             e.x = sx; e.y = sy;                           // hold it on the bubble's surface
@@ -3076,7 +3086,7 @@
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
           if(activeEffect && activeEffect.type === "eat"){
-            enemies.splice(i, 1); score += BOMB_POINTS;
+            enemies.splice(i, 1); score += KILL_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
