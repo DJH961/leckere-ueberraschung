@@ -1860,10 +1860,19 @@
     // earlier than 4s in, sometimes right at the end, sometimes a few seconds later.
     const PICKUP_AFTER_MIN    = 2;   // soonest a fresh pickup may reappear after one is spent
     const PICKUP_AFTER_WINDOW = 8;   // random spread added on top of the earliest moment
+    // Each COMPLETED Egan round stretches the wait between power-ups a little further, so
+    // pickups grow scarcer the deeper a run goes (capped so they never dry up entirely).
+    const PICKUP_EGAN_TIER_GAP = 1.6;   // extra seconds added to the floor per completed Egan round
+    const PICKUP_EGAN_TIER_MAX = 8;     // ceiling on that cumulative stretch (≈5 rounds in)
+    function eganPickupDelay(){
+      return Math.min(PICKUP_EGAN_TIER_MAX, Math.max(0, eganTier) * PICKUP_EGAN_TIER_GAP);
+    }
     function nextPickupGap(dur){
       // Hold off until the effect's final second at the earliest (instant power-ups, dur 0,
       // keep the plain 2s floor), then add a random slice so the exact moment still varies.
-      const earliest = Math.max(PICKUP_AFTER_MIN, (dur || 0) - 1);
+      // The per-Egan-round stretch pushes the whole window back so power-ups thin out as the
+      // run escalates.
+      const earliest = Math.max(PICKUP_AFTER_MIN, (dur || 0) - 1) + eganPickupDelay();
       return earliest + Math.random() * PICKUP_AFTER_WINDOW;
     }
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
@@ -2047,10 +2056,13 @@
       b.textContent = hapticsEnabled ? "📳" : "📴";
       b.setAttribute("aria-label", hapticsEnabled ? "Turn off vibration" : "Turn on vibration");
     }
-    // Reveal the haptics toggle only on devices that can actually vibrate.
+    // Reveal the haptics toggle only on devices that can actually vibrate. The stylesheet
+    // hides #gameHaptics with `display:none`, so we must set an EXPLICIT display value to show
+    // it — clearing the inline style (display:"") would just fall back to that CSS rule and
+    // leave the button hidden, which is exactly why mobile players couldn't find the toggle.
     function initHapticsBtn(){
       const b = $("#gameHaptics"); if(!b) return;
-      if(hapticsSupported()){ b.style.display = ""; syncHapticsBtn(); }
+      if(hapticsSupported()){ b.style.display = "inline-block"; syncHapticsBtn(); }
       else { b.style.display = "none"; }
     }
     function toggleHaptics(){
