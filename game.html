@@ -2555,6 +2555,9 @@
     const NICO_TINY_SCORE = 750;
     const NICO_INTRO_EAT_TRIGGER = 1;
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
+    function shouldSpawnNicoIntroEat(){
+      return !!(nicoIntroEatPending && activeEffect && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup);
+    }
     function nicoForcedPickupType(){
       if(!isNico()) return null;
       if(nicoTinyOnly){
@@ -2571,9 +2574,11 @@
       const games = LS.get(NICO_KEY, 0);
       LS.set(NICO_KEY, games + 1);
       enemies = [];   // intentional: discard the normal START_NAZANS opening so nico gets his own bespoke board
-      if(games % NICO_DOOM_CYCLE === 0){
-        // First Nico game in each 10-run cycle: stage the lethal spawn right on top of him, but
-        // let the materialise-in fully play (plus a brief fully-visible hold) before the loss screen.
+      const doDoomIntro = (games === 0) || (games > 0 && games % NICO_DOOM_CYCLE === 0);
+      if(doDoomIntro){
+        // First Nico game, then every 10 completed Nico runs after that: stage the lethal spawn
+        // right on top of him, but let the materialise-in fully play (plus a brief fully-visible
+        // hold) before the loss screen.
         // Radius mirrors spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
         const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));
         const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
@@ -3643,7 +3648,7 @@
           // music and the background wash ease back to normal (see syncMusicMode()/draw())
           // and the prompt flips to "wearing off…", while the protective effect and the
           // player's own visual cue stay fully live right up to the end.
-          if(nicoIntroEatPending && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup){
+          if(shouldSpawnNicoIntroEat()){
             nicoIntroEatPending = false;
             spawnPickupNear("eat");
           }
