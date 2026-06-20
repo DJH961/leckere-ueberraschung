@@ -1267,7 +1267,8 @@
     };
     let curName = "default", cur = THEMES.default, pendingName = "default";
     let playing = false, timer = null, step = 0, nextTime = 0, master = null;
-    function stepDur(){ return (60 / cur.bpm) / 2; }            // eighth-note grid for this theme
+    let tempoMul = 1;                                          // global tempo scaler (high-score intensity nudges this up)
+    function stepDur(){ return (60 / (cur.bpm * tempoMul)) / 2; }  // eighth-note grid for this theme (tempo-scaled)
     function totalSteps(){ return STEPS_PER_BAR * cur.prog.length; }
     function ensureMaster(){
       const ctx = getCtx();
@@ -1388,6 +1389,7 @@
         pendingName = name;
         if(!playing){ curName = name; cur = THEMES[name]; }
       },
+      setTempo(m){ tempoMul = Math.max(0.5, Math.min(2, m || 1)); },
       isPlaying(){ return playing; }
     };
   })();
@@ -1572,8 +1574,9 @@
     const SHRINK_MUL = 0.45;         // how small Tiny Mode makes the player
     const STAR_SPEED_MUL = 1.7;      // Star Power makes the player dash noticeably faster, like a Mario Kart star
     const REPEL_SPEED_MUL = 0.22;    // Force Field bogs the player down to a crawl: you can still nudge around to aim your pushes, but barely
-    const STAR_POINTS = 5;           // points banked for barging through a Nazan under Star Power
-    const BOMB_POINTS = 10;          // points banked per Nazan popped by a Boom
+    const STAR_POINTS = 3;           // points for barging a Nazan aside under Star Power (a PUSH — worth less than a kill)
+    const SHOVE_POINTS = 3;          // points per Nazan a Shove pushes (a PUSH — same as Star, less than a kill)
+    const BOMB_POINTS = 5;           // points per Nazan a Boom KILLS (consistent across the kill power-ups)
     // Banked power-ups (Shove, Boom) can't be hoarded forever: once collected they sit in
     // your hand for at most BANKED_HOLD_TIME seconds, easing into a gentle warning pulse over
     // the final BANKED_BLINK_TIME, then AUTOFIRE on their own if you never spent them.
@@ -1589,7 +1592,7 @@
     // finger and stand still, so you usually died mid-aim. Chain Zap needs NO aiming and NO extra
     // tap: the moment you grab it, a fork of lightning leaps from the player to the NEAREST
     // Nazans and vaporises them. Like Boom it genuinely REMOVES Nazans.
-    const ZAP_POINTS = 7;            // points banked per Nazan zapped
+    const ZAP_POINTS = 5;            // points per Nazan a Chain Zap KILLS (consistent with the other kill power-ups)
     // How many it kills scales with the crowd: always at least ZAP_MIN (when that many are
     // present), about ZAP_FRACTION of the board ("just over half"), capped at ZAP_MAX — so a
     // light board is cleared decisively while a packed one still loses a strong chunk, never all.
@@ -1742,6 +1745,10 @@
     let eganCaught  = 0;             // how many egans were caught this round (for the end card)
     let eganPending = false;         // a milestone was crossed; waiting for any power-up to clear
     let nextEganThreshold = 0;       // next score that arms an egan round (set in reset())
+    // High-score intensity bookkeeping: each completed Egan round is a "stage" boundary.
+    let eganTier       = 0;          // how many Egan rounds have been COMPLETED this run (drives the discrete difficulty step-up)
+    let eganArmed      = 0;          // how many Egan thresholds have been crossed (drives the widening gap between rounds)
+    let eganStageStart = 0;          // non-egan score at which the CURRENT stage began (for the subtle within-stage ramp)
     let eganUrls    = [];            // image URLs from stickers/egans (loaded only when enabled)
     let eganImages  = [];            // preloaded egan Image objects
     let eganUrlsRequested = false;   // guard so the egans listing is fetched at most once
@@ -1786,11 +1793,16 @@
     const PICKUP_RESPAWN = 3;        // delay before retrying after one expires uncollected
     // ----- Egan Mode tuning (all only matters when eganEnabled()) -----
     // Rounds are paced by points scored OUTSIDE Egan Mode: the egan catches you bank inside a
-    // round don't count toward the next trigger, so a round always lands a full EGAN_STEP of
-    // *normal* play after the previous one (see step(): outsideScore = score - eganPointsTotal).
+    // round don't count toward the next trigger, so a round always lands a full (and widening)
+    // gap of *normal* play after the previous one (see step(): outsideScore = score - eganPointsTotal).
     const EGAN_FIRST   = 1000;       // non-egan score that arms the FIRST egan round
     const EGAN_TEST_FIRST = 1;       // bug-test backdoor (?egan=test): arm the first round almost instantly
-    const EGAN_STEP    = 1000;       // non-egan points between rounds after that (every 1000 scored outside egan mode)
+    // The gap to the NEXT egan round widens each time, so bonus rounds (and their farmable
+    // points) get rarer the deeper a strong player pushes: 1000, then +1500, +2000, +2500…
+    // up to a cap. eganGap(n) is the gap added after the n-th threshold has been crossed.
+    const EGAN_GAP_STEP = 500;       // each successive Egan stage is this much longer than the last…
+    const EGAN_GAP_MAX  = 3000;      // …up to this ceiling (gaps: 1000, 1500, 2000, 2500, 3000, 3000…)
+    function eganGap(n){ return Math.min(EGAN_GAP_MAX, EGAN_FIRST + EGAN_GAP_STEP * n); }
     const EGAN_INTRO_TIME = 2.2;     // seconds of the "EGAN MODE" title flourish
     const EGAN_OUTRO_TIME = 2.0;     // seconds of the end card before handing back to the game
     const EGAN_PLAY_TIME  = 12;      // seconds egans keep spawning before the round winds down
@@ -1810,6 +1822,29 @@
     function eganDiff(){
       const ar = W / Math.max(1, H);                       // ~0.5 tall phone … ~2.0 wide desktop
       return Math.max(EGAN_DIFF_MIN, Math.min(EGAN_DIFF_MAX, ar / EGAN_DIFF_REF));
+    }
+    // ---- High-score INTENSITY model ----------------------------------------------------------
+    // Top players bomb/eat the board clear over and over; the old refill gave them the SAME slow
+    // trickle of gently-arriving Nazans no matter the score, so an emptied board at 2500 felt no
+    // different from one at 100. intensity() fixes that by scaling the spawn STARTING speed and
+    // the refill RATE for strong runs, leaving the score math (and thus existing leaderboard
+    // scores) untouched. By design it has two parts:
+    //   • a SUBTLE continuous creep as the player advances THROUGH the current Egan stage, and
+    //   • a larger DISCRETE step each time an Egan round is COMPLETED (eganTier++), so the game
+    //     feels a notch harder right AFTER every Egan mode rather than mid-stage.
+    // It only engages once the first Egan stage is reached, so casual sub-1000 play is unchanged.
+    const INTENSITY_WITHIN_STAGE = 0.35;  // most the subtle within-stage creep can add (≈⅓ of a tier step)
+    const INTENSITY_TIER_STEP    = 1.0;   // the firmer jump added per COMPLETED Egan round
+    const INTENSITY_MAX          = 4.5;   // overall cap so it stays fast-but-fair, never impossible
+    function intensity(){
+      // No extra pressure until at least one Egan round has been COMPLETED, so the whole
+      // sub-1000 early game (and any run that never reaches an Egan round) plays exactly as before.
+      if(!eganEnabled() || eganTier <= 0) return 0;
+      const outside = score - eganPointsTotal;
+      // Subtle: 0→1 across the CURRENT stage (last Egan threshold → next one).
+      const span = Math.max(1, nextEganThreshold - eganStageStart);
+      const within = Math.max(0, Math.min(1, (outside - eganStageStart) / span));
+      return Math.min(INTENSITY_MAX, eganTier * INTENSITY_TIER_STEP + within * INTENSITY_WITHIN_STAGE);
     }
     const EGAN_MAX_ANGLE = 0.42;     // max launch pitch off horizontal (~24°); each egan picks a random pitch up to this.
                                      // Kept low (and the heading is clamped each frame, see eganStep) so egans always
@@ -1906,6 +1941,9 @@
       if(activeEffect && !activeEffect.warning) mode = activeEffect.type;
       try{ music.setMode(mode); }catch(e){}
       try{ sfx.setVoiceMode(mode); }catch(e){}   // keep Nazan's voice flavour matched to the mode
+      // High-score intensity tightens the tempo a touch — subtle within a stage, a firmer lift
+      // after each completed Egan round (the step lives in intensity()). Capped so it stays musical.
+      try{ music.setTempo(1 + Math.min(0.2, intensity() * 0.04)); }catch(e){}
     }
     function toggleMusic(){
       musicEnabled = !musicEnabled;
@@ -1938,10 +1976,12 @@
       let x, y;
       if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
       else { x = Math.random() * W; y = Math.random() < 0.5 ? r : H - r; }
-      // New Nazans always arrive GENTLY — no more screaming in at full pace. The
+      // New Nazans normally arrive GENTLY — no more screaming in at full pace. The
       // danger of each one builds from its own time on screen (see the per-enemy
-      // acceleration in step()), not from how late in the round it spawned.
-      const speed = base() * (0.004 + Math.random() * 0.0015);
+      // acceleration in step()), not from how late in the round it spawned. EXCEPTION:
+      // on a high-score run the intensity ramps their STARTING pace up, so a board that a
+      // strong player keeps clearing no longer refills with a slow, harmless trickle.
+      const speed = base() * (0.004 + Math.random() * 0.0015) * (1 + intensity() * 0.5);
       const ang = Math.random() * Math.PI * 2;
       // Never reuse the player's own sticker as an enemy — that's confusing. Pick
       // from the remaining images when more than one is available.
@@ -1980,7 +2020,9 @@
       eganBag = []; eganBagReady = false; eganBagTotal = 0;
       eganCombo = 0; eganComboT = 0; eganComboBest = 0;
       eganGoldLeft = 0; eganGoldAt = []; eganTargetHit = false; eganRoundPoints = 0; eganPointsTotal = 0;
+      eganTier = 0; eganArmed = 0; eganStageStart = 0;   // fresh run: no high-score pressure yet
       nextEganThreshold = eganTestMode() ? EGAN_TEST_FIRST : EGAN_FIRST;
+      try{ music.setTempo(1); }catch(e){}                // and the music tempo starts un-pressured
       try{ music.setMode("default"); }catch(e){}   // a fresh round always opens on the normal theme
       try{ sfx.stopVoices(); }catch(e){}           // drop any chatter left over from the previous run
       try{ sfx.setVoiceMode("default"); }catch(e){}   // and Nazan's voice starts un-tinted
@@ -2043,13 +2085,17 @@
     // drift back in slowly a few seconds on, the rest just go careening through the crowd.
     function doShove(){
       const R = base() * 0.62;
+      let pushed = 0;
       for(const e of enemies){
         const dx = e.x - player.x, dy = e.y - player.y;
         const d = Math.hypot(dx, dy) || 1;
         if(d < R){
           shove(e, dx / d, dy / d);
+          pushed++;
         }
       }
+      // Shove now banks points too (per Nazan pushed), consistent with the other clears.
+      if(pushed){ score += pushed * SHOVE_POINTS; if(scoreEl) scoreEl.textContent = String(Math.floor(score)); }
       blastFx = 0.45;
     }
 
@@ -2536,6 +2582,11 @@
     // resume on their normal schedule (no early freebie).
     function exitEgan(){
       eganPhase = null; eganStickers = []; eganPops = [];
+      // Completing an Egan round steps the difficulty up a notch: the next stretch of normal
+      // play arrives a tad harder (faster starting Nazans, quicker refills) and a touch more
+      // intense (music tempo + a warmer screen). This discrete bump is the "feels harder after
+      // every Egan mode" beat; the within-stage creep on top of it stays subtle (see intensity()).
+      eganTier++;
       if(player){ player.x = W / 2; player.y = H * 0.72; }
       enemies = [];
       // Re-seed a fraction of the crowd that was on screen, clamped to a calm-but-not-empty range.
@@ -2759,7 +2810,7 @@
       // Power-up pickup lifecycle: collecting, expiry and timing the next one.
       updatePickups(dt);
 
-      // Egan Mode: a round arms every EGAN_STEP points scored OUTSIDE egan mode. Egan catches
+      // Egan Mode: a round arms once outsideScore reaches the next (widening) threshold. Egan catches
       // bank into `score` but are tracked in `eganPointsTotal` and subtracted out here, so the
       // points won inside a round never shorten the wait for the next one. It drops in
       // immediately UNLESS a power-up is held or running, in which case it waits for that
@@ -2768,7 +2819,13 @@
         const outsideScore = score - eganPointsTotal;
         if(outsideScore >= nextEganThreshold){
           eganPending = true;
-          while(outsideScore >= nextEganThreshold) nextEganThreshold += EGAN_STEP;
+          // Advance the stage: the current stage now runs from this threshold to the next,
+          // whose gap WIDENS each time (eganGap), so rounds get rarer the further you push.
+          while(outsideScore >= nextEganThreshold){
+            eganStageStart = nextEganThreshold;
+            eganArmed++;
+            nextEganThreshold += eganGap(eganArmed);
+          }
         }
         if(eganPending && !held && !activeEffect){
           eganPending = false; enterEgan();
@@ -2785,11 +2842,21 @@
       // extra Nazan adds time), keeping it around that sweet spot instead of
       // snowballing into an overcrowded wall.
       spawnAcc += dt;
+      const inten = intensity();
       const SPAWN_BASELINE = 4.5;     // Nazan count the base interval is tuned for
       const SPAWN_PER_NAZAN = 0.5;    // seconds added/removed per Nazan off the baseline
-      const crowdAdj = (enemies.length - SPAWN_BASELINE) * SPAWN_PER_NAZAN;
-      const interval = Math.max(1.4, (5 - elapsed * 0.035) + crowdAdj);
-      if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
+      const SPAWN_PER_NAZAN_HIGH = 0.6; // EXTRA seconds added per Nazan once the board is already busy…
+      const SPAWN_HIGH_FROM = 9;      // …above this count, so a fuller board still fills SLOWLY and stays navigable
+      let crowdAdj = (enemies.length - SPAWN_BASELINE) * SPAWN_PER_NAZAN;
+      if(enemies.length > SPAWN_HIGH_FROM) crowdAdj += (enemies.length - SPAWN_HIGH_FROM) * SPAWN_PER_NAZAN_HIGH;
+      // High-score pressure refills an EMPTIED board faster (and lets the interval bottom out
+      // lower), so a strong player who keeps clearing the arena no longer gets the same lazy
+      // trickle back. The crowd slowdown above still keeps a full board from becoming a wall.
+      const refillMul = 1 / (1 + inten * 0.35);
+      const floor = Math.max(0.7, 1.4 - inten * 0.12);
+      const interval = Math.max(floor, ((5 - elapsed * 0.035) + crowdAdj) * refillMul);
+      const cap = 12 + Math.min(4, eganTier);   // the board grows a little for top players, only via completed Egan rounds
+      if(spawnAcc >= interval && enemies.length < cap){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
 
@@ -2852,7 +2919,7 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025);
+            const target = base() * Math.min(0.020 + inten * 0.0015, 0.004 + e.age * 0.00025);
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
@@ -3009,7 +3076,7 @@
         const hit = (e.r + player.r) * 0.7;
         if(dx * dx + dy * dy < hit * hit){
           if(activeEffect && activeEffect.type === "eat"){
-            enemies.splice(i, 1); score += 10;
+            enemies.splice(i, 1); score += BOMB_POINTS;
             if(scoreEl) scoreEl.textContent = String(Math.floor(score));
             try{ sfx.boing(4, "powerup-eat-" + (e.img ? e.img.src : i)); }catch(err){}
             continue;
@@ -3106,6 +3173,21 @@
           ctx.closePath(); ctx.fill();
         }
         ctx.restore();
+      }
+      // Normal arena: a faint warm "heat" vignette that deepens with high-score intensity, so a
+      // strong run visibly runs hotter — barely there mid-stage, a clearer step after each Egan
+      // round. Casual (pre-first-Egan) play has intensity 0, so nothing is drawn then.
+      else if(running){
+        const heat = intensity() / INTENSITY_MAX;
+        if(heat > 0.01){
+          ctx.save();
+          const inner = Math.min(W, H) * 0.32, outer = Math.max(W, H) * 0.78;
+          const vg = ctx.createRadialGradient(W / 2, H / 2, inner, W / 2, H / 2, outer);
+          vg.addColorStop(0, "rgba(214,64,46,0)");
+          vg.addColorStop(1, "rgba(214,64,46," + (0.2 * Math.min(1, heat)).toFixed(3) + ")");
+          ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
       }
       // Full-screen colour wash while a timed power-up runs, so its effect is obvious. As the
       // effect winds down it eases back to normal, so the AMBIENT background returns to rest a
