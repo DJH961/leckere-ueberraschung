@@ -345,7 +345,7 @@
       <div class="clock-info">
         <div class="clock-kicker">🕒 The MUN Clock</div>
         <div class="clock-time" id="clockTime">--:--</div>
-        <div class="clock-caption" id="clockCaption">Nazan's honest reaction, hour by hour.</div>
+        <div class="clock-caption" id="clockCaption">Our honest reaction to you being here, hour by hour.</div>
       </div>
     </section>
 
@@ -960,7 +960,7 @@ async function loadClock(){
       // Walk backwards through the hours to find the closest earlier one we have.
       for(let d=1; pick===undefined && d<24; d++) pick = byHour[(h-d+24)%24];
       if(pick) img.src = pick;
-      img.alt = capEl.textContent = "Nazan's honest " + label(h) + " reaction.";
+      img.alt = capEl.textContent = "Our honest " + label(h) + " reaction to you being here.";
       lastHour = h;
     }
   }
