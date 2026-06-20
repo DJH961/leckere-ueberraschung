@@ -1617,6 +1617,7 @@
     const overPane  = $("#gameOver");
     let promptClass = "", promptText = "";
     let nicoDoom = false;   // set when nico's first game spawn-kills him, for a tailored game-over line
+    let nicoDoomTimer = 0;  // first-run nico intro: hold the lethal spawn on screen long enough to read before cutting to game over
 
     let W = 0, H = 0, dpr = 1;
     let images = [];               // preloaded Nazan sticker images
@@ -1775,6 +1776,8 @@
     // behind the safe-distance spawn check — even if a spawn lands near a cornered player, the
     // player still gets a reaction window instead of an instant, unavoidable death.
     const SPAWN_GRACE = 0.35;     // seconds a new Nazan is non-lethal while it fades in
+    const NICO_DOOM_SPAWN = 1.15; // first-run nico gag: a longer, fully readable materialise-in before the loss lands
+    const NICO_DOOM_HOLD  = 0.28; // and a tiny fully-formed beat so the reveal actually registers
     const SPAWN_AIM_CONE = Math.PI / 5;  // a new Nazan's heading is kept at least this far off a straight line at the player
     // The countdown "beep beep" through that window accelerates: the gap between beeps eases
     // from ~(MIN+RANGE) seconds at the start of the warning down to MIN seconds right at the end.
@@ -2488,7 +2491,7 @@
       if(fresh.length) voicePool = fresh;
       const img = voicePool.length ? voicePool[Math.floor(Math.random() * voicePool.length)] : null;
       enemies.push({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r, img,
-                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0, spawnT: SPAWN_GRACE, noWall: false });
+                     rot: Math.random() * Math.PI * 2, vr: (Math.random() - 0.5) * 0.06, age: 0, shoveT: 0, spawnT: SPAWN_GRACE, spawnDur: SPAWN_GRACE, noWall: false });
       // A new Nazan joining the fray gives a little goofy blip — keyed by its image
       // so each one has its own consistent voice, matching the page's button blips.
       if(running){ try{ sfx.blip(img ? img.src : "nazan-dodge-spawn"); }catch(err){} }
@@ -2496,6 +2499,7 @@
 
     function reset(){
       enemies = []; score = 0; elapsed = 0; spawnAcc = 0; milestone = 0;
+      nicoDoom = false; nicoDoomTimer = 0;
       blastFx = 0; boomFx = 0; boomPuffs = []; zapArcs = null; zapSparks = []; starTrail = []; held = null; heldTimer = 0; heldBeepT = 0; pickup = null; activeEffect = null; eatGrace = 0; pickupTimer = PICKUP_FIRST; eganRewardType = null;
       deleteBias = 0; recentPickupTypes = [];  // fresh run: equal odds, no carried-over cooldowns/bias
       PU_TYPES.forEach(t => { starveBias[t] = 0; });   // ...and no carried-over per-type starvation bias
@@ -2535,7 +2539,7 @@
     // === "nico" easter egg ===
     // A personal welcome for anyone cheeky enough to play under a name containing "nico"
     // (including playful variants like "not nico"). The FIRST time
-    // they play, a Nazan materialises right inside them for an instant spawn kill.
+    // they play, a Nazan materialises right inside them in a short little "gotcha" intro.
     // EVERY game after, they open boxed in by a full board of 12 Nazans — but with an
     // Eating Mode power-up dropped right beside them so they can chomp their way clear.
     const NICO_FULL_BOARD = 12;
@@ -2546,14 +2550,16 @@
       LS.set(NICO_KEY, games + 1);
       enemies = [];   // intentional: discard the normal START_NAZANS opening so nico gets his own bespoke board
       if(games === 0){
-        // First game ever as nico: a Nazan spawns straight on top of him (no grace),
-        // so the very first collision check ends the round on the spot. Radius mirrors
-        // spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
+        // First game ever as nico: stage the lethal spawn right on top of him, but let the
+        // materialise-in fully play (plus a brief fully-visible hold) before the loss screen.
+        // Radius mirrors spawnEnemy()'s own sizing formula so the doom-Nazan matches a normal one.
         const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));
         const img = images.length ? images[Math.floor(Math.random() * images.length)] : null;
         enemies.push({ x: player.x, y: player.y, vx: 0, vy: 0, r, img,
-                       rot: Math.random() * Math.PI * 2, vr: 0, age: 0, shoveT: 0, spawnT: 0, noWall: false });
+                       rot: Math.random() * Math.PI * 2, vr: 0, age: 0, shoveT: 0,
+                       spawnT: NICO_DOOM_SPAWN, spawnDur: NICO_DOOM_SPAWN, noWall: false, doom: true });
         nicoDoom = true;
+        nicoDoomTimer = NICO_DOOM_SPAWN + NICO_DOOM_HOLD;
         return;
       }
       // Returning nico: a packed opening board, plus an Eating Mode escape hatch beside him.
@@ -3512,6 +3518,24 @@
         raf = requestAnimationFrame(step);
         return;
       }
+      // nico's first-run gag is a tiny cinematic: let the Nazan fully materialise on top of the
+      // player, hold it for a beat, then cut straight to the loss screen — and keep the score at 0.
+      if(nicoDoomTimer > 0){
+        elapsed += dt;
+        nicoDoomTimer = Math.max(0, nicoDoomTimer - dt);
+        for(const e of enemies){
+          if(e.spawnT > 0) e.spawnT = Math.max(0, e.spawnT - dt);
+          e.rot += e.vr * dt;
+        }
+        if(score !== 0){
+          score = 0;
+          if(scoreEl) scoreEl.textContent = "0";
+        }
+        draw();
+        if(nicoDoomTimer <= 0){ gameOver(); return; }
+        raf = requestAnimationFrame(step);
+        return;
+      }
       elapsed += dt;
       score += dt * 10;
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
@@ -4120,9 +4144,24 @@
       // non-lethal grace window it is (see SPAWN_GRACE + the collision loop).
       for(const e of enemies){
         if(e.spawnT > 0){
-          const f = 1 - e.spawnT / SPAWN_GRACE;          // 0 (just spawned) → 1 (fully arrived)
+          const spawnDur = Math.max(0.001, e.spawnDur || SPAWN_GRACE);
+          const f = 1 - e.spawnT / spawnDur;             // 0 (just spawned) → 1 (fully arrived)
           ctx.save();
           ctx.globalAlpha = 0.25 + 0.75 * f;
+          if(e.doom){
+            const pulse = 0.5 + 0.5 * Math.sin(elapsed * 12);
+            const rr = e.r * (1.85 - 0.55 * f + pulse * 0.08);
+            ctx.beginPath(); ctx.arc(e.x, e.y, rr, 0, Math.PI * 2);
+            ctx.lineWidth = Math.max(4, e.r * 0.13);
+            ctx.strokeStyle = "rgba(255,96,136," + (0.75 - f * 0.35).toFixed(3) + ")";
+            ctx.stroke();
+            const glow = ctx.createRadialGradient(e.x, e.y, e.r * 0.25, e.x, e.y, e.r * 2.2);
+            glow.addColorStop(0, "rgba(255,255,255," + (0.16 + 0.14 * f).toFixed(3) + ")");
+            glow.addColorStop(0.45, "rgba(255,78,126," + (0.18 + 0.22 * (1 - f)).toFixed(3) + ")");
+            glow.addColorStop(1, "rgba(255,78,126,0)");
+            ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 2.2, 0, Math.PI * 2); ctx.fill();
+          }
           // Draw a scaled-in clone (grow from 60% to full) rather than mutating the live enemy,
           // so a stray throw could never leave its real radius shrunk.
           drawSticker({ x: e.x, y: e.y, rot: e.rot, img: e.img, r: e.r * (0.6 + 0.4 * f) }, false);
