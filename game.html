@@ -2704,8 +2704,16 @@
       // Difficulty ramps mainly through SPEED now, not numbers: Nazans join slowly
       // and the on-screen count stays low, so the faster bouncing pack stays
       // readable instead of becoming a wall of stickers.
+      // Spawns also pace themselves to the crowd: the base interval is tuned for
+      // ~4-5 Nazans, so a cleared board fills back up faster (every Nazan below
+      // that baseline shaves time off) while a busy board fills more slowly (each
+      // extra Nazan adds time), keeping it around that sweet spot instead of
+      // snowballing into an overcrowded wall.
       spawnAcc += dt;
-      const interval = Math.max(2.8, 5 - elapsed * 0.035);
+      const SPAWN_BASELINE = 4.5;     // Nazan count the base interval is tuned for
+      const SPAWN_PER_NAZAN = 0.5;    // seconds added/removed per Nazan off the baseline
+      const crowdAdj = (enemies.length - SPAWN_BASELINE) * SPAWN_PER_NAZAN;
+      const interval = Math.max(1.4, (5 - elapsed * 0.035) + crowdAdj);
       if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
