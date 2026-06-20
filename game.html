@@ -1987,8 +1987,8 @@
     // numbers stay directly comparable.
     const INTENSITY_MIN   = -1.0;  // value at score 0 — reproduces the old slow, gentle opening
     const INTENSITY_MAX   =  4.5;  // overall cap so it stays fast-but-fair, never impossible
-    const INTENSITY_EASE  =  0.5;  // <1 → concave road to 1000: the early stretch is the calmest (lower ⇒ gentler ramp)
-    const INTENSITY_ABOVE_SLOPE = 1.0; // intensity gained per 1000 TOTAL score above the 1000 anchor
+    const INTENSITY_EASE  =  0.65; // <1 → concave road to 1000: the early stretch is the calmest
+    const INTENSITY_ABOVE_SLOPE = 0.85; // intensity gained per 1000 TOTAL score above the 1000 anchor — a touch slower past 1000
     function intensity(){
       const p = Math.max(0, score) / EGAN_FIRST;   // total-score progress; 1.0 at the 1000 anchor
       let i;
