@@ -1949,7 +1949,29 @@
     }
     function base(){ return Math.min(W, H); }      // size unit so it scales on any screen
     function highScore(){ return LS.get(HS_KEY, 0); }
-    function naturalPlayerR(){ return Math.max(20, base() * 0.05); }   // player's full size
+    // How portrait/tall the arena is: 0 on a square-or-wider screen, ramping to 1 on a
+    // narrow phone held upright (aspect ratio W/H ≈ 0.55 or tighter). Used to give the
+    // cramped portrait arena a little mercy — a slightly bigger player and slightly
+    // smaller Nazans, so there's room to thread between a bouncing pack.
+    function tallness(){
+      const ar = W / Math.max(1, H);
+      return Math.max(0, Math.min(1, (1 - ar) / 0.45));   // ar 1.0 → 0, ar ≤ 0.55 → 1
+    }
+    // Difficulty multiplier tuned to the arena's aspect ratio (mirrors Egan Mode's
+    // eganDiff): a tall/narrow portrait phone has far less room to dodge, so Nazans move
+    // slower and arrive less often there; a wide desktop nudges the other way. The enemy
+    // COUNT cap is deliberately left out of this (tuned separately).
+    const ARENA_DIFF_MIN = 0.75;   // portrait phones: gentler pace, more breathing room
+    const ARENA_DIFF_MAX = 1.12;   // wide desktops: a touch livelier
+    function arenaDiff(){
+      const ar = W / Math.max(1, H);
+      return Math.max(ARENA_DIFF_MIN, Math.min(ARENA_DIFF_MAX, ar));
+    }
+    // A short haptic buzz on touch devices (desktops/unsupported browsers no-op). Used
+    // sparingly for the moments that matter — death, firing a power-up, grabbing a pickup —
+    // so the smaller phone screen gets a little physical feedback to lean on.
+    function haptic(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+    function naturalPlayerR(){ return Math.max(20, base() * 0.05 * (1 + 0.18 * tallness())); }   // player's full size (a touch larger on tall phones)
 
     function resize(){
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1966,7 +1988,7 @@
     }
 
     function spawnEnemy(){
-      const r = Math.max(22, base() * 0.055);
+      const r = Math.max(22, base() * 0.055 * (1 - 0.14 * tallness()));   // slightly smaller on tall phones so there's room to weave
       // Spawn at a random edge so nothing lands right on the player.
       let x, y;
       if(Math.random() < 0.5){ x = Math.random() < 0.5 ? r : W - r; y = Math.random() * H; }
@@ -1974,7 +1996,9 @@
       // New Nazans always arrive GENTLY — no more screaming in at full pace. The
       // danger of each one builds from its own time on screen (see the per-enemy
       // acceleration in step()), not from how late in the round it spawned.
-      const speed = base() * (0.004 + Math.random() * 0.0015);
+      // The arena's aspect ratio also tempers the pace: a cramped portrait phone gets
+      // slower Nazans (see arenaDiff), a wide desktop a touch faster.
+      const speed = base() * (0.004 + Math.random() * 0.0015) * arenaDiff();
       const ang = Math.random() * Math.PI * 2;
       // Never reuse the player's own sticker as an enemy — that's confusing. Pick
       // from the remaining images when more than one is available.
@@ -2179,6 +2203,7 @@
       if(type === "star"){ try{ sfx.starPower(); }catch(e){} }
       else if(type === "shove" || type === "bomb" || type === "zap"){ try{ sfx.powerFire(type); }catch(e){} }
       else { try{ sfx.boing(3, "powerup-" + type); }catch(e){} }
+      haptic(25);   // a little kick the moment a banked power-up goes off
       return true;
     }
 
@@ -2222,6 +2247,7 @@
           const type = pickup.type;
           held = type; pickup = null;
           try{ sfx.powerGrab(); }catch(e){}
+          haptic(15);   // a soft tick when you scoop up a pickup
           // Shove and Boom are the only banked pickups: hold them and unleash at the perfect,
           // locally-dependent moment by tapping your own Nazan / pressing Space. Chain Zap and all
           // timed effects kick in the instant you grab them. A banked pickup also starts a hold
@@ -2831,7 +2857,10 @@
       const SPAWN_BASELINE = 4.5;     // Nazan count the base interval is tuned for
       const SPAWN_PER_NAZAN = 0.5;    // seconds added/removed per Nazan off the baseline
       const crowdAdj = (enemies.length - SPAWN_BASELINE) * SPAWN_PER_NAZAN;
-      const interval = Math.max(1.4, (5 - elapsed * 0.035) + crowdAdj);
+      // Stretch the gap on cramped portrait screens and tighten it on wide ones, so the
+      // arena fills toward its sweet spot at a pace that suits the space (arenaDiff). The
+      // on-screen COUNT cap below is intentionally left as-is.
+      const interval = Math.max(1.4, ((5 - elapsed * 0.035) + crowdAdj) / arenaDiff());
       if(spawnAcc >= interval && enemies.length < 12){ spawnAcc = 0; spawnEnemy(); }
 
       updatePlayer(dt);
@@ -2895,7 +2924,7 @@
           // Hold off easing while a shove is fresh, so a pushed Nazan actually travels
           // at full speed (and has a chance to reach an edge) before settling down.
           if(e.shoveT <= 0){
-            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025);
+            const target = base() * Math.min(0.020, 0.004 + e.age * 0.00025) * arenaDiff();
             const cur = Math.hypot(e.vx, e.vy);
             if(cur > 0){
               const k = (cur + (target - cur) * Math.min(1, dt * 0.6)) / cur;
@@ -3436,6 +3465,7 @@
     }
     function gameOver(){
       running = false;
+      haptic([40, 60, 40]);   // a firm "you're done" buzz on touch devices
       eganPhase = null; eganPending = false; eganStickers = []; eganPops = [];
       if(raf){ cancelAnimationFrame(raf); raf = null; }
       try{ music.stop(); }catch(e){}              // end the game music when you're dead
@@ -3608,8 +3638,15 @@
     function wire(){
       if(!root || !ctx) return;
       window.addEventListener("resize", ()=>{ if(root.classList.contains("show")) resize(); });
-      // Pointer (mouse + touch) — track position over the canvas.
-      const setP = (e)=>{ pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY; };
+      // Pointer (mouse + touch) — track position over the canvas. On TOUCH we steer the
+      // Nazan to a point lifted above the finger, so your thumb never sits on top of the
+      // character and hides the very Nazans closing in on it. Mouse steering is unchanged.
+      const TOUCH_LIFT = ()=> base() * 0.10;
+      const setP = (e)=>{
+        pointer.active = true;
+        pointer.x = e.clientX;
+        pointer.y = e.clientY - (e.pointerType === "touch" ? TOUCH_LIFT() : 0);
+      };
       // Firing a banked power-up is a quick press-and-release tap on your OWN Nazan. Shove and
       // Boom are both positional / auto-targeting — neither needs aiming — so they go off the
       // same way: tap your Nazan (or press Space). Dragging to steer moves too far / lasts too
@@ -3620,7 +3657,12 @@
         downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnPlayer = false;
         if(running && player && held){
           const dx = e.clientX - player.x, dy = e.clientY - player.y;
-          const reach = Math.max(player.r, base() * 0.05);   // must land on the Nazan itself
+          // On touch the Nazan rides a fixed lift above the finger, so a tap aimed at it
+          // lands roughly TOUCH_LIFT below the sprite — widen the hit target there so
+          // firing a banked power-up by tapping your Nazan still reads reliably.
+          const reach = e.pointerType === "touch"
+            ? Math.max(player.r * 2, base() * 0.16)   // covers the lift + the sprite
+            : Math.max(player.r, base() * 0.05);      // mouse: tight, unchanged
           downOnPlayer = (dx * dx + dy * dy <= reach * reach);
         }
         setP(e);
