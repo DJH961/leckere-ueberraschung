@@ -3115,7 +3115,9 @@
       try{ music.stop(); }catch(e){}
       // This is a standalone page now: "Back" returns to the main site. The
       // ?fromgame=1 flag tells it to skip the rickroll and keep the egg button up.
-      location.href = "index.html?fromgame=1";
+      // Use "./" so the bare directory URL is shown and the "index.html" file
+      // name stays hidden in the address bar.
+      location.href = "./?fromgame=1";
     }
     // ----- How-to-play help overlay -----
     function helpOpen(){ const h = $("#gameHelp"); return !!(h && h.classList.contains("show")); }
