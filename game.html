@@ -2105,14 +2105,37 @@
     // you catch and carries ACROSS rounds, so it — not the number of egans thrown — is the single
     // driver of difficulty: a struggling player keeps slow, big egans; a strong run has to chase
     // fast, small ones to reach the target. The very first throws are always at 0 (no points yet).
-    const EGAN_PERF_RATE = 1 / 240;      // egan intensity per Egan point banked — gentler ramp (a strong round of ~240–290 pts ⇒ ~+1 unit)
-    const EGAN_INTENSITY_MAX   = 3.0;    // egan-intensity cap — keeps a veteran's rounds fast-but-fair
-    const EGAN_INTENSITY_SPEED = 0.30;   // egan flight speed grows by this fraction per egan-intensity unit
-    const EGAN_INTENSITY_RATE  = 0.22;   // egan spawn cadence tightens by this fraction per egan-intensity unit
+    // The cap is deliberately HIGH (well past the old 3.0 plateau) so a strong run keeps getting
+    // harder round after round instead of flat-lining: a veteran who banked enough to cap out used to
+    // face the SAME rounds 3, 4, 5… now the dial keeps climbing toward this ceiling, so the deeper a
+    // gifted player pushes the faster/tighter Egan gets. The per-point RATE is a touch quicker too, so
+    // each round lands a little higher than the last — round 1 still rains 30+ catches on an ace, but
+    // by round 2 the pace bites (≈25 becomes a strong haul) and rounds 3 & 4 are a genuine chase.
+    const EGAN_PERF_RATE = 1 / 210;      // egan intensity per Egan point banked — a touch quicker ramp (a strong round of ~210–260 pts ⇒ ~+1 unit)
+    const EGAN_INTENSITY_MAX   = 4.5;    // egan-intensity cap — RAISED so high scores keep climbing past the old 3.0 plateau (rounds 3 & 4 stay hard), but bounded so it never turns impossible
+    const EGAN_INTENSITY_SPEED = 0.34;   // egan flight speed grows by this fraction per egan-intensity unit
+    const EGAN_INTENSITY_RATE  = 0.24;   // egan spawn cadence tightens by this fraction per egan-intensity unit
+    // Egan size shrinks toward its smallest by THIS intensity (not at the cap), so lifting the cap
+    // doesn't accidentally keep egans large for longer: they reach their hardest, smallest size by a
+    // tough-but-reachable round-2/3 level and then STAY small while speed/cadence keep climbing above.
+    const EGAN_SIZE_FULL_AT    = 2.6;    // egan-intensity at which size has shrunk all the way to EGAN_SIZE_END
     function eganIntensity(){ return Math.min(EGAN_INTENSITY_MAX, Math.max(0, eganPointsTotal) * EGAN_PERF_RATE); }
     function eganIntensity01(){ return EGAN_INTENSITY_MAX ? eganIntensity() / EGAN_INTENSITY_MAX : 0; }
+    function eganSizeProg(){ return Math.min(1, eganIntensity() / EGAN_SIZE_FULL_AT); }   // 0 (big) … 1 (smallest), tied to a fixed level not the cap
     function eganSpeedMul(){ return 1 + eganIntensity() * EGAN_INTENSITY_SPEED; }
     function eganRateMul(){  return 1 + eganIntensity() * EGAN_INTENSITY_RATE; }
+    // ARC pressure: at high egan-intensity the per-egan curve gets sharper and its straying band a
+    // little wider, so a veteran's egans don't just fly faster — they SWERVE more, making their path
+    // harder to read and intercept. It's a skill test, not attrition: the safety clamps (angCap and
+    // each egan's own launch band in eganStep) still guarantee every egan exits the opposite edge, so
+    // a sharper arc never traps an egan or doubles it back — it just demands a better read.
+    const EGAN_INTENSITY_CURL  = 0.8;    // extra arc/curl at the intensity cap (1 + this·intensity01): up to ~1.8× the swerve
+    function eganArcMul(){ return 1 + EGAN_INTENSITY_CURL * eganIntensity01(); }
+    // SPEED SKEW: rather than widening the symmetric jitter (which would also make some egans slower,
+    // i.e. easier), high intensity nudges the WHOLE spread upward a touch, so the fast ones get faster
+    // without handing out free slow ones. Bounded so even a capped round stays catchable.
+    const EGAN_INTENSITY_SKEW  = 0.18;   // upward speed bias at the intensity cap (fraction of base speed)
+    function eganSpeedSkew(){ return EGAN_INTENSITY_SKEW * eganIntensity01(); }
     // Minor early-throw bonus: the first throws of a round run at EGAN_EASE_IN of full pace,
     // climbing back to 1 by EGAN_EASE_IN_PROG so a high-intensity re-entry never opens at full tilt.
     function eganEaseIn(prog){
@@ -3072,13 +3095,14 @@
     function spawnEgan(prog, gold){
       const p = Math.min(1, Math.max(0, prog));
       const easeMul = eganEaseIn(p);                 // minor early-throw bonus
-      const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * eganIntensity01();
+      const sizeMul = EGAN_SIZE_START + (EGAN_SIZE_END - EGAN_SIZE_START) * eganSizeProg();
       const r = Math.max(16, base() * 0.05 * sizeMul * (gold ? EGAN_GOLD_SIZE_MUL : 1));   // golden ones a touch bigger
       let baseSpeed = base() * EGAN_SPEED_BASE;
       baseSpeed *= eganDiff();                        // wider screens → faster egans (harder), narrow → calmer
       baseSpeed *= eganSpeedMul();                    // MAIN driver: more catches / bigger combos ⇒ faster
       baseSpeed *= easeMul;                           // minor early-throw bonus so a round never opens at full tilt
-      const speed = Math.max(base() * 0.003, baseSpeed * (1 + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
+      // High-intensity SKEW nudges the whole jitter window upward (faster, never free-slower).
+      const speed = Math.max(base() * 0.003, baseSpeed * (1 + eganSpeedSkew() + (Math.random() - 0.5) * EGAN_SPEED_JITTER));
       const fromLeft = Math.random() < 0.5;                          // egans come from BOTH sides
       const dir = fromLeft ? 1 : -1;                                 // +1 heads right, -1 heads left
       const startX = fromLeft ? -r : W + r;
@@ -3107,10 +3131,10 @@
       // The band is capped just shy of straight up/down (±~89°) so even a steep launch can't curve
       // far enough to reverse course back toward the side it came from.
       const angCap = EGAN_ANG_CAP;
-      const curl = eganCurlMul();                                   // wide screens → tighter band & slower turn
+      const curl = eganCurlMul() * eganArcMul();                    // wide screens → tighter band; high intensity → sharper swerve
       const angMin = Math.max(-angCap, angle - EGAN_CROSS_BAND * curl);
       const angMax = Math.min( angCap, angle + EGAN_CROSS_BAND * curl);
-      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN * curl;   // gentle per-egan arc, restricted on wide screens
+      const turn = (Math.random() - 0.5) * 2 * EGAN_CURVE_TURN * curl;   // gentle per-egan arc, restricted on wide screens, sharper at high intensity
       // A golden egan can be ANY egan sticker, just recoloured — it doesn't draw from (or
       // deplete) the once-each bag, so it's a true bonus on top of the round's normal run.
       const img = gold
