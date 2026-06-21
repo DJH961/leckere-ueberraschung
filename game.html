@@ -2572,13 +2572,22 @@
     // Every 10 Nico games, the cycle resets to that spawn-kill intro again. In between, they
     // open boxed in by a full board of 12 Nazans plus a spawned Tiny
     // Mode pickup by their feet; that opening Tiny run then spawns one Eating Mode pickup in
-    // its final second. After that, up to 500 points Nico only gets spawned Tiny pickups, then
-    // one spawned Bomb, then the normal rotation takes back over.
+    // its final second. ONLY those two openers are dropped right at his feet — after that, up to
+    // 500 points Nico keeps getting Tiny pickups but out in the field like normal pickups (on a
+    // steady, well-spaced cadence so they never bunch into back-to-back shrinks), then one Bomb
+    // that lands the instant he reaches 500, then the normal rotation takes back over.
     const NICO_FULL_BOARD = 12;
     // After this many completed Nico runs, the next run loops back to the spawn-kill intro.
     const NICO_DOOM_CYCLE = 10;
     const NICO_TINY_SCORE = 500;
     const NICO_INTRO_EAT_TRIGGER = 1;
+    // Cadence for Nico's forced Tiny pickups: spaced just past the 5s Tiny effect so a fresh one
+    // never lands on top of a live one, but a touch tighter than the normal random gap so the help
+    // keeps flowing. These run on a steady clock (the board-fullness haste is held off during the
+    // Tiny gauntlet — see updatePickups) so the spacing stays predictable.
+    const NICO_TINY_GAP_MIN    = 4.5;
+    const NICO_TINY_GAP_WINDOW = 3;
+    const NICO_BOMB_TIMER = 0.0001;   // tiny positive pickupTimer that fires the reward Bomb on the next tick
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function shouldSpawnNicoIntroEat(){
       return nicoIntroEatPending && activeEffect && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup;
@@ -2614,8 +2623,10 @@
         nicoDoomTimer = NICO_DOOM_SPAWN + NICO_DOOM_HOLD;
         return;
       }
-      // Returning nico: still a packed opening board, but now his special help comes only as
-      // spawned pickups beside him rather than instant activations.
+      // Returning nico: still a packed opening board. Only the very first Tiny pickup (and the
+      // Eating Mode pickup it spawns near the end of that opening shrink) drop right beside him;
+      // every forced pickup after that — the rest of the Tiny gauntlet and the reward Bomb — lands
+      // out in the field like a normal pickup so it never crowds him.
       for(let i = 0; i < NICO_FULL_BOARD; i++) spawnEnemy();
       nicoTinyOnly = true;
       nicoBombPending = false;
@@ -2797,7 +2808,14 @@
       const def = POWERUPS[type];
       if(!def || !def.dur) return;
       activeEffect = { type, time: def.dur, max: def.dur, displaySeconds: def.dur };
-      pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
+      // Nico's forced Tiny gauntlet runs on its own steady cadence — spaced just past the effect
+      // so shrinks never stack back-to-back, but a touch tighter than a normal random gap so the
+      // help keeps coming. Every other effect uses the usual randomised gap.
+      if(type === "shrink" && nicoTinyOnly){
+        pickupTimer = NICO_TINY_GAP_MIN + Math.random() * NICO_TINY_GAP_WINDOW;
+      } else {
+        pickupTimer = nextPickupGap(def.dur);    // a new one may appear only after this is spent
+      }
       updatePrompt();
     }
     function tickSpawnGrace(e, dt){
@@ -2809,7 +2827,7 @@
 
     // Drop a single, visually distinct power-up somewhere open on the field. Only ever
     // one exists at a time, and never while the player is already holding one.
-    function spawnPickup(){
+    function spawnPickup(forcedType){
       const r = Math.max(20, base() * 0.045);
       let x, y, tries = 0;
       do {
@@ -2817,7 +2835,7 @@
         y = r * 2 + Math.random() * Math.max(1, H - r * 4);
         tries++;
       } while(tries < 12 && Math.hypot(x - player.x, y - player.y) < base() * 0.25);
-      const type = rollPickupType();
+      const type = forcedType || rollPickupType();
       pickup = { x, y, r, type, life: PICKUP_LIFE, t: 0, beepT: 0 };
       firstPickupServed = true;
       try{ sfx.powerAppear(); }catch(e){}
@@ -2905,7 +2923,9 @@
       } else if(!held && pickupTimer > 0){
         // Consume the countdown FASTER when the board is hot/full/momentum is up, so removal tools
         // arrive sooner exactly when they're needed most (see pickupHaste) — the relief valve.
-        pickupTimer -= dt * pickupHaste();
+        // Exception: during Nico's forced Tiny gauntlet the cadence is scripted and steady, so the
+        // board-fullness haste is held off to keep the spacing predictable (no back-to-back Tinies).
+        pickupTimer -= dt * (nicoTinyOnly ? 1 : pickupHaste());
         if(pickupTimer <= 0){
           // Count the Nazans actually ON SCREEN (a banished one mid-flight off the edge doesn't
           // count): power-ups only drop into a board with at least PICKUP_MIN_NAZANS to use them on.
@@ -2931,7 +2951,9 @@
           else {
             const nicoType = nicoForcedPickupType();
             if(nicoType){
-              spawnPickupNear(nicoType);
+              // Out in the field like a normal pickup (NOT beside him) — only the opening Tiny
+              // and its Eating Mode follow-up are dropped at his feet.
+              spawnPickup(nicoType);
             }
             // Don't dangle a fresh pickup the player can't realistically reach before Egan Mode
             // sweeps the board: if a round would arm before this pickup's own lifetime is up, hold
@@ -3613,6 +3635,14 @@
       }
       elapsed += dt;
       score += dt * 10;
+      // Nico's reward Bomb is timed to land the instant he clears the Tiny gauntlet at exactly 500,
+      // not at the next random pickup tick: drop whatever Tiny is still lingering and open the next
+      // pickup slot now, which nicoForcedPickupType() then fills with the Bomb. Guarded on !held so
+      // it never clobbers something the player is banking.
+      if(nicoTinyOnly && score >= NICO_TINY_SCORE && !held){
+        if(pickup) pickup = null;
+        pickupTimer = NICO_BOMB_TIMER;   // updatePickups' "> 0" gate still ticks it down and spawns the Bomb now
+      }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
       // Reward chime every 100 points to make survival feel celebratory.
       const m = Math.floor(score / 100);
