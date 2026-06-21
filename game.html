@@ -2807,6 +2807,10 @@
       // genuinely feels bigger in the hand.
       if(type === "zap" && zapKills > 0){ haptic(zapKillBuzz(zapKills)); }
       else { haptic(25); }
+      // The banked Shove/Boom (and Chain Zap) fire instantly with nothing left held, so refresh the
+      // bottom prompt now — otherwise the "ready — tap your Nazan…" hint lingers after the power-up
+      // is already spent (most visible on Nico's guaranteed reward Bomb).
+      updatePrompt();
       return true;
     }
     function startTimedEffect(type){
@@ -3409,7 +3413,16 @@
       // short delay. Miss the target and pickups just resume on their normal cadence.
       eganRewardType = null;
       if(eganTargetHit){
-        spawnPickupNear(rollPickupType());   // present immediately, by the player — any power-up, normal rotation
+        // Pull the reward from the regular rotation (any power-up). One exception: Nico's scripted
+        // run already hands him a single Bomb when his Tiny gauntlet wraps up, so don't let the
+        // Egan-target reward drop ANOTHER Bomb the moment he exits the round — re-roll past it onto
+        // any other power-up. A repeat Tiny (shrink) is fine, so only Bomb is excluded.
+        let rewardType = rollPickupType();
+        if(isNico()){
+          let guard = 0;
+          while(rewardType === "bomb" && guard++ < 8) rewardType = rollPickupType();
+        }
+        spawnPickupNear(rewardType);   // present immediately, by the player — any power-up, normal rotation
         pickupTimer = 0;
       } else {
         pickupTimer = PICKUP_FIRST;                               // a regular pickup, on the normal schedule
