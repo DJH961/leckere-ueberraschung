@@ -2790,6 +2790,11 @@
       else if(type === "bomb"){ doBomb(); }
       else if(type === "zap"){ zapKills = doZap(); }
       else { startTimedEffect(type); }
+      // The instant / banked power-ups (Shove, Boom, Chain Zap) have no lingering effect to
+      // gate the next drop, so startTimedEffect never runs for them — schedule the next pickup
+      // here instead, or the cadence stalls (e.g. Nico's reward Bomb ended normal play with no
+      // further power-ups because pickupTimer was left ticked down past zero).
+      if(type === "shove" || type === "bomb" || type === "zap"){ pickupTimer = nextPickupGap(0); }
       pickup = null;
       // The Star gets its own iconic invincibility jingle; the instantly-fired
       // power-ups (Shove, Boom, Chain Zap) each get a distinct fire sound; every
