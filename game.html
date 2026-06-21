@@ -3421,6 +3421,7 @@
         if(isNico()){
           let guard = 0;
           while(rewardType === "bomb" && guard++ < 8) rewardType = rollPickupType();
+          if(rewardType === "bomb") rewardType = "shrink";   // never hand Nico a Bomb here — fall back to Tiny
         }
         spawnPickupNear(rewardType);   // present immediately, by the player — any power-up, normal rotation
         pickupTimer = 0;
