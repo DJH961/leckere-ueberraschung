@@ -2559,11 +2559,12 @@
     const NICO_TINY_SCORE = 500;
     const NICO_INTRO_EAT_TRIGGER = 1;
     // Cadence for Nico's forced Tiny pickups: spaced just past the 5s Tiny effect so a fresh one
-    // never lands on top of a live one, but a touch tighter than the normal random gap so help
+    // never lands on top of a live one, but a touch tighter than the normal random gap so the help
     // keeps flowing. These run on a steady clock (the board-fullness haste is held off during the
     // Tiny gauntlet — see updatePickups) so the spacing stays predictable.
     const NICO_TINY_GAP_MIN    = 4.5;
     const NICO_TINY_GAP_WINDOW = 3;
+    const NICO_BOMB_TIMER = 0.0001;   // tiny positive pickupTimer that fires the reward Bomb on the next tick
     function isNico(){ return (LS.get("playerName", "") || "").toLowerCase().includes("nico"); }
     function shouldSpawnNicoIntroEat(){
       return nicoIntroEatPending && activeEffect && activeEffect.type === "shrink" && activeEffect.time <= NICO_INTRO_EAT_TRIGGER && !pickup;
@@ -3616,7 +3617,7 @@
       // it never clobbers something the player is banking.
       if(nicoTinyOnly && score >= NICO_TINY_SCORE && !held){
         if(pickup) pickup = null;
-        pickupTimer = 0.0001;   // tiny positive so updatePickups' "> 0" gate still ticks it down and spawns now
+        pickupTimer = NICO_BOMB_TIMER;   // updatePickups' "> 0" gate still ticks it down and spawns the Bomb now
       }
       if(scoreEl) scoreEl.textContent = String(Math.floor(score));
       // Reward chime every 100 points to make survival feel celebratory.
