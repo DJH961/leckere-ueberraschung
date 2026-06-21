@@ -4565,7 +4565,9 @@
       const nameEl = $("#gameName"), editBtn = $("#gameEditName"), hintEl = $("#gameNameHint");
       const storedName = (LS.get("playerName", "") || "").trim();
       if(nameEl){ nameEl.value = storedName; nameEl.readOnly = true; }
-      if(editBtn){ editBtn.textContent = "✏️ Edit name"; editBtn.disabled = true; }
+      // The name is always editable — even on a non-board run you can change it so the
+      // NEXT game uses the new name. Posting a score is a separate concern (see below).
+      if(editBtn){ editBtn.textContent = "✏️ Edit name"; editBtn.disabled = false; }
       if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Checking the global board…"; }
       maybePostScore(final, storedName);
     }
@@ -4579,7 +4581,8 @@
       try{ onlineBest = await Leaderboard.myBest(name); }catch(e){ onlineBest = 0; }
       const beatsOnline = final > 0 && final > onlineBest;
       pendingScore = beatsOnline ? final : 0;
-      if(editBtn) editBtn.disabled = !beatsOnline;
+      // Keep the name editable regardless — a non-board run can still rename for next time.
+      if(editBtn) editBtn.disabled = false;
       if(!beatsOnline){
         if(hintEl){
           hintEl.className = "nameHint";
@@ -4643,19 +4646,27 @@
       await renderBoard("#overLbList");
       justSubmitted = false;
     }
-    // The only manual control on the game-over screen: change the name your score is
-    // posted under. Toggles the name field between read-only and editable; saving a
-    // new name re-posts the score under it.
+    // The manual name control on the game-over screen: change the name your score is
+    // posted under. Toggles the name field between read-only and editable. Saving a
+    // board-worthy run re-posts the score under the new name; otherwise it just stores
+    // the name so your NEXT game uses it (rename works even without uploading a score).
     function toggleEditName(){
       const nameEl = $("#gameName"), editBtn = $("#gameEditName"), hintEl = $("#gameNameHint");
-      if(!nameEl || pendingScore <= 0) return;
+      if(!nameEl) return;
+      // Whether this run is going on the board decides if saving also re-posts a score.
+      const willPost = pendingScore > 0;
       if(!editingName){
         editingName = true;
         nameEl.readOnly = false;
         nameEl.focus();
         try{ nameEl.select(); }catch(e){}
         if(editBtn) editBtn.textContent = "✓ Save name";
-        if(hintEl){ hintEl.className = "nameHint"; hintEl.textContent = "Edit your name, then save to update the board."; }
+        if(hintEl){
+          hintEl.className = "nameHint";
+          hintEl.textContent = willPost
+            ? "Edit your name, then save to update the board."
+            : "Edit your name, then save it for your next game.";
+        }
       } else {
         const newName = nameEl.value.trim();
         if(!newName){
@@ -4667,8 +4678,14 @@
         nameEl.readOnly = true;
         if(editBtn) editBtn.textContent = "✏️ Edit name";
         syncName(newName);
-        submitted = false;          // allow the score to re-post under the new name
-        postScore();
+        if(willPost){
+          submitted = false;          // allow the score to re-post under the new name
+          postScore();
+        } else if(hintEl){
+          // No board-worthy score this run — just confirm the name is saved for next time.
+          hintEl.className = "nameHint";
+          hintEl.textContent = "Saved — your next game will use “" + newName + "”.";
+        }
       }
     }
     function open(){
